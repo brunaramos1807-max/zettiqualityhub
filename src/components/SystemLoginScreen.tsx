@@ -114,7 +114,7 @@ export default function SystemLoginScreen() {
               }}
             >
               <AppImage
-                src="/assets/images/ChatGPT_Image_18_de_mai._de_2026__16_36_10-1779133005009.png"
+                src="/assets/images/ChatGPT_Image_18_de_mai._de_2026_16_36_10-1779133005009.png"
                 alt="QualiVisão logo"
                 width={44}
                 height={44}
@@ -242,7 +242,7 @@ export default function SystemLoginScreen() {
               style={{ backgroundColor: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.2)' }}
             >
               <AppImage
-                src="/assets/images/ChatGPT_Image_18_de_mai._de_2026__16_36_10-1779133005009.png"
+                src="/assets/images/ChatGPT_Image_18_de_mai._de_2026_16_36_10-1779133005009.png"
                 alt="QualiVisão logo"
                 width={40}
                 height={40}

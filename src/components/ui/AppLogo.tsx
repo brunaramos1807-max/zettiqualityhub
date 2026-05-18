@@ -13,7 +13,7 @@ interface AppLogoProps {
 }
 
 const AppLogo = memo(function AppLogo({
-  src = '/assets/images/ChatGPT_Image_18_de_mai._de_2026__16_36_10-1779133005009.png',
+  src = '/assets/images/ChatGPT_Image_18_de_mai._de_2026_16_36_10-1779133005009.png',
   iconName = 'SparklesIcon',
   size = 64,
   className = '',

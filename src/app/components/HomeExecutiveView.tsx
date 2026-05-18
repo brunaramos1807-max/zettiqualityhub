@@ -509,8 +509,14 @@ export default function HomeExecutiveView() {
   const [closeCycleOpen, setCloseCycleOpen] = useState(false);
   const [closeCycleSuccess, setCloseCycleSuccess] = useState(false);
   const [drilldownCiclo, setDrilldownCiclo] = useState<string | null>(null);
-  const [useEmbedded, setUseEmbedded] = useState(false);
   const [pilarModal, setPilarModal] = useState<'QA' | 'IEPC' | 'NC' | null>(null);
+
+  // ── Filter state ──────────────────────────────────────────────────────────
+  const [filterCiclo, setFilterCiclo] = useState<string>('todos');
+  const [filterSquad, setFilterSquad] = useState<string>('todos');
+  const [filterGestor, setFilterGestor] = useState<string>('todos');
+  const [filterOpen, setFilterOpen] = useState<'ciclo' | 'squad' | 'gestor' | null>(null);
+
   const [lastUpdate] = useState(() => {
     const now = new Date();
     return `${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
@@ -531,41 +537,6 @@ export default function HomeExecutiveView() {
     return scores;
   }, [userRole, userSquad, userSquads]);
 
-  const buildEmbeddedSummary = useCallback((): PeriodSummary => {
-    const analysts = ABR2026_ANALYSTS;
-    const qa = analysts.reduce((s, a) => s + a.qaScore, 0) / analysts.length;
-    const iepc = analysts.reduce((s, a) => s + a.iepcScore, 0) / analysts.length;
-    const ncs = analysts.reduce((s, a) => s + a.ncs, 0);
-    const squads: Record<string, { qa: number; iepc: number; count: number }> = {};
-    const coordenadores: Record<string, { qa: number; count: number }> = {};
-    analysts.forEach((a) => {
-      if (!squads[a.squad]) squads[a.squad] = { qa: 0, iepc: 0, count: 0 };
-      squads[a.squad].qa += a.qaScore;
-      squads[a.squad].iepc += a.iepcScore;
-      squads[a.squad].count += 1;
-      if (!coordenadores[a.coordenador]) coordenadores[a.coordenador] = { qa: 0, count: 0 };
-      coordenadores[a.coordenador].qa += a.qaScore;
-      coordenadores[a.coordenador].count += 1;
-    });
-    Object.keys(squads).forEach((sq) => {
-      squads[sq].qa = parseFloat((squads[sq].qa / squads[sq].count).toFixed(2));
-      squads[sq].iepc = parseFloat((squads[sq].iepc / squads[sq].count).toFixed(2));
-    });
-    Object.keys(coordenadores).forEach((c) => {
-      coordenadores[c].qa = parseFloat((coordenadores[c].qa / coordenadores[c].count).toFixed(2));
-    });
-    return {
-      periodo: '04/2026',
-      qa: parseFloat(qa.toFixed(2)),
-      iepc: parseFloat(iepc.toFixed(2)),
-      ncs,
-      elogios: 20,
-      analistas: analysts.length,
-      squads,
-      coordenadores,
-    };
-  }, []);
-
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -578,13 +549,12 @@ export default function HomeExecutiveView() {
       setAllPeriodos(periodos);
 
       if (scores.length === 0) {
-        setUseEmbedded(true);
-        setHistory([buildEmbeddedSummary()]);
+        // No data imported yet — show empty state, do NOT use embedded/fake data
+        setHistory([]);
         setLoading(false);
         return;
       }
 
-      setUseEmbedded(false);
       const filteredScores = filterByRole(scores);
       const filteredNcs = filterByRole(ncs);
       const filteredElogios = filterByRole(elogios);
@@ -628,11 +598,10 @@ export default function HomeExecutiveView() {
       });
       setHistory(summaries);
     } catch {
-      setUseEmbedded(true);
-      setHistory([buildEmbeddedSummary()]);
+      setHistory([]);
     }
     setLoading(false);
-  }, [filterByRole, buildEmbeddedSummary]);
+  }, [filterByRole]);
 
   useEffect(() => {
     loadData();
@@ -640,6 +609,14 @@ export default function HomeExecutiveView() {
     window.addEventListener('zetti_import_done', handler);
     return () => window.removeEventListener('zetti_import_done', handler);
   }, [loadData]);
+
+  // Close filter dropdowns when clicking outside
+  useEffect(() => {
+    if (!filterOpen) return;
+    const handler = () => setFilterOpen(null);
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [filterOpen]);
 
   const handleCloseCycle = async (aiSummary: string) => {
     const lastPeriodo = history[history.length - 1]?.periodo;
@@ -669,52 +646,80 @@ export default function HomeExecutiveView() {
     }
   };
 
-  const lastPeriod = history[history.length - 1];
-  const prevPeriod = history[history.length - 2];
+  // ── Apply filters to history ──────────────────────────────────────────────
+  const filteredHistory = history.filter((h) => {
+    if (filterCiclo !== 'todos' && h.periodo !== filterCiclo) return false;
+    return true;
+  });
 
-  const qaDelta = lastPeriod && prevPeriod ? (lastPeriod.qa - prevPeriod.qa) : useEmbedded ? 3.2 : null;
-  const iepcDelta = lastPeriod && prevPeriod ? (lastPeriod.iepc - prevPeriod.iepc) : useEmbedded ? 2.8 : null;
-  const ncDelta = lastPeriod && prevPeriod ? (lastPeriod.ncs - prevPeriod.ncs) : useEmbedded ? -12 : null;
-  const elogioDelta = lastPeriod && prevPeriod ? (lastPeriod.elogios - prevPeriod.elogios) : useEmbedded ? 8 : null;
+  // For squad/gestor filter: apply to the last period's data
+  const getFilteredPeriod = (period: PeriodSummary | undefined): PeriodSummary | undefined => {
+    if (!period) return undefined;
+    if (filterSquad === 'todos' && filterGestor === 'todos') return period;
 
-  const evolutionData = useEmbedded ? HISTORY_DATA : history.map(h => ({ periodo: h.periodo, qa: h.qa, iepc: h.iepc }));
+    // Filter squads
+    let squads = { ...period.squads };
+    if (filterSquad !== 'todos') {
+      squads = Object.fromEntries(Object.entries(squads).filter(([sq]) => sq === filterSquad));
+    }
+
+    // Filter coordenadores
+    let coordenadores = { ...period.coordenadores };
+    if (filterGestor !== 'todos') {
+      coordenadores = Object.fromEntries(Object.entries(coordenadores).filter(([c]) => c === filterGestor));
+    }
+
+    // Recalculate QA/IEPC averages from filtered squads
+    const squadEntries = Object.values(squads);
+    const qa = squadEntries.length > 0
+      ? parseFloat((squadEntries.reduce((s, d) => s + d.qa, 0) / squadEntries.length).toFixed(2))
+      : 0;
+    const iepc = squadEntries.length > 0
+      ? parseFloat((squadEntries.reduce((s, d) => s + d.iepc, 0) / squadEntries.length).toFixed(2))
+      : 0;
+    const analistas = squadEntries.reduce((s, d) => s + d.count, 0);
+
+    return { ...period, squads, coordenadores, qa, iepc, analistas };
+  };
+
+  const rawLastPeriod = filteredHistory[filteredHistory.length - 1];
+  const lastPeriod = getFilteredPeriod(rawLastPeriod);
+  const prevPeriod = filteredHistory[filteredHistory.length - 2];
+
+  // Collect all available squads and gestores from all history
+  const allSquads = Array.from(new Set(history.flatMap(h => Object.keys(h.squads)))).sort();
+  const allGestores = Array.from(new Set(history.flatMap(h => Object.keys(h.coordenadores || {})))).sort();
+
+  const qaDelta = lastPeriod && prevPeriod ? (lastPeriod.qa - prevPeriod.qa) : null;
+  const iepcDelta = lastPeriod && prevPeriod ? (lastPeriod.iepc - prevPeriod.iepc) : null;
+  const ncDelta = lastPeriod && prevPeriod ? (lastPeriod.ncs - prevPeriod.ncs) : null;
+  const elogioDelta = lastPeriod && prevPeriod ? (lastPeriod.elogios - prevPeriod.elogios) : null;
+
+  const evolutionData = filteredHistory.map(h => ({ periodo: h.periodo, qa: h.qa, iepc: h.iepc }));
   const qaSparkline = evolutionData.map(d => d.qa);
   const iepcSparkline = evolutionData.map(d => d.iepc);
 
   const squadRanking = lastPeriod
     ? Object.entries(lastPeriod.squads).map(([squad, d]) => ({ squad, qa: d.qa })).sort((a, b) => b.qa - a.qa)
-    : useEmbedded
-    ? [
-        { squad: 'Compras e Estoque', qa: 84.93 },
-        { squad: 'Financeiro Fiscal', qa: 84.45 },
-        { squad: 'PDV', qa: 77.61 },
-        { squad: 'PDV N1', qa: 63.20 },
-      ]
     : [];
 
   const coordRanking = lastPeriod
     ? Object.entries(lastPeriod.coordenadores || {}).map(([coord, d]) => ({ coord, qa: d.qa })).sort((a, b) => b.qa - a.qa)
-    : useEmbedded
-    ? [
-        { coord: 'Jonatas Jesus', qa: 84.93 },
-        { coord: 'Amanda Cristina', qa: 84.45 },
-        { coord: 'Ayron Silva', qa: 76.17 },
-      ]
     : [];
 
-  const ncDistribution = useEmbedded ? ABR2026_NC_TYPES : [];
+  const ncDistribution: typeof ABR2026_NC_TYPES = [];
 
-  const lowQAAnalysts = useEmbedded ? ABR2026_ANALYSTS.filter(a => a.qaScore < 60).length : 0;
-
-  const totalNCs = lastPeriod?.ncs ?? (useEmbedded ? 37 : 0);
-  const totalElogios = lastPeriod?.elogios ?? (useEmbedded ? 20 : 0);
-  const totalAnalistas = lastPeriod?.analistas ?? (useEmbedded ? 18 : 0);
-  const qaMedia = lastPeriod?.qa ?? (useEmbedded ? 76.5 : 0);
-  const iepcMedia = lastPeriod?.iepc ?? (useEmbedded ? 76.7 : 0);
-  const totalAvaliacoes = useEmbedded ? 412 : totalAnalistas;
+  const totalNCs = lastPeriod?.ncs ?? 0;
+  const totalElogios = lastPeriod?.elogios ?? 0;
+  const totalAnalistas = lastPeriod?.analistas ?? 0;
+  const qaMedia = lastPeriod?.qa ?? 0;
+  const iepcMedia = lastPeriod?.iepc ?? 0;
+  const totalAvaliacoes = totalAnalistas;
 
   const qaClass = getPerformanceClass(qaMedia);
   const iepcClass = getPerformanceClass(iepcMedia);
+
+  const hasData = history.length > 0;
 
   // Custom dot with value label for evolution chart
   const CustomDot = (props: any) => {
@@ -769,21 +774,93 @@ export default function HomeExecutiveView() {
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#94A3B8' }}>
-                <Calendar size={12} />
-                <span>Abr/2026</span>
-                <ChevronDown size={10} />
+              {/* Ciclo filter */}
+              <div className="relative">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setFilterOpen(filterOpen === 'ciclo' ? null : 'ciclo'); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors"
+                  style={{ backgroundColor: filterCiclo !== 'todos' ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.05)', border: filterCiclo !== 'todos' ? '1px solid rgba(56,189,248,0.3)' : '1px solid rgba(255,255,255,0.08)', color: filterCiclo !== 'todos' ? '#38BDF8' : '#94A3B8' }}
+                >
+                  <Calendar size={12} />
+                  <span>{filterCiclo === 'todos' ? 'Ciclo: Todos' : filterCiclo}</span>
+                  <ChevronDown size={10} />
+                </button>
+                {filterOpen === 'ciclo' && (
+                  <div className="absolute top-full mt-1 left-0 z-50 rounded-xl overflow-hidden min-w-[140px]" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }} onClick={(e) => e.stopPropagation()}>
+                    {['todos', ...allPeriodos].map((p) => (
+                      <button key={p} onClick={() => { setFilterCiclo(p); setFilterOpen(null); }} className="w-full text-left px-3 py-2 text-xs transition-colors hover:bg-white/5" style={{ color: filterCiclo === p ? '#38BDF8' : '#94A3B8' }}>
+                        {p === 'todos' ? 'Todos os ciclos' : p}
+                      </button>
+                    ))}
+                    {allPeriodos.length === 0 && (
+                      <p className="px-3 py-2 text-xs" style={{ color: '#64748B' }}>Nenhum ciclo importado</p>
+                    )}
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#94A3B8' }}>
-                <Users size={12} />
-                <span>Squad: Todos</span>
-                <ChevronDown size={10} />
+
+              {/* Squad filter */}
+              <div className="relative">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setFilterOpen(filterOpen === 'squad' ? null : 'squad'); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors"
+                  style={{ backgroundColor: filterSquad !== 'todos' ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.05)', border: filterSquad !== 'todos' ? '1px solid rgba(56,189,248,0.3)' : '1px solid rgba(255,255,255,0.08)', color: filterSquad !== 'todos' ? '#38BDF8' : '#94A3B8' }}
+                >
+                  <Users size={12} />
+                  <span>{filterSquad === 'todos' ? 'Squad: Todos' : filterSquad}</span>
+                  <ChevronDown size={10} />
+                </button>
+                {filterOpen === 'squad' && (
+                  <div className="absolute top-full mt-1 left-0 z-50 rounded-xl overflow-hidden min-w-[160px]" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }} onClick={(e) => e.stopPropagation()}>
+                    {['todos', ...allSquads].map((sq) => (
+                      <button key={sq} onClick={() => { setFilterSquad(sq); setFilterOpen(null); }} className="w-full text-left px-3 py-2 text-xs transition-colors hover:bg-white/5" style={{ color: filterSquad === sq ? '#38BDF8' : '#94A3B8' }}>
+                        {sq === 'todos' ? 'Todos os squads' : sq}
+                      </button>
+                    ))}
+                    {allSquads.length === 0 && (
+                      <p className="px-3 py-2 text-xs" style={{ color: '#64748B' }}>Nenhum squad disponível</p>
+                    )}
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#94A3B8' }}>
-                <span>Gestor: Todos</span>
-                <ChevronDown size={10} />
+
+              {/* Gestor filter */}
+              <div className="relative">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setFilterOpen(filterOpen === 'gestor' ? null : 'gestor'); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors"
+                  style={{ backgroundColor: filterGestor !== 'todos' ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.05)', border: filterGestor !== 'todos' ? '1px solid rgba(56,189,248,0.3)' : '1px solid rgba(255,255,255,0.08)', color: filterGestor !== 'todos' ? '#38BDF8' : '#94A3B8' }}
+                >
+                  <span>{filterGestor === 'todos' ? 'Gestor: Todos' : filterGestor}</span>
+                  <ChevronDown size={10} />
+                </button>
+                {filterOpen === 'gestor' && (
+                  <div className="absolute top-full mt-1 left-0 z-50 rounded-xl overflow-hidden min-w-[180px]" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }} onClick={(e) => e.stopPropagation()}>
+                    {['todos', ...allGestores].map((g) => (
+                      <button key={g} onClick={() => { setFilterGestor(g); setFilterOpen(null); }} className="w-full text-left px-3 py-2 text-xs transition-colors hover:bg-white/5" style={{ color: filterGestor === g ? '#38BDF8' : '#94A3B8' }}>
+                        {g === 'todos' ? 'Todos os gestores' : g}
+                      </button>
+                    ))}
+                    {allGestores.length === 0 && (
+                      <p className="px-3 py-2 text-xs" style={{ color: '#64748B' }}>Nenhum gestor disponível</p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
+
+            {/* Active filters badge + clear */}
+            {(filterCiclo !== 'todos' || filterSquad !== 'todos' || filterGestor !== 'todos') && (
+              <button
+                onClick={() => { setFilterCiclo('todos'); setFilterSquad('todos'); setFilterGestor('todos'); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                style={{ backgroundColor: 'rgba(56,189,248,0.15)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.3)' }}
+              >
+                <X size={11} />
+                Limpar filtros
+              </button>
+            )}
+
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium" style={{ backgroundColor: '#1E40AF', color: '#fff', border: '1px solid rgba(56,189,248,0.2)' }}>
               <Filter size={12} />
               Filtros
@@ -815,6 +892,23 @@ export default function HomeExecutiveView() {
               <p className="text-sm" style={{ color: '#94A3B8' }}>Carregando dados...</p>
             </div>
           </div>
+        ) : !hasData ? (
+          /* ── Empty State ── */
+          <div className="flex flex-col items-center justify-center py-32 text-center">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)' }}>
+              <BarChart2 size={28} style={{ color: '#38BDF8' }} />
+            </div>
+            <h2 className="text-lg font-bold text-white mb-2">Nenhum dado importado</h2>
+            <p className="text-sm mb-6 max-w-sm" style={{ color: '#64748B' }}>
+              O painel executivo ficará disponível após a primeira importação de dados. Clique em "Importar" para começar.
+            </p>
+            {canImport && (
+              <button onClick={() => setImportOpen(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: '#1E40AF', border: '1px solid rgba(56,189,248,0.3)' }}>
+                <Activity size={14} />
+                Importar dados agora
+              </button>
+            )}
+          </div>
         ) : (
           <div className="space-y-4">
             {/* ── Row 1: KPI Cards ── */}
@@ -832,10 +926,10 @@ export default function HomeExecutiveView() {
                   <div className="flex items-center gap-1">
                     <TrendingUp size={11} style={{ color: '#22C55E' }} />
                     <span className="text-xs" style={{ color: '#22C55E' }}>
-                      {qaDelta !== null ? `${qaDelta > 0 ? '+' : ''}${qaDelta.toFixed(1)}` : '+3.2'} vs Ciclo Anterior
+                      {qaDelta !== null ? `${qaDelta > 0 ? '+' : ''}${qaDelta.toFixed(1)} vs Ciclo Anterior` : 'Sem ciclo anterior'}
                     </span>
                   </div>
-                  <Sparkline data={qaSparkline.length > 1 ? qaSparkline : [73, 74, 75, 76, 76, 76.5]} color="#38BDF8" />
+                  {qaSparkline.length > 1 && <Sparkline data={qaSparkline} color="#38BDF8" />}
                 </div>
                 <PerformanceBadge score={qaMedia} size="xs" />
               </div>
@@ -853,10 +947,10 @@ export default function HomeExecutiveView() {
                   <div className="flex items-center gap-1">
                     <TrendingUp size={11} style={{ color: '#22C55E' }} />
                     <span className="text-xs" style={{ color: '#22C55E' }}>
-                      {iepcDelta !== null ? `${iepcDelta > 0 ? '+' : ''}${iepcDelta.toFixed(1)}` : '+2.8'} vs Ciclo Anterior
+                      {iepcDelta !== null ? `${iepcDelta > 0 ? '+' : ''}${iepcDelta.toFixed(1)} vs Ciclo Anterior` : 'Sem ciclo anterior'}
                     </span>
                   </div>
-                  <Sparkline data={iepcSparkline.length > 1 ? iepcSparkline : [72, 73, 74, 75, 75, 76.7]} color="#06B6D4" />
+                  {iepcSparkline.length > 1 && <Sparkline data={iepcSparkline} color="#06B6D4" />}
                 </div>
                 <PerformanceBadge score={iepcMedia} size="xs" />
               </div>
@@ -873,7 +967,7 @@ export default function HomeExecutiveView() {
                 <div className="flex items-center gap-1">
                   <TrendingDown size={11} style={{ color: '#22C55E' }} />
                   <span className="text-xs" style={{ color: '#22C55E' }}>
-                    {ncDelta !== null ? `${ncDelta > 0 ? '+' : ''}${ncDelta}` : '-12'} vs Ciclo Anterior
+                    {ncDelta !== null ? `${ncDelta > 0 ? '+' : ''}${ncDelta} vs Ciclo Anterior` : 'Sem ciclo anterior'}
                   </span>
                 </div>
               </div>
@@ -890,7 +984,7 @@ export default function HomeExecutiveView() {
                 <div className="flex items-center gap-1">
                   <TrendingUp size={11} style={{ color: '#22C55E' }} />
                   <span className="text-xs" style={{ color: '#22C55E' }}>
-                    {elogioDelta !== null ? `${elogioDelta > 0 ? '+' : ''}${elogioDelta}` : '+8'} vs Ciclo Anterior
+                    {elogioDelta !== null ? `${elogioDelta > 0 ? '+' : ''}${elogioDelta} vs Ciclo Anterior` : 'Sem ciclo anterior'}
                   </span>
                 </div>
               </div>
@@ -1042,7 +1136,7 @@ export default function HomeExecutiveView() {
                     <PerformanceBadge score={iepcMedia} size="xs" />
                   </div>
                   <div className="ml-auto flex items-center gap-3 text-xs" style={{ color: '#64748B' }}>
-                    <span>Ciclo Abr/2026: 26/03 – 25/04/2026</span>
+                    <span>Ciclo {lastPeriod?.periodo ?? '—'}</span>
                   </div>
                 </div>
               </div>
@@ -1052,23 +1146,17 @@ export default function HomeExecutiveView() {
                 <h3 className="text-sm font-semibold text-white mb-3">Resumo do Ciclo Atual</h3>
                 <div className="space-y-2.5">
                   {[
-                    { label: 'Período', value: '26/03 – 25/04/2026' },
+                    { label: 'Período', value: lastPeriod ? lastPeriod.periodo : '—' },
                     { label: 'Avaliações realizadas', value: String(totalAvaliacoes) },
-                    { label: '% do ciclo concluído', value: '100%', bar: true },
                     { label: 'Analistas avaliados', value: String(totalAnalistas) },
-                    { label: 'Squads', value: String(squadRanking.length || 4) },
-                    { label: 'Coordenadores', value: String(coordRanking.length || 3) },
+                    { label: 'Squads', value: String(squadRanking.length) },
+                    { label: 'Coordenadores', value: String(coordRanking.length) },
                   ].map((row) => (
                     <div key={row.label}>
                       <div className="flex items-center justify-between">
                         <span className="text-xs" style={{ color: '#64748B' }}>{row.label}</span>
                         <span className="text-xs font-medium text-white">{row.value}</span>
                       </div>
-                      {row.bar && (
-                        <div className="mt-1 w-full rounded-full h-1" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
-                          <div className="h-1 rounded-full" style={{ width: '100%', backgroundColor: '#38BDF8' }} />
-                        </div>
-                      )}
                     </div>
                   ))}
                 </div>
@@ -1172,16 +1260,18 @@ export default function HomeExecutiveView() {
                       </tr>
                     </thead>
                     <tbody>
-                      {HEATMAP_QA_PILLARS.map((row) => (
+                      {squadRanking.length > 0 ? squadRanking.map((row) => (
                         <tr key={row.squad}>
                           <td className="pr-2 py-0.5 text-white truncate" style={{ fontSize: 9, maxWidth: 70 }}>{row.squad}</td>
-                          {[row.p1, row.p2, row.p3, row.p4, row.p5].map((val, i) => (
+                          {[row.qa, row.qa, row.qa, row.qa, row.qa].map((val, i) => (
                             <td key={i} className="px-1 py-0.5 text-center rounded" style={{ fontSize: 9 }}>
-                              <span className="px-1 py-0.5 rounded" style={{ backgroundColor: getHeatBg(val), color: getHeatColor(val), fontWeight: 600 }}>{val}</span>
+                              <span className="px-1 py-0.5 rounded" style={{ backgroundColor: getHeatBg(val), color: getHeatColor(val), fontWeight: 600 }}>{val.toFixed(0)}</span>
                             </td>
                           ))}
                         </tr>
-                      ))}
+                      )) : (
+                        <tr><td colSpan={6} className="py-4 text-center text-xs" style={{ color: '#64748B' }}>Sem dados importados</td></tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -1216,8 +1306,8 @@ export default function HomeExecutiveView() {
                 <div className="flex items-center gap-4">
                   <div style={{ position: 'relative', width: 130, height: 130, flexShrink: 0 }}>
                     <PieChart width={130} height={130}>
-                      <Pie data={ncDistribution.length > 0 ? ncDistribution : ABR2026_NC_TYPES} cx={60} cy={60} innerRadius={38} outerRadius={58} dataKey="value" paddingAngle={2}>
-                        {(ncDistribution.length > 0 ? ncDistribution : ABR2026_NC_TYPES).map((entry, index) => (
+                      <Pie data={ncDistribution} cx={60} cy={60} innerRadius={38} outerRadius={58} dataKey="value" paddingAngle={2}>
+                        {ncDistribution.map((entry, index) => (
                           <Cell key={index} fill={entry.color} />
                         ))}
                       </Pie>
@@ -1229,7 +1319,7 @@ export default function HomeExecutiveView() {
                     </div>
                   </div>
                   <div className="flex-1 space-y-2">
-                    {(ncDistribution.length > 0 ? ncDistribution : ABR2026_NC_TYPES).map((item) => (
+                    {ncDistribution.length > 0 ? ncDistribution.map((item) => (
                       <div key={item.name} className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
                           <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
@@ -1240,7 +1330,9 @@ export default function HomeExecutiveView() {
                           <span className="text-xs" style={{ color: '#64748B' }}>({item.pct}%)</span>
                         </div>
                       </div>
-                    ))}
+                    )) : (
+                      <p className="text-xs py-4 text-center" style={{ color: '#64748B' }}>Sem NCs registradas</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1259,7 +1351,7 @@ export default function HomeExecutiveView() {
                       <AlertTriangle size={14} style={{ color: '#EF4444' }} />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-white">{lowQAAnalysts || 3} analistas com QA &lt; 60</p>
+                      <p className="text-sm font-bold text-white">{totalNCs > 0 ? `${totalNCs} NCs registradas` : 'Sem NCs registradas'}</p>
                       <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Acompanhe os casos críticos</p>
                     </div>
                   </div>
@@ -1268,7 +1360,7 @@ export default function HomeExecutiveView() {
                       <RefreshCw size={14} style={{ color: '#F59E0B' }} />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-white">12 reincidências de NC</p>
+                      <p className="text-sm font-bold text-white">{totalNCs > 0 ? `${totalNCs} NCs no ciclo` : 'Sem reincidências'}</p>
                       <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Requerem atenção</p>
                     </div>
                   </div>
@@ -1277,8 +1369,8 @@ export default function HomeExecutiveView() {
                       <Activity size={14} style={{ color: '#EF4444' }} />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-white">NC-4 Fluxo Operacional</p>
-                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Maior índice no ciclo (18,5%)</p>
+                      <p className="text-sm font-bold text-white">Monitoramento de NCs</p>
+                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Acompanhe os tipos e tendências</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3 p-3 rounded-xl" style={{ backgroundColor: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
@@ -1287,7 +1379,7 @@ export default function HomeExecutiveView() {
                     </div>
                     <div>
                       <p className="text-sm font-bold text-white">Evolução positiva</p>
-                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>QA ↑ {qaDelta !== null ? Math.abs(qaDelta).toFixed(1) : '3.2'}, IEPC ↑ {iepcDelta !== null ? Math.abs(iepcDelta).toFixed(1) : '2.8'}</p>
+                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>QA {qaDelta !== null ? (qaDelta >= 0 ? '↑' : '↓') + Math.abs(qaDelta).toFixed(1) : '—'}, IEPC {iepcDelta !== null ? (iepcDelta >= 0 ? '↑' : '↓') + Math.abs(iepcDelta).toFixed(1) : '—'}</p>
                     </div>
                   </div>
                 </div>
