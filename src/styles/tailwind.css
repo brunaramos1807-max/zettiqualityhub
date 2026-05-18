@@ -247,3 +247,59 @@
     margin-top: 0.25rem;
   }
 }
+
+/* Print styles */
+@media print {
+  /* Hide navigation elements */
+  aside,
+  header,
+  footer,
+  [data-no-print],
+  .no-print {
+    display: none !important;
+  }
+
+  /* Make main content fill the page */
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  main {
+    overflow: visible !important;
+    width: 100% !important;
+  }
+
+  /* Reset layout for print */
+  .flex.h-screen {
+    display: block !important;
+    height: auto !important;
+  }
+
+  /* Make cards readable on white background */
+  [style*="background-color: #0F1B31"],
+  [style*="background-color: #071426"],
+  [style*="background-color: #081120"],
+  [style*="background-color: #0A0F1E"] {
+    background-color: #f8f9fa !important;
+    border: 1px solid #dee2e6 !important;
+  }
+
+  /* Ensure text is readable */
+  .text-white,
+  [style*="color: #F8FAFC"],
+  [style*="color: white"] {
+    color: #000000 !important;
+  }
+
+  /* Page breaks */
+  .rounded-xl {
+    page-break-inside: avoid;
+  }
+
+  /* Remove shadows */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+}

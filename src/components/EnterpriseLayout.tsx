@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import EnterpriseSidebar from '@/components/EnterpriseSidebar';
 import EnterpriseTopbar from '@/components/EnterpriseTopbar';
+import AppFooter from '@/components/AppFooter';
 import RouteGuard from '@/components/RouteGuard';
 
 interface EnterpriseLayoutProps {
@@ -21,6 +22,7 @@ export default function EnterpriseLayout({ children, requireAdmin = false }: Ent
           <main className="flex-1 overflow-y-auto">
             {children}
           </main>
+          <AppFooter />
         </div>
       </div>
     </RouteGuard>

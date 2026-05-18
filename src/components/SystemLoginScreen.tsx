@@ -399,6 +399,19 @@ export default function SystemLoginScreen() {
           <p className="text-center text-xs mt-1" style={{ color: 'rgba(255,255,255,0.1)' }}>
             QUALIVISÃO Enterprise · Powered by Supabase + Gemini AI
           </p>
+          <div className="flex items-center justify-center gap-3 mt-3">
+            <a href="/privacidade" className="text-xs transition-colors hover:opacity-80" style={{ color: 'rgba(255,255,255,0.2)' }}>
+              Política de Privacidade
+            </a>
+            <span style={{ color: 'rgba(255,255,255,0.1)' }}>·</span>
+            <a href="/termos" className="text-xs transition-colors hover:opacity-80" style={{ color: 'rgba(255,255,255,0.2)' }}>
+              Termos de Uso
+            </a>
+            <span style={{ color: 'rgba(255,255,255,0.1)' }}>·</span>
+            <a href="/suporte" className="text-xs transition-colors hover:opacity-80" style={{ color: 'rgba(255,255,255,0.2)' }}>
+              Suporte
+            </a>
+          </div>
         </div>
       </div>
     </div>

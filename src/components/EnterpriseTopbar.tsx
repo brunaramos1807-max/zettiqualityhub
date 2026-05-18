@@ -1,7 +1,7 @@
 'use client';
 import React, { useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { Bell, ChevronRight } from 'lucide-react';
+import { Bell, ChevronRight, Printer } from 'lucide-react';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
 
 const ROUTE_LABELS: Record<string, string[]> = {
@@ -45,6 +45,10 @@ export default function EnterpriseTopbar() {
     year: 'numeric',
   });
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
     <header
       className="sticky top-0 z-30 flex items-center justify-between px-6 py-3 flex-shrink-0"
@@ -77,6 +81,16 @@ export default function EnterpriseTopbar() {
         <span className="hidden md:block text-xs capitalize" style={{ color: 'rgba(255,255,255,0.25)' }}>
           {currentDate}
         </span>
+
+        {/* Print button */}
+        <button
+          onClick={handlePrint}
+          className="p-2 rounded-lg transition-colors hover:bg-white/5"
+          style={{ color: 'rgba(255,255,255,0.4)' }}
+          title="Imprimir página"
+        >
+          <Printer size={16} />
+        </button>
 
         {/* Notifications */}
         <div className="relative">
