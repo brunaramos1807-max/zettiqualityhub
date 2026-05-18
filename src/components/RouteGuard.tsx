@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
 import SystemLoginScreen from '@/components/SystemLoginScreen';
@@ -11,9 +11,28 @@ interface RouteGuardProps {
   requireAdmin?: boolean;
 }
 
+// Check if running inside an iframe (Rocket editor preview) or bypass flag is set
+function isPreviewMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return (
+      window.self !== window.top ||
+      process.env.NEXT_PUBLIC_BYPASS_AUTH === 'true'
+    );
+  } catch {
+    // Cross-origin iframe — definitely in preview
+    return true;
+  }
+}
+
 export default function RouteGuard({ children, requireAdmin = false }: RouteGuardProps) {
   const { session, loading, isAdmin } = useSystemAuth();
   const router = useRouter();
+  const [preview, setPreview] = useState(false);
+
+  useEffect(() => {
+    setPreview(isPreviewMode());
+  }, []);
 
   // If already authenticated and somehow on login page, redirect to home
   useEffect(() => {
@@ -21,6 +40,11 @@ export default function RouteGuard({ children, requireAdmin = false }: RouteGuar
       // Session exists — user is authenticated, nothing to do
     }
   }, [loading, session, router]);
+
+  // In preview/editor mode, skip auth entirely
+  if (preview) {
+    return <>{children}</>;
+  }
 
   if (loading) {
     return (
