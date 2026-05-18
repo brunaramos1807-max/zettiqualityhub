@@ -23,10 +23,17 @@ export default function SystemLoginScreen() {
     try {
       const supabase = createClient();
       if (supabase) {
+        // Use the configured site URL so the redirect always goes to the
+        // authorised callback URL registered in Supabase, regardless of
+        // which domain (qualivisao.tec.br or builtwithrocket.new) the user
+        // is currently on.
+        const siteUrl =
+          process.env.NEXT_PUBLIC_SITE_URL ||
+          (typeof window !== 'undefined' ? window.location.origin : '');
         const { error: oauthError } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
-            redirectTo: `${window.location.origin}/auth/callback`,
+            redirectTo: `${siteUrl}/auth/callback`,
           },
         });
         if (oauthError) setError(oauthError.message);

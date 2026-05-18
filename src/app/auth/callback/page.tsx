@@ -15,28 +15,57 @@ export default function AuthCallbackPage() {
       return;
     }
 
-    // Exchange the code in the URL for a session
-    supabase?.auth?.getSession()?.then(({ data: { session } }) => {
-      if (session) {
-        // Session established — redirect to home
-        router?.replace('/');
-      } else {
-        // Try to exchange code from URL params
+    const handleCallback = async () => {
+      try {
+        // Try to get existing session first
+        const { data: { session } } = await supabase?.auth?.getSession();
+        if (session) {
+          router?.replace('/');
+          return;
+        }
+
+        // Exchange PKCE code from URL
         const url = new URL(window.location.href);
         const code = url?.searchParams?.get('code');
+        const error = url?.searchParams?.get('error');
+        const errorDescription = url?.searchParams?.get('error_description');
+
+        if (error) {
+          console.error('OAuth error:', error, errorDescription);
+          router?.replace('/sign-up-login');
+          return;
+        }
+
         if (code) {
-          supabase?.auth?.exchangeCodeForSession(code)?.then(({ data, error }) => {
-            if (data?.session) {
-              router?.replace('/');
-            } else {
+          const { data, error: exchangeError } = await supabase?.auth?.exchangeCodeForSession(code);
+          if (data?.session) {
+            router?.replace('/');
+          } else {
+            console.error('Code exchange error:', exchangeError);
+            router?.replace('/');
+          }
+        } else {
+          // No code — might be hash-based flow, let onAuthStateChange handle it
+          const { data: { subscription } } = supabase?.auth?.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_IN' && session) {
+              subscription?.unsubscribe();
               router?.replace('/');
             }
           });
-        } else {
-          router?.replace('/');
+
+          // Fallback redirect after 3s
+          setTimeout(() => {
+            subscription?.unsubscribe();
+            router?.replace('/');
+          }, 3000);
         }
+      } catch (err) {
+        console.error('Callback error:', err);
+        router?.replace('/');
       }
-    });
+    };
+
+    handleCallback();
   }, [router]);
 
   return (

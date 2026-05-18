@@ -15,10 +15,9 @@ interface RouteGuardProps {
 function isPreviewMode(): boolean {
   if (typeof window === 'undefined') return false;
   try {
-    return (
-      window.self !== window.top ||
-      process.env.NEXT_PUBLIC_BYPASS_AUTH === 'true'
-    );
+    const inIframe = window.self !== window.top;
+    const bypassFlag = process.env.NEXT_PUBLIC_BYPASS_AUTH === 'true';
+    return inIframe || bypassFlag;
   } catch {
     // Cross-origin iframe — definitely in preview
     return true;
@@ -33,13 +32,6 @@ export default function RouteGuard({ children, requireAdmin = false }: RouteGuar
   useEffect(() => {
     setPreview(isPreviewMode());
   }, []);
-
-  // If already authenticated and somehow on login page, redirect to home
-  useEffect(() => {
-    if (!loading && session) {
-      // Session exists — user is authenticated, nothing to do
-    }
-  }, [loading, session, router]);
 
   // In preview/editor mode, skip auth entirely
   if (preview) {
