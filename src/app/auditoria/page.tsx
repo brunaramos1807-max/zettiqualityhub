@@ -3,7 +3,28 @@ import React, { useState, useMemo, useEffect } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import ImportModal from '@/components/ImportModal';
 import { fetchCycleScores } from '@/lib/services/dataService';
-import { ClipboardCheck, CheckCircle, Clock, AlertCircle, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
+import { ClipboardCheck, CheckCircle, Clock, AlertCircle, ChevronDown, ChevronUp, RefreshCw, GitMerge } from 'lucide-react';
+
+const EMBEDDED_ANALYSTS = [
+  { id: 'Fabiano Feliz', name: 'Fabiano Feliz', squad: 'Financeiro Fiscal', coordenador: 'Amanda Cristina' },
+  { id: 'Jherik Jesus', name: 'Jherik Jesus', squad: 'PDV', coordenador: 'Ayron Silva' },
+  { id: 'Fabiano Teste', name: 'Fabiano Teste', squad: 'PDV', coordenador: 'Ayron Silva' },
+  { id: 'Thalisson Silva', name: 'Thalisson Silva', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus' },
+  { id: 'Gabriel Vieira', name: 'Gabriel Vieira', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus' },
+  { id: 'Bruno Reis', name: 'Bruno Reis', squad: 'PDV', coordenador: 'Ayron Silva' },
+  { id: 'Fernando Carvalho', name: 'Fernando Carvalho', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus' },
+  { id: 'Rafael Andrade', name: 'Rafael Andrade', squad: 'PDV', coordenador: 'Ayron Silva' },
+  { id: 'Milena Santos', name: 'Milena Santos', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus' },
+  { id: 'Adriel Sanches', name: 'Adriel Sanches', squad: 'PDV', coordenador: 'Ayron Silva' },
+  { id: 'Giovanna Oliveira', name: 'Giovanna Oliveira', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus' },
+  { id: 'Danilo Cerqueira', name: 'Danilo Cerqueira', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus' },
+  { id: 'Wyamar Milhomem', name: 'Wyamar Milhomem', squad: 'Financeiro Fiscal', coordenador: 'Amanda Cristina' },
+  { id: 'Bruno Ribeiro', name: 'Bruno Ribeiro', squad: 'PDV', coordenador: 'Ayron Silva' },
+  { id: 'Francisco Pereira', name: 'Francisco Pereira', squad: 'PDV', coordenador: 'Ayron Silva' },
+  { id: 'Alair Filho', name: 'Alair Filho', squad: 'PDV', coordenador: 'Ayron Silva' },
+  { id: 'Artur Carvalho', name: 'Artur Carvalho', squad: 'PDV N1', coordenador: 'Ayron Silva' },
+  { id: 'Gustavo Moreira', name: 'Gustavo Moreira', squad: 'PDV', coordenador: 'Ayron Silva' },
+];
 
 interface AuditEntry {
   analystId: string;
@@ -43,23 +64,47 @@ function AuditoriaContent() {
   const [interactions, setInteractions] = useState<Record<string, number>>(() => loadAuditData());
   const [analysts, setAnalysts] = useState<{ id: string; name: string; squad: string; coordenador: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [andamentoCount, setAndamentoCount] = useState(0);
+  const [currentPeriodo] = useState('04/2026');
 
   const loadAnalysts = async () => {
     setLoading(true);
     try {
       const scores = await fetchCycleScores();
-      const map: Record<string, { id: string; name: string; squad: string; coordenador: string }> = {};
-      scores.forEach((s: any) => {
-        if (!map[s.analista]) {
-          map[s.analista] = { id: s.analista, name: s.analista, squad: s.squad || '', coordenador: s.coordenador || '' };
-        }
-      });
-      setAnalysts(Object.values(map));
+      if (scores.length > 0) {
+        const map: Record<string, { id: string; name: string; squad: string; coordenador: string }> = {};
+        scores.forEach((s: any) => {
+          if (!map[s.analista]) {
+            map[s.analista] = { id: s.analista, name: s.analista, squad: s.squad || '', coordenador: s.coordenador || '' };
+          }
+        });
+        setAnalysts(Object.values(map));
+      } else {
+        // Fallback to embedded ABR/2026 data
+        setAnalysts(EMBEDDED_ANALYSTS);
+      }
+    } catch {
+      setAnalysts(EMBEDDED_ANALYSTS);
+    }
+    // Check Por Andamento accumulated count
+    try {
+      const key = `zetti_andamento_${currentPeriodo}`;
+      const data = JSON.parse(localStorage.getItem(key) || '[]');
+      setAndamentoCount(data.length);
     } catch { /* ignore */ }
     setLoading(false);
   };
 
-  useEffect(() => { loadAnalysts(); }, []);
+  useEffect(() => {
+    loadAnalysts();
+    const handler = () => loadAnalysts();
+    window.addEventListener('zetti_import_done', handler);
+    window.addEventListener('zetti_andamento_update', handler);
+    return () => {
+      window.removeEventListener('zetti_import_done', handler);
+      window.removeEventListener('zetti_andamento_update', handler);
+    };
+  }, []);
 
   const squads = useMemo(() => ['all', ...Array.from(new Set(analysts.map((a) => a.squad).filter(Boolean)))], [analysts]);
 
@@ -123,12 +168,30 @@ function AuditoriaContent() {
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-white">Auditoria</h1>
-          <p className="text-sm mt-0.5" style={{ color: '#94A3B8' }}>Central operacional de auditoria de qualidade</p>
+          <p className="text-sm mt-0.5" style={{ color: '#94A3B8' }}>Central operacional de auditoria de qualidade · Ciclo {currentPeriodo}</p>
         </div>
-        <button onClick={loadAnalysts} className="p-2 rounded-lg transition-colors" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>
-          <RefreshCw size={14} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setImportOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ backgroundColor: '#1E40AF', border: '1px solid rgba(56,189,248,0.2)' }}>
+            Importar Por Andamento
+          </button>
+          <button onClick={loadAnalysts} className="p-2 rounded-lg transition-colors" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <RefreshCw size={14} />
+          </button>
+        </div>
       </div>
+
+      {/* Por Andamento Banner */}
+      {andamentoCount > 0 && (
+        <div className="mb-4 flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: 'rgba(8,145,178,0.08)', border: '1px solid rgba(8,145,178,0.2)' }}>
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(8,145,178,0.15)' }}>
+            <GitMerge size={14} style={{ color: '#0891B2' }} />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-white">Importação Por Andamento ativa</p>
+            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{andamentoCount} avaliações acumuladas no ciclo {currentPeriodo}. Continue importando conforme as auditorias são realizadas.</p>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -241,7 +304,7 @@ function AuditoriaContent() {
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-12 text-center text-xs" style={{ color: '#94A3B8' }}>
-                    {loading ? 'Carregando...' : 'Nenhum analista encontrado. Importe dados de ciclos primeiro.'}
+                    Nenhum analista encontrado.
                   </td>
                 </tr>
               )}
