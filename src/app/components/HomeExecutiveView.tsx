@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import ImportModal from '@/components/ImportModal';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
 import {
@@ -8,6 +8,8 @@ import {
   fetchNCRecords,
   fetchElogios,
   buildAnalystsFromScores,
+  fetchManualCycles,
+  listenDataChanged,
 } from '@/lib/services/dataService';
 import {
   fetchCycleScoresFromSupabase,
@@ -532,9 +534,17 @@ export default function HomeExecutiveView() {
         }
       }
 
-      setAllPeriodos(periodos);
+      // Load manual cycle entries (from Histórico page)
+      const manualCycles = fetchManualCycles();
 
-      if (scores.length === 0) {
+      // Merge manual cycle periods into the periods list
+      const manualPeriodos = manualCycles.map((mc) => mc.periodo).filter(Boolean);
+      const allPeriodosSet = new Set([...periodos, ...manualPeriodos]);
+      const mergedPeriodos = Array.from(allPeriodosSet).sort();
+
+      setAllPeriodos(mergedPeriodos);
+
+      if (scores.length === 0 && manualCycles.length === 0) {
         // No data imported yet — show empty state, do NOT use embedded/fake data
         setHistory([]);
         setLoading(false);
@@ -545,43 +555,75 @@ export default function HomeExecutiveView() {
       const filteredNcs = filterByRole(ncs);
       const filteredElogios = filterByRole(elogios);
 
-      const summaries: PeriodSummary[] = periodos.map((periodo) => {
+      const summaries: PeriodSummary[] = mergedPeriodos.map((periodo) => {
         const pScores = filteredScores.filter((s: any) => s.periodo === periodo);
         const pNCs = filteredNcs.filter((n: any) => n.periodo === periodo);
         const pElogios = filteredElogios.filter((e: any) => e.periodo === periodo);
         const analysts = buildAnalystsFromScores(pScores);
-        const qaMedia = analysts.length > 0 ? analysts.reduce((s: number, a: any) => s + a.qaScore, 0) / analysts.length : 0;
-        const iepcMedia = analysts.length > 0 ? analysts.reduce((s: number, a: any) => s + a.iepcScore, 0) / analysts.length : 0;
-        let squads: Record<string, { qa: number; iepc: number; count: number }> = {};
-        let coordenadores: Record<string, { qa: number; count: number }> = {};
-        analysts.forEach((a: any) => {
-          if (!squads[a.squad]) squads[a.squad] = { qa: 0, iepc: 0, count: 0 };
-          squads[a.squad].qa += a.qaScore;
-          squads[a.squad].iepc += a.iepcScore;
-          squads[a.squad].count += 1;
-          const coord = a.coordenador || 'Sem coordenador';
-          if (!coordenadores[coord]) coordenadores[coord] = { qa: 0, count: 0 };
-          coordenadores[coord].qa += a.qaScore;
-          coordenadores[coord].count += 1;
-        });
-        Object.keys(squads).forEach((sq) => {
-          squads[sq].qa = parseFloat((squads[sq].qa / squads[sq].count).toFixed(2));
-          squads[sq].iepc = parseFloat((squads[sq].iepc / squads[sq].count).toFixed(2));
-        });
-        Object.keys(coordenadores).forEach((c) => {
-          coordenadores[c].qa = parseFloat((coordenadores[c].qa / coordenadores[c].count).toFixed(2));
-        });
+
+        // If we have real scores for this period, use them
+        if (analysts.length > 0) {
+          const qaMedia = analysts.reduce((s: number, a: any) => s + a.qaScore, 0) / analysts.length;
+          const iepcMedia = analysts.reduce((s: number, a: any) => s + a.iepcScore, 0) / analysts.length;
+          let squads: Record<string, { qa: number; iepc: number; count: number }> = {};
+          let coordenadores: Record<string, { qa: number; count: number }> = {};
+          analysts.forEach((a: any) => {
+            if (!squads[a.squad]) squads[a.squad] = { qa: 0, iepc: 0, count: 0 };
+            squads[a.squad].qa += a.qaScore;
+            squads[a.squad].iepc += a.iepcScore;
+            squads[a.squad].count += 1;
+            const coord = a.coordenador || 'Sem coordenador';
+            if (!coordenadores[coord]) coordenadores[coord] = { qa: 0, count: 0 };
+            coordenadores[coord].qa += a.qaScore;
+            coordenadores[coord].count += 1;
+          });
+          Object.keys(squads).forEach((sq) => {
+            squads[sq].qa = parseFloat((squads[sq].qa / squads[sq].count).toFixed(2));
+            squads[sq].iepc = parseFloat((squads[sq].iepc / squads[sq].count).toFixed(2));
+          });
+          Object.keys(coordenadores).forEach((c) => {
+            coordenadores[c].qa = parseFloat((coordenadores[c].qa / coordenadores[c].count).toFixed(2));
+          });
+          return {
+            periodo,
+            qa: parseFloat(qaMedia.toFixed(2)),
+            iepc: parseFloat(iepcMedia.toFixed(2)),
+            ncs: pNCs.length,
+            elogios: pElogios.length,
+            analistas: analysts.length,
+            squads,
+            coordenadores,
+          };
+        }
+
+        // Fallback: use manual cycle entry for this period
+        const manualEntry = manualCycles.find((mc) => mc.periodo === periodo);
+        if (manualEntry) {
+          return {
+            periodo,
+            qa: manualEntry.qa_media,
+            iepc: manualEntry.iepc_media,
+            ncs: manualEntry.total_ncs,
+            elogios: 0,
+            analistas: manualEntry.total_analistas ?? 0,
+            squads: {},
+            coordenadores: {},
+          };
+        }
+
+        // Empty period
         return {
           periodo,
-          qa: parseFloat(qaMedia.toFixed(2)),
-          iepc: parseFloat(iepcMedia.toFixed(2)),
+          qa: 0,
+          iepc: 0,
           ncs: pNCs.length,
           elogios: pElogios.length,
-          analistas: analysts.length,
-          squads,
-          coordenadores,
+          analistas: 0,
+          squads: {},
+          coordenadores: {},
         };
-      });
+      }).filter((s) => s.qa > 0 || s.iepc > 0 || s.ncs > 0 || s.elogios > 0 || s.analistas > 0);
+
       setHistory(summaries);
     } catch {
       setHistory([]);
@@ -591,9 +633,9 @@ export default function HomeExecutiveView() {
 
   useEffect(() => {
     loadData();
-    const handler = () => loadData();
-    window.addEventListener('zetti_import_done', handler);
-    return () => window.removeEventListener('zetti_import_done', handler);
+    // Listen to both legacy and new unified data-changed events
+    const unsubscribe = listenDataChanged(loadData);
+    return unsubscribe;
   }, [loadData]);
 
   // Close filter dropdowns when clicking outside
@@ -741,6 +783,55 @@ export default function HomeExecutiveView() {
       </div>
     );
   };
+
+  // ── Compute dynamic radar/pillar data from real scores ──────────────────────
+  const computedQAPillars = React.useMemo(() => {
+    if (!lastPeriod || lastPeriod.analistas === 0) return QA_PILLARS_DATA;
+    // Get scores for the last period
+    const pScores = filterByRole(
+      (typeof window !== 'undefined'
+        ? (() => { try { return JSON.parse(localStorage.getItem('zetti_cycle_scores') || '[]'); } catch { return []; } })()
+        : []
+      ).filter((s: any) => s.periodo === lastPeriod.periodo)
+    );
+    if (pScores.length === 0) return QA_PILLARS_DATA;
+    const avg = (key: string) => {
+      const vals = pScores.map((s: any) => s[key] || 0).filter((v: number) => v > 0);
+      return vals.length > 0 ? Math.round(vals.reduce((a: number, b: number) => a + b, 0) / vals.length) : 0;
+    };
+    return [
+      { pilar: 'P1 Fluxo', fullName: 'P1 — Gestão do Fluxo e Rastreabilidade', value: avg('p1'), fullMark: 100 },
+      { pilar: 'P2 Tratativa', fullName: 'P2 — Gestão da Tratativa da Demanda', value: avg('p2'), fullMark: 100 },
+      { pilar: 'P3 Análise', fullName: 'P3 — Análise e Assertividade Técnica', value: avg('p3'), fullMark: 100 },
+      { pilar: 'P4 Comunicação', fullName: 'P4 — Qualidade da Comunicação', value: avg('p4'), fullMark: 100 },
+      { pilar: 'P5 Conduta', fullName: 'P5 — Conduta Relacional', value: avg('p5'), fullMark: 100 },
+    ];
+  }, [lastPeriod, filterByRole]);
+
+  const computedIEPCPillars = React.useMemo(() => {
+    if (!lastPeriod || lastPeriod.analistas === 0) return IEPC_PILLARS_DATA;
+    const pScores = filterByRole(
+      (typeof window !== 'undefined'
+        ? (() => { try { return JSON.parse(localStorage.getItem('zetti_cycle_scores') || '[]'); } catch { return []; } })()
+        : []
+      ).filter((s: any) => s.periodo === lastPeriod.periodo)
+    );
+    if (pScores.length === 0) return IEPC_PILLARS_DATA;
+    const avg = (key: string) => {
+      const vals = pScores.map((s: any) => s[key] || 0).filter((v: number) => v > 0);
+      return vals.length > 0 ? Math.round(vals.reduce((a: number, b: number) => a + b, 0) / vals.length) : 0;
+    };
+    return [
+      { pilar: 'E1 Resolução', fullName: 'E1 — Resolução Percebida', value: avg('e1'), fullMark: 100 },
+      { pilar: 'E2 Compreensão', fullName: 'E2 — Compreensão e Segurança Percebida', value: avg('e2'), fullMark: 100 },
+      { pilar: 'E3 Esforço', fullName: 'E3 — Esforço Percebido pelo Cliente', value: avg('e3'), fullMark: 100 },
+      { pilar: 'E4 Tempo', fullName: 'E4 — Tempo e Fluidez', value: avg('e4'), fullMark: 100 },
+      { pilar: 'E5 Relacional', fullName: 'E5 — Experiência Relacional', value: avg('e5'), fullMark: 100 },
+    ];
+  }, [lastPeriod, filterByRole]);
+
+  const activePillarsQA = computedQAPillars;
+  const activePillarsIEPC = computedIEPCPillars;
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#0A1628' }}>
@@ -1011,7 +1102,7 @@ export default function HomeExecutiveView() {
                 </div>
                 <div className="flex items-center gap-4">
                   <ResponsiveContainer width="60%" height={200}>
-                    <RadarChart data={QA_PILLARS_DATA} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
+                    <RadarChart data={activePillarsQA} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
                       <PolarGrid stroke="rgba(255,255,255,0.08)" />
                       <PolarAngleAxis dataKey="pilar" tick={{ fill: '#94A3B8', fontSize: 9 }} />
                       <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
@@ -1021,7 +1112,7 @@ export default function HomeExecutiveView() {
                     </RadarChart>
                   </ResponsiveContainer>
                   <div className="flex-1 space-y-2">
-                    {QA_PILLARS_DATA.map((p) => {
+                    {activePillarsQA.map((p) => {
                       const cls = getPerformanceClass(p.value);
                       return (
                         <div key={p.pilar} className="flex items-center gap-2">
@@ -1055,7 +1146,7 @@ export default function HomeExecutiveView() {
                 </div>
                 <div className="flex items-center gap-4">
                   <ResponsiveContainer width="60%" height={200}>
-                    <RadarChart data={IEPC_PILLARS_DATA} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
+                    <RadarChart data={activePillarsIEPC} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
                       <PolarGrid stroke="rgba(255,255,255,0.08)" />
                       <PolarAngleAxis dataKey="pilar" tick={{ fill: '#94A3B8', fontSize: 9 }} />
                       <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
@@ -1065,7 +1156,7 @@ export default function HomeExecutiveView() {
                     </RadarChart>
                   </ResponsiveContainer>
                   <div className="flex-1 space-y-2">
-                    {IEPC_PILLARS_DATA.map((p) => {
+                    {activePillarsIEPC.map((p) => {
                       const cls = getPerformanceClass(p.value);
                       return (
                         <div key={p.pilar} className="flex items-center gap-2">

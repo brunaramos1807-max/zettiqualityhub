@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import ImportModal from '@/components/ImportModal';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
-import { fetchCycleScores, fetchAllPeriodos, type RealAnalyst, exportCycleToCSV, deletePeriodData } from '@/lib/services/dataService';
+import { fetchCycleScores, fetchAllPeriodos, type RealAnalyst, exportCycleToCSV, deletePeriodData, dispatchDataChanged } from '@/lib/services/dataService';
 import { BarChart2, Activity, Plus, Save, X, Loader2, Trash2, Download, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -97,8 +97,12 @@ function ImportacoesContent() {
   useEffect(() => {
     loadData();
     const handler = () => loadData();
+    window.addEventListener('zetti_data_changed', handler);
     window.addEventListener('zetti_import_done', handler);
-    return () => window.removeEventListener('zetti_import_done', handler);
+    return () => {
+      window.removeEventListener('zetti_data_changed', handler);
+      window.removeEventListener('zetti_import_done', handler);
+    };
   }, [loadData]);
 
   const handleFormChange = (field: keyof ManualEvalForm, value: string) => {
@@ -181,7 +185,8 @@ function ImportacoesContent() {
       toast.success(`Avaliação de ${form.analista} salva para ${periodo}!`);
       setForm(EMPTY_FORM);
       setManualOpen(false);
-      window.dispatchEvent(new CustomEvent('zetti_import_done'));
+      // importCycleData already dispatches zetti_data_changed, but ensure it fires
+      dispatchDataChanged({ tipo: 'manual_eval', periodo, analista: form.analista });
       loadData();
     } catch (err: any) {
       toast.error('Erro ao salvar: ' + err.message);
@@ -205,7 +210,7 @@ function ImportacoesContent() {
     setDeleteConfirm(null);
     setImports(loadImportRecords());
     toast.success(`Importação "${record.fileName}" excluída`);
-    window.dispatchEvent(new CustomEvent('zetti_import_done'));
+    dispatchDataChanged({ tipo: 'delete_import', periodo: record.periodo });
   };
 
   const handleDownload = (record: ImportRecord) => {

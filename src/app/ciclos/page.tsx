@@ -350,7 +350,13 @@ function CiclosContent() {
     } catch { /* ignore */ }
   }, []);
 
-  useEffect(() => { loadData(); loadHistory(); }, [loadData, loadHistory]);
+  useEffect(() => {
+    loadData();
+    loadHistory();
+    const handler = () => { loadData(); loadHistory(); };
+    window.addEventListener('zetti_data_changed', handler);
+    return () => window.removeEventListener('zetti_data_changed', handler);
+  }, [loadData, loadHistory]);
 
   useEffect(() => {
     if (aiResponse && pendingAiPeriodo) {

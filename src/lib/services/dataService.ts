@@ -337,6 +337,7 @@ export async function importCycleData(
       },
     ]);
 
+    dispatchDataChanged({ tipo: 'import', periodo, fileName });
     return { success: true, cycleId };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -362,6 +363,7 @@ export function deletePeriodData(periodo: string): void {
       localStorage.setItem(IMPORT_KEY, JSON.stringify(existing.filter((r: any) => r.periodo !== periodo)));
     } catch { /* ignore */ }
   }
+  dispatchDataChanged({ tipo: 'delete', periodo });
 }
 
 /**
@@ -388,6 +390,7 @@ export function deleteAllData(): void {
     localStorage.removeItem('zetti_import_records');
     localStorage.removeItem('zetti_audit_data');
   }
+  dispatchDataChanged({ tipo: 'delete_all' });
 }
 
 // ─── Cycle closing ────────────────────────────────────────────────────────────
@@ -699,6 +702,7 @@ export function saveManualCycle(entry: Omit<ManualCycleEntry, 'id' | 'created_at
     const updated = { ...existing[idx], ...entry, updated_at: now };
     existing[idx] = updated;
     lsSet(LS_MANUAL_CYCLES, existing);
+    dispatchDataChanged({ tipo: 'manual_cycle', periodo: entry.periodo });
     return updated;
   }
   const newEntry: ManualCycleEntry = {
@@ -708,11 +712,13 @@ export function saveManualCycle(entry: Omit<ManualCycleEntry, 'id' | 'created_at
     updated_at: now,
   };
   lsSet(LS_MANUAL_CYCLES, [...existing, newEntry]);
+  dispatchDataChanged({ tipo: 'manual_cycle', periodo: entry.periodo });
   return newEntry;
 }
 
 export function deleteManualCycle(id: string): void {
   lsSet(LS_MANUAL_CYCLES, lsGet<ManualCycleEntry>(LS_MANUAL_CYCLES).filter((e) => e.id !== id));
+  dispatchDataChanged({ tipo: 'delete_manual_cycle' });
 }
 
 // ─── Delete analyst from imported scores ──────────────────────────────────────
@@ -732,6 +738,7 @@ export function deleteAnalystFromData(analystName: string, periodo?: string): vo
   lsSet(LS_SCORES,  lsGet<any>(LS_SCORES).filter((r) => !matchFn(r)));
   lsSet(LS_NCS,     lsGet<any>(LS_NCS).filter((r) => !matchFn(r)));
   lsSet(LS_ELOGIOS, lsGet<any>(LS_ELOGIOS).filter((r) => !matchFn(r)));
+  dispatchDataChanged({ tipo: 'delete_analyst', analystName, periodo });
 }
 
 // ─── Full Backup / Restore ────────────────────────────────────────────────────
@@ -789,6 +796,7 @@ export function importFullBackup(file: File): Promise<{ success: boolean; error?
             localStorage.setItem(key, JSON.stringify(value));
           }
         });
+        dispatchDataChanged({ tipo: 'backup_restore' });
         resolve({ success: true });
       } catch (err: any) {
         resolve({ success: false, error: err.message });
@@ -797,4 +805,27 @@ export function importFullBackup(file: File): Promise<{ success: boolean; error?
     reader.onerror = () => resolve({ success: false, error: 'Erro ao ler o arquivo.' });
     reader.readAsText(file);
   });
+}
+
+// ─── Global Data Sync ─────────────────────────────────────────────────────────
+
+/**
+ * Dispatch a global data-changed event so all pages/dashboards can reload.
+ * Use this after ANY mutation to localStorage data.
+ */
+export function dispatchDataChanged(detail?: Record<string, any>): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('zetti_data_changed', { detail: detail ?? {} }));
+  // Also fire the legacy event so existing listeners keep working
+  window.dispatchEvent(new CustomEvent('zetti_import_done', { detail: detail ?? {} }));
+}
+
+/**
+ * Subscribe to global data-changed events.
+ * Returns an unsubscribe function.
+ */
+export function listenDataChanged(handler: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener('zetti_data_changed', handler);
+  return () => window.removeEventListener('zetti_data_changed', handler);
 }
