@@ -55,7 +55,7 @@ const FILE_TYPE_OPTIONS: { type: FileType; label: string; description: string; c
 ];
 
 const REQUIRED_COLUMNS: Record<FileType, string[]> = {
-  scores: ['Analista', 'Squad', 'Coordenador', 'Nota Final QA (0-100)', 'IEPC - Índice de Experiência Percebida pelo Cliente (0-100)'],
+  scores: ['Analista', 'Squad', 'Nota Final QA (0-100)', 'IEPC - Índice de Experiência Percebida pelo Cliente (0-100)'],
   ncs: ['Analista', 'Squad', 'Tipo de Não Conformidade', 'Pontos Deduzidos'],
   elogios: ['Colaborador', 'Elogio'],
 };
@@ -70,14 +70,24 @@ function cleanColumnKey(key: string): string {
   return key.replace(/^\uFEFF/, '').trim();
 }
 
+function normalizeStr(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
 function validateColumns(rows: Record<string, any>[], type: FileType): { valid: boolean; missing: string[]; warnings: string[] } {
   if (rows.length === 0) return { valid: false, missing: [], warnings: ['Arquivo vazio — nenhuma linha encontrada.'] };
   const fileColumns = Object.keys(rows[0]).map(cleanColumnKey);
   const required = REQUIRED_COLUMNS[type];
-  const missing = required.filter((col) => !fileColumns.some((fc) => fc.toLowerCase() === col.toLowerCase()));
+  // Use accent-normalized comparison so ã/a, ç/c etc. don't cause false negatives
+  const missing = required.filter(
+    (col) => !fileColumns.some((fc) => normalizeStr(fc) === normalizeStr(col))
+  );
   const warnings: string[] = [];
   if (missing.length > 0) return { valid: false, missing, warnings };
-  const hasPeriod = fileColumns.some((fc) => fc === 'Período' || fc === 'Periodo' || fc.toLowerCase() === 'período' || fc.toLowerCase() === 'periodo');
+  const hasPeriod = fileColumns.some((fc) => normalizeStr(fc) === 'periodo' || normalizeStr(fc) === 'period');
   if (!hasPeriod) warnings.push('Coluna "Período" não encontrada — o período será definido pelo campo acima.');
   return { valid: true, missing: [], warnings };
 }

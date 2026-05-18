@@ -100,16 +100,27 @@ function cleanKey(key: string): string {
 }
 
 /**
+ * Normalize a string: lowercase + remove accents/diacritics.
+ * Used as an additional fallback key in buildRowMap.
+ */
+function normalizeKey(key: string): string {
+  return key
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+/**
  * Build a case-insensitive lookup map from a raw row.
- * Keys are lowercased+trimmed, values are the original cell values.
- * Also builds an exact-key map for direct access.
+ * Stores: exact cleaned key, lowercase key, and accent-normalized key.
  */
 function buildRowMap(row: Record<string, any>): Record<string, any> {
   const r: Record<string, any> = {};
   Object.keys(row).forEach((k) => {
     const cleaned = cleanKey(k);
-    r[cleaned] = row[k];                      // exact cleaned key
-    r[cleaned.toLowerCase()] = row[k];        // lowercase key for fallback
+    r[cleaned] = row[k];                        // exact cleaned key
+    r[cleaned.toLowerCase()] = row[k];          // lowercase key
+    r[normalizeKey(cleaned)] = row[k];          // accent-normalized key
   });
   return r;
 }
@@ -135,42 +146,87 @@ export function parseQAScoresCSV(rows: Record<string, any>[], fallbackPeriodo?: 
   return rows.map((row) => {
     const r = buildRowMap(row);
 
-    const rowPeriodo = String(r['Período'] || r['Periodo'] || r['período'] || r['periodo'] || '').trim();
+    // Helper: get value by trying multiple key variants (exact, lowercase, normalized)
+    const get = (...keys: string[]): any => {
+      for (const k of keys) {
+        const v = r[k] ?? r[k.toLowerCase()] ?? r[normalizeKey(k)];
+        if (v !== undefined && v !== null) return v;
+      }
+      return undefined;
+    };
 
-    const qtdRaw = r['Qtd de Atendimentos Avaliados'] ?? r['qtd de atendimentos avaliados'] ??
-      r['Qtd Atendimentos Avaliados'] ?? r['qtd atendimentos avaliados'] ??
-      r['Quantidade de Atendimentos Avaliados'] ?? r['quantidade de atendimentos avaliados'];
+    const rowPeriodo = String(get('Período', 'Periodo', 'período', 'periodo') ?? '').trim();
+
+    const qtdRaw = get(
+      'Qtd de Atendimentos Avaliados', 'Qtd Atendimentos Avaliados',
+      'Quantidade de Atendimentos Avaliados'
+    );
     const qtdNum = parseNum(qtdRaw);
 
-    const tipoDemanda = String(
-      r['Tipo de Demanda'] ?? r['tipo de demanda'] ?? r['Tipo Demanda'] ?? r['tipo demanda'] ?? ''
-    ).trim();
+    const tipoDemanda = String(get('Tipo de Demanda', 'Tipo Demanda') ?? '').trim();
 
     return {
       periodo: rowPeriodo || fallbackPeriodo || '',
-      data_registro: String(r['Data do Registro'] || r['data do registro'] || '').trim(),
-      analista: String(r['Analista'] || r['analista'] || '').trim(),
-      squad: String(r['Squad'] || r['squad'] || '').trim(),
-      coordenador: String(r['Coordenador'] || r['coordenador'] || '').trim(),
-      auditor: String(r['Auditor'] || r['auditor'] || '').trim(),
-      nota_final_qa: parseNum(r['Nota Final QA (0-100)'] ?? r['nota final qa (0-100)']),
-      iepc_total: parseNum(
-        r['IEPC - Índice de Experiência Percebida pelo Cliente (0-100)'] ??
-        r['iepc - índice de experiência percebida pelo cliente (0-100)'] ??
-        r['iepc - indice de experiencia percebida pelo cliente (0-100)']
-      ),
-      total_ncs: parseNum(r['Total de Não Conformidades'] ?? r['total de não conformidades'] ?? r['total de nao conformidades']),
-      pontos_deduzidos_nc: parseNum(r['Pontos Deduzidos por NC'] ?? r['pontos deduzidos por nc']),
-      p1: parseNum(r['QA P1 | Gestão do Fluxo e Rastreabilidade do Atendimento - Pontos'] ?? r['qa p1 | gestão do fluxo e rastreabilidade do atendimento - pontos'] ?? r['qa p1 | gestao do fluxo e rastreabilidade do atendimento - pontos']),
-      p2: parseNum(r['QA P2 | Gestão da Tratativa da Demanda - Pontos'] ?? r['qa p2 | gestão da tratativa da demanda - pontos'] ?? r['qa p2 | gestao da tratativa da demanda - pontos']),
-      p3: parseNum(r['QA P3 | Análise e Assertividade Técnica da Demanda - Pontos'] ?? r['qa p3 | análise e assertividade técnica da demanda - pontos'] ?? r['qa p3 | analise e assertividade tecnica da demanda - pontos']),
-      p4: parseNum(r['QA P4 | Qualidade da Comunicação no Atendimento - Pontos'] ?? r['qa p4 | qualidade da comunicação no atendimento - pontos'] ?? r['qa p4 | qualidade da comunicacao no atendimento - pontos']),
-      p5: parseNum(r['QA P5 | Conduta Relacional no Atendimento - Pontos'] ?? r['qa p5 | conduta relacional no atendimento - pontos']),
-      e1: parseNum(r['IEPC E1 – Resolução Percebida - Pontos'] ?? r['iepc e1 – resolução percebida - pontos'] ?? r['iepc e1 - resolução percebida - pontos'] ?? r['iepc e1 – resolucao percebida - pontos']),
-      e2: parseNum(r['IEPC E2 – Compreensão e Segurança - Pontos'] ?? r['iepc e2 – compreensão e segurança - pontos'] ?? r['iepc e2 - compreensão e segurança - pontos'] ?? r['iepc e2 – compreensao e seguranca - pontos']),
-      e3: parseNum(r['IEPC E3 – Esforço do Cliente - Pontos'] ?? r['iepc e3 – esforço do cliente - pontos'] ?? r['iepc e3 - esforço do cliente - pontos'] ?? r['iepc e3 – esforco do cliente - pontos']),
-      e4: parseNum(r['IEPC E4 – Tempo e Fluidez - Pontos'] ?? r['iepc e4 – tempo e fluidez - pontos'] ?? r['iepc e4 - tempo e fluidez - pontos']),
-      e5: parseNum(r['IEPC E5 – Experiência Relacional - Pontos'] ?? r['iepc e5 – experiência relacional - pontos'] ?? r['iepc e5 - experiência relacional - pontos'] ?? r['iepc e5 – experiencia relacional - pontos']),
+      data_registro: String(get('Data do Registro') ?? '').trim(),
+      analista: String(get('Analista') ?? '').trim(),
+      squad: String(get('Squad') ?? '').trim(),
+      coordenador: String(get('Coordenador') ?? '').trim(),
+      auditor: String(get('Auditor') ?? '').trim(),
+      nota_final_qa: parseNum(get('Nota Final QA (0-100)')),
+      iepc_total: parseNum(get(
+        'IEPC - Índice de Experiência Percebida pelo Cliente (0-100)',
+        'IEPC - Indice de Experiencia Percebida pelo Cliente (0-100)',
+        'IEPC'
+      )),
+      total_ncs: parseNum(get('Total de Não Conformidades', 'Total de Nao Conformidades', 'Total NCs')),
+      pontos_deduzidos_nc: parseNum(get('Pontos Deduzidos por NC', 'Pontos Deduzidos')),
+      p1: parseNum(get(
+        'QA P1 | Gestão do Fluxo e Rastreabilidade do Atendimento - Pontos',
+        'QA P1 | Gestao do Fluxo e Rastreabilidade do Atendimento - Pontos'
+      )),
+      p2: parseNum(get(
+        'QA P2 | Gestão da Tratativa da Demanda - Pontos',
+        'QA P2 | Gestao da Tratativa da Demanda - Pontos'
+      )),
+      p3: parseNum(get(
+        'QA P3 | Análise e Assertividade Técnica da Demanda - Pontos',
+        'QA P3 | Analise e Assertividade Tecnica da Demanda - Pontos'
+      )),
+      p4: parseNum(get(
+        'QA P4 | Qualidade da Comunicação no Atendimento - Pontos',
+        'QA P4 | Qualidade da Comunicacao no Atendimento - Pontos'
+      )),
+      p5: parseNum(get(
+        'QA P5 | Conduta Relacional no Atendimento - Pontos'
+      )),
+      e1: parseNum(get(
+        'IEPC E1 – Resolução Percebida - Pontos',
+        'IEPC E1 - Resolução Percebida - Pontos',
+        'IEPC E1 – Resolucao Percebida - Pontos',
+        'IEPC E1 - Resolucao Percebida - Pontos'
+      )),
+      e2: parseNum(get(
+        'IEPC E2 – Compreensão e Segurança - Pontos',
+        'IEPC E2 - Compreensão e Segurança - Pontos',
+        'IEPC E2 – Compreensao e Seguranca - Pontos',
+        'IEPC E2 - Compreensao e Seguranca - Pontos'
+      )),
+      e3: parseNum(get(
+        'IEPC E3 – Esforço do Cliente - Pontos',
+        'IEPC E3 - Esforço do Cliente - Pontos',
+        'IEPC E3 – Esforco do Cliente - Pontos',
+        'IEPC E3 - Esforco do Cliente - Pontos'
+      )),
+      e4: parseNum(get(
+        'IEPC E4 – Tempo e Fluidez - Pontos',
+        'IEPC E4 - Tempo e Fluidez - Pontos'
+      )),
+      e5: parseNum(get(
+        'IEPC E5 – Experiência Relacional - Pontos',
+        'IEPC E5 - Experiência Relacional - Pontos',
+        'IEPC E5 – Experiencia Relacional - Pontos',
+        'IEPC E5 - Experiencia Relacional - Pontos'
+      )),
       tipo_demanda: tipoDemanda || undefined,
       qtd_atendimentos_avaliados: qtdNum > 0 ? qtdNum : undefined,
     };
@@ -181,20 +237,32 @@ export function parseNCsCSV(rows: Record<string, any>[], fallbackPeriodo?: strin
   return rows.map((row) => {
     const r = buildRowMap(row);
 
-    const rowPeriodo = String(r['Período'] || r['Periodo'] || r['período'] || r['periodo'] || '').trim();
+    const get = (...keys: string[]): any => {
+      for (const k of keys) {
+        const v = r[k] ?? r[k.toLowerCase()] ?? r[normalizeKey(k)];
+        if (v !== undefined && v !== null) return v;
+      }
+      return undefined;
+    };
+
+    const rowPeriodo = String(get('Período', 'Periodo') ?? '').trim();
 
     return {
       periodo: rowPeriodo || fallbackPeriodo || '',
-      data_registro: String(r['Data do Registro'] || r['data do registro'] || '').trim(),
-      analista: String(r['Analista'] || r['analista'] || '').trim(),
-      squad: String(r['Squad'] || r['squad'] || '').trim(),
-      coordenador: String(r['Coordenador'] || r['coordenador'] || '').trim(),
-      auditor: String(r['Auditor'] || r['auditor'] || '').trim(),
-      tipo_nc: String(r['Tipo de Não Conformidade'] || r['tipo de não conformidade'] || r['tipo de nao conformidade'] || '').trim(),
-      descricao: String(r['Descrição'] || r['descricao'] || r['Descricao'] || r['descrição'] || '').trim(),
-      pontos_deduzidos: parseNum(r['Pontos Deduzidos'] ?? r['pontos deduzidos']),
-      protocolo_referencia: String(r['Protocolo Referência'] || r['protocolo referência'] || r['protocolo referencia'] || r['Protocolo Referencia'] || '').trim(),
-      avaliacao_id: String(r['ID da Avaliação'] || r['id da avaliação'] || r['id da avaliacao'] || r['ID da Avaliacao'] || '').trim(),
+      data_registro: String(get('Data do Registro') ?? '').trim(),
+      analista: String(get('Analista') ?? '').trim(),
+      squad: String(get('Squad') ?? '').trim(),
+      coordenador: String(get('Coordenador') ?? '').trim(),
+      auditor: String(get('Auditor') ?? '').trim(),
+      tipo_nc: String(get(
+        'Tipo de Não Conformidade',
+        'Tipo de Nao Conformidade',
+        'Tipo NC',
+        'Tipo de NC' ) ??'').trim(),
+      descricao: String(get('Descrição', 'Descricao', 'Descrição') ?? '').trim(),
+      pontos_deduzidos: parseNum(get('Pontos Deduzidos')),
+      protocolo_referencia: String(get('Protocolo Referência', 'Protocolo Referencia', 'Protocolo') ?? '').trim(),
+      avaliacao_id: String(get('ID da Avaliação', 'ID da Avaliacao', 'ID Avaliação') ?? '').trim(),
     };
   }).filter((r) => r.analista && r.tipo_nc);
 }
@@ -203,24 +271,25 @@ export function parseElogiosCSV(rows: Record<string, any>[], fallbackPeriodo?: s
   return rows.map((row) => {
     const r = buildRowMap(row);
 
-    const rowPeriodo = String(r['Período'] || r['Periodo'] || r['período'] || r['periodo'] || '').trim();
+    const get = (...keys: string[]): any => {
+      for (const k of keys) {
+        const v = r[k] ?? r[k.toLowerCase()] ?? r[normalizeKey(k)];
+        if (v !== undefined && v !== null) return v;
+      }
+      return undefined;
+    };
 
-    // Support multiple column name variants for colaborador/name
-    const colaborador = String(
-      r['Colaborador'] || r['colaborador'] || r['COLABORADOR'] || r['Nome'] || r['NOME'] || r['nome'] || ''
-    ).trim();
+    const rowPeriodo = String(get('Período', 'Periodo') ?? '').trim();
 
-    // Support multiple column name variants for elogio/text
-    const elogio = String(
-      r['Elogio'] || r['elogio'] || r['ELOGIO'] || r['Descrição do Elogio'] || r['Descricao'] || r['DESCRICAO'] || r['Texto'] || ''
-    ).trim();
+    const colaborador = String(get('Colaborador', 'COLABORADOR', 'Nome', 'NOME') ?? '').trim();
+    const elogio = String(get('Elogio', 'ELOGIO', 'Descrição do Elogio', 'Descricao', 'DESCRICAO', 'Texto') ?? '').trim();
 
     return {
       periodo: rowPeriodo || fallbackPeriodo || '',
       colaborador,
-      squad: String(r['SQUAD'] || r['Squad'] || r['squad'] || '').trim(),
-      cliente: String(r['CLIENTE'] || r['Cliente'] || r['cliente'] || '').trim(),
-      protocolo: String(r['PROTOCOLO'] || r['Protocolo'] || r['protocolo'] || '').trim(),
+      squad: String(get('SQUAD', 'Squad') ?? '').trim(),
+      cliente: String(get('CLIENTE', 'Cliente') ?? '').trim(),
+      protocolo: String(get('PROTOCOLO', 'Protocolo') ?? '').trim(),
       elogio,
     };
   }).filter((r) => r.colaborador && r.elogio);
