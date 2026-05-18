@@ -44,69 +44,32 @@ function PerformanceBadge({ score, size = 'sm' }: { score: number; size?: 'xs' |
 }
 
 // ─── Embedded ABR/2026 data ───────────────────────────────────────────────────
-const ABR2026_ANALYSTS = [
-  { name: 'Fabiano Feliz', squad: 'Financeiro Fiscal', coordenador: 'Amanda Cristina', qaScore: 94.00, iepcScore: 95.00, ncs: 0 },
-  { name: 'Jherik Jesus', squad: 'PDV', coordenador: 'Ayron Silva', qaScore: 90.60, iepcScore: 90.00, ncs: 0 },
-  { name: 'Fabiano Teste', squad: 'PDV', coordenador: 'Ayron Silva', qaScore: 90.00, iepcScore: 90.00, ncs: 0 },
-  { name: 'Thalisson Silva', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus', qaScore: 89.50, iepcScore: 80.00, ncs: 0 },
-  { name: 'Gabriel Vieira', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus', qaScore: 88.20, iepcScore: 80.00, ncs: 0 },
-  { name: 'Bruno Reis', squad: 'PDV', coordenador: 'Ayron Silva', qaScore: 87.60, iepcScore: 80.00, ncs: 0 },
-  { name: 'Fernando Carvalho', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus', qaScore: 87.50, iepcScore: 93.00, ncs: 1 },
-  { name: 'Rafael Andrade', squad: 'PDV', coordenador: 'Ayron Silva', qaScore: 83.33, iepcScore: 84.00, ncs: 2 },
-  { name: 'Milena Santos', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus', qaScore: 82.80, iepcScore: 76.00, ncs: 1 },
-  { name: 'Adriel Sanches', squad: 'PDV', coordenador: 'Ayron Silva', qaScore: 82.50, iepcScore: 80.00, ncs: 0 },
-  { name: 'Giovanna Oliveira', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus', qaScore: 80.60, iepcScore: 81.00, ncs: 1 },
-  { name: 'Danilo Cerqueira', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus', qaScore: 81.00, iepcScore: 76.00, ncs: 1 },
-  { name: 'Wyamar Milhomem', squad: 'Financeiro Fiscal', coordenador: 'Amanda Cristina', qaScore: 74.90, iepcScore: 78.00, ncs: 1 },
-  { name: 'Bruno Ribeiro', squad: 'PDV', coordenador: 'Ayron Silva', qaScore: 74.60, iepcScore: 82.00, ncs: 2 },
-  { name: 'Francisco Pereira', squad: 'PDV', coordenador: 'Ayron Silva', qaScore: 70.00, iepcScore: 67.00, ncs: 2 },
-  { name: 'Alair Filho', squad: 'PDV', coordenador: 'Ayron Silva', qaScore: 64.00, iepcScore: 75.00, ncs: 3 },
-  { name: 'Artur Carvalho', squad: 'PDV N1', coordenador: 'Ayron Silva', qaScore: 63.20, iepcScore: 70.00, ncs: 2 },
-  { name: 'Gustavo Moreira', squad: 'PDV', coordenador: 'Ayron Silva', qaScore: 55.83, iepcScore: 53.00, ncs: 4 },
-];
+const ABR2026_ANALYSTS: { name: string; squad: string; coordenador: string; qaScore: number; iepcScore: number; ncs: number }[] = [];
 
-const ABR2026_NC_TYPES = [
-  { name: 'NC-1 Postura e Ética', value: 14, pct: 25.9, color: '#3B82F6' },
-  { name: 'NC-2 Acuracidade Técnica', value: 13, pct: 24.1, color: '#06B6D4' },
-  { name: 'NC-3 Registro e Rastreabilidade', value: 11, pct: 20.4, color: '#F59E0B' },
-  { name: 'NC-4 Fluxo Operacional', value: 10, pct: 18.5, color: '#EF4444' },
-  { name: 'NC-5 Segurança da Informação', value: 6, pct: 11.1, color: '#8B5CF6' },
-];
+const ABR2026_NC_TYPES: { name: string; value: number; pct: number; color: string }[] = [];
 
-const HISTORY_DATA = [
-  { periodo: 'Nov/2025', qa: 74.2, iepc: 73.5 },
-  { periodo: 'Dez/2025', qa: 75.8, iepc: 74.9 },
-  { periodo: 'Jan/2026', qa: 76.1, iepc: 75.2 },
-  { periodo: 'Fev/2026', qa: 75.5, iepc: 74.8 },
-  { periodo: 'Mar/2026', qa: 76.0, iepc: 75.6 },
-  { periodo: 'Abr/2026', qa: 76.5, iepc: 76.7 },
-];
+const HISTORY_DATA: { periodo: string; qa: number; iepc: number }[] = [];
 
 // QA Pillars radar data
 const QA_PILLARS_DATA = [
-  { pilar: 'P1 Fluxo', fullName: 'P1 — Gestão do Fluxo e Rastreabilidade', value: 78, fullMark: 100 },
-  { pilar: 'P2 Tratativa', fullName: 'P2 — Gestão da Tratativa da Demanda', value: 82, fullMark: 100 },
-  { pilar: 'P3 Análise', fullName: 'P3 — Análise e Assertividade Técnica', value: 91, fullMark: 100 },
-  { pilar: 'P4 Comunicação', fullName: 'P4 — Qualidade da Comunicação', value: 85, fullMark: 100 },
-  { pilar: 'P5 Conduta', fullName: 'P5 — Conduta Relacional', value: 88, fullMark: 100 },
+  { pilar: 'P1 Fluxo', fullName: 'P1 — Gestão do Fluxo e Rastreabilidade', value: 0, fullMark: 100 },
+  { pilar: 'P2 Tratativa', fullName: 'P2 — Gestão da Tratativa da Demanda', value: 0, fullMark: 100 },
+  { pilar: 'P3 Análise', fullName: 'P3 — Análise e Assertividade Técnica', value: 0, fullMark: 100 },
+  { pilar: 'P4 Comunicação', fullName: 'P4 — Qualidade da Comunicação', value: 0, fullMark: 100 },
+  { pilar: 'P5 Conduta', fullName: 'P5 — Conduta Relacional', value: 0, fullMark: 100 },
 ];
 
 // IEPC Pillars radar data
 const IEPC_PILLARS_DATA = [
-  { pilar: 'E1 Resolução', fullName: 'E1 — Resolução Percebida', value: 74, fullMark: 100 },
-  { pilar: 'E2 Compreensão', fullName: 'E2 — Compreensão e Segurança Percebida', value: 88, fullMark: 100 },
-  { pilar: 'E3 Esforço', fullName: 'E3 — Esforço Percebido pelo Cliente', value: 67, fullMark: 100 },
-  { pilar: 'E4 Tempo', fullName: 'E4 — Tempo e Fluidez', value: 79, fullMark: 100 },
-  { pilar: 'E5 Relacional', fullName: 'E5 — Experiência Relacional', value: 83, fullMark: 100 },
+  { pilar: 'E1 Resolução', fullName: 'E1 — Resolução Percebida', value: 0, fullMark: 100 },
+  { pilar: 'E2 Compreensão', fullName: 'E2 — Compreensão e Segurança Percebida', value: 0, fullMark: 100 },
+  { pilar: 'E3 Esforço', fullName: 'E3 — Esforço Percebido pelo Cliente', value: 0, fullMark: 100 },
+  { pilar: 'E4 Tempo', fullName: 'E4 — Tempo e Fluidez', value: 0, fullMark: 100 },
+  { pilar: 'E5 Relacional', fullName: 'E5 — Experiência Relacional', value: 0, fullMark: 100 },
 ];
 
 // Heatmap using only QA pillars
-const HEATMAP_QA_PILLARS = [
-  { squad: 'Compras e Estoque', p1: 86, p2: 84, p3: 91, p4: 88, p5: 85 },
-  { squad: 'Financeiro Fiscal', p1: 82, p2: 80, p3: 88, p4: 85, p5: 87 },
-  { squad: 'PDV', p1: 75, p2: 78, p3: 82, p4: 76, p5: 79 },
-  { squad: 'PDV N1', p1: 62, p2: 65, p3: 68, p4: 60, p5: 63 },
-];
+const HEATMAP_QA_PILLARS: { squad: string; p1: number; p2: number; p3: number; p4: number; p5: number }[] = [];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface PeriodSummary {
@@ -566,8 +529,8 @@ export default function HomeExecutiveView() {
         const analysts = buildAnalystsFromScores(pScores);
         const qaMedia = analysts.length > 0 ? analysts.reduce((s: number, a: any) => s + a.qaScore, 0) / analysts.length : 0;
         const iepcMedia = analysts.length > 0 ? analysts.reduce((s: number, a: any) => s + a.iepcScore, 0) / analysts.length : 0;
-        const squads: Record<string, { qa: number; iepc: number; count: number }> = {};
-        const coordenadores: Record<string, { qa: number; count: number }> = {};
+        let squads: Record<string, { qa: number; iepc: number; count: number }> = {};
+        let coordenadores: Record<string, { qa: number; count: number }> = {};
         analysts.forEach((a: any) => {
           if (!squads[a.squad]) squads[a.squad] = { qa: 0, iepc: 0, count: 0 };
           squads[a.squad].qa += a.qaScore;
