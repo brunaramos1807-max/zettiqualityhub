@@ -1,0 +1,1516 @@
+{
+    "dossie": {
+        "meta": {
+            "titulo": "Dossi\u00ea T\u00e9cnico Completo \u2014 Portal da Qualidade (ZettiQualityHub)",
+            "versao": "1.0.0",
+            "data_geracao": "2026-05-11",
+            "url_producao": "https://zettiquali9387.builtwithrocket.new",
+            "classificacao": "Documento t\u00e9cnico interno \u2014 uso restrito"
+        },
+        "visao_geral": {
+            "objetivo": "Plataforma interna de gest\u00e3o da qualidade operacional da Zetti Tech. Centraliza an\u00e1lise de desempenho de analistas de suporte, calcula indicadores QA e IEPC, registra n\u00e3o conformidades, gerencia elogios e gera relat\u00f3rios executivos com suporte de IA.",
+            "tipo_sistema": "SaaS interno de gest\u00e3o da qualidade",
+            "arquitetura": "Next.js App Router (SSR/CSR) + Supabase (PostgreSQL + Auth + Realtime) + Gemini AI",
+            "modo_tema": "Dark theme (inline styles)"
+        },
+        "stack": {
+            "framework": {
+                "nome": "Next.js",
+                "versao": "15.1.11"
+            },
+            "linguagem": {
+                "nome": "TypeScript",
+                "versao": "^5.0.0"
+            },
+            "ui_library": {
+                "nome": "React",
+                "versao": "19.0.3"
+            },
+            "estilizacao": {
+                "nome": "Tailwind CSS",
+                "versao": "3.4.6"
+            },
+            "banco_dados": {
+                "nome": "Supabase (PostgreSQL)",
+                "versao": "@supabase/supabase-js 2.105.3"
+            },
+            "ia": {
+                "nome": "Google Gemini",
+                "modelo": "gemini-2.5-flash",
+                "sdk": "@rocketnew/llm-sdk"
+            },
+            "pdf_export": {
+                "nome": "jsPDF + jspdf-autotable",
+                "versao": "4.2.1 / 5.0.7"
+            },
+            "csv_parse": {
+                "nome": "PapaParse",
+                "versao": "5.5.3"
+            },
+            "excel_parse": {
+                "nome": "XLSX",
+                "versao": "0.18.5"
+            },
+            "notificacoes": {
+                "nome": "Sonner",
+                "versao": "^1.7.4"
+            },
+            "icones": {
+                "nome": "Lucide React",
+                "versao": "^1.7.0"
+            },
+            "graficos": {
+                "nome": "Recharts",
+                "versao": "^2.15.2"
+            },
+            "fontes": [
+                "DM Sans",
+                "Playfair Display"
+            ]
+        },
+        "integracoes": [
+            {
+                "servico": "Supabase",
+                "finalidade": "Banco de dados, Auth, Realtime",
+                "env_vars": [
+                    "NEXT_PUBLIC_SUPABASE_URL",
+                    "NEXT_PUBLIC_SUPABASE_ANON_KEY"
+                ],
+                "status": "Ativo"
+            },
+            {
+                "servico": "Google Gemini",
+                "finalidade": "Insights executivos por IA (streaming)",
+                "env_vars": [
+                    "GEMINI_API_KEY"
+                ],
+                "status": "Ativo"
+            },
+            {
+                "servico": "Google Analytics",
+                "finalidade": "Rastreamento de uso",
+                "env_vars": [
+                    "NEXT_PUBLIC_GA_MEASUREMENT_ID"
+                ],
+                "status": "Configurado (key pendente)"
+            },
+            {
+                "servico": "OpenAI",
+                "finalidade": "Chat completion (dispon\u00edvel)",
+                "env_vars": [
+                    "OPENAI_API_KEY"
+                ],
+                "status": "Dispon\u00edvel \u2014 key n\u00e3o configurada"
+            },
+            {
+                "servico": "Anthropic",
+                "finalidade": "Chat completion (dispon\u00edvel)",
+                "env_vars": [
+                    "ANTHROPIC_API_KEY"
+                ],
+                "status": "Dispon\u00edvel \u2014 key n\u00e3o configurada"
+            }
+        ],
+        "paginas": [
+            {
+                "rota": "/",
+                "arquivo": "src/app/page.tsx",
+                "nome": "Vis\u00e3o Geral",
+                "componente_principal": "HomeExecutiveView",
+                "acesso": "Todos autenticados",
+                "componentes": [
+                    "AppHeader",
+                    "HeroCycleStatus",
+                    "HomeKPICards",
+                    "MonthlyTrendChart",
+                    "TopAnalysts",
+                    "ExecutiveInsights",
+                    "AppFooter",
+                    "ImportModal"
+                ],
+                "dados_carregados": [
+                    "cycle_scores",
+                    "import_cycles"
+                ],
+                "funcionalidades": [
+                    "KPIs do ciclo ativo",
+                    "Gr\u00e1fico tend\u00eancia mensal",
+                    "Ranking analistas",
+                    "Insights IA Gemini"
+                ],
+                "permissoes_especiais": {
+                    "importar": "permissao_editar ou admin",
+                    "insights": "permissao_acessar_relatorios ou admin/gestor/coord.geral"
+                }
+            },
+            {
+                "rota": "/cycle-dashboard",
+                "arquivo": "src/app/cycle-dashboard/page.tsx",
+                "nome": "Dashboard do Ciclo",
+                "componente_principal": "CycleDashboard",
+                "acesso": "Todos autenticados",
+                "componentes": [
+                    "CycleFilters",
+                    "CycleKPICards",
+                    "SquadRankingChart",
+                    "PillarMatrix",
+                    "AnalystDrilldown",
+                    "PillarDrilldownModal",
+                    "ExecutiveInsights",
+                    "CompareAnalystsModal",
+                    "NonConformitiesGuide"
+                ],
+                "dados_carregados": [
+                    "cycle_scores",
+                    "nc_records",
+                    "elogios",
+                    "import_cycles"
+                ],
+                "funcionalidades": [
+                    "Filtros squad/analista/per\u00edodo",
+                    "Ranking squads",
+                    "Matriz pilares QA/IEPC",
+                    "Drilldown analista",
+                    "Compara\u00e7\u00e3o analistas",
+                    "Exporta\u00e7\u00e3o CSV/PDF"
+                ],
+                "permissoes_especiais": {
+                    "importar": "permissao_editar",
+                    "exportar": "permissao_acessar_relatorios ou admin"
+                }
+            },
+            {
+                "rota": "/configuracoes",
+                "arquivo": "src/app/configuracoes/page.tsx",
+                "nome": "Configura\u00e7\u00f5es",
+                "acesso": "Admin only (requireAdmin=true)",
+                "abas": [
+                    "Usu\u00e1rios",
+                    "Cargos",
+                    "Permiss\u00f5es",
+                    "Painel Administrativo"
+                ],
+                "funcionalidades": [
+                    "CRUD usu\u00e1rios",
+                    "Visualiza\u00e7\u00e3o cargos",
+                    "Edi\u00e7\u00e3o permiss\u00f5es granulares",
+                    "Painel m\u00e9tricas admin"
+                ]
+            },
+            {
+                "rota": "/mural-elogios",
+                "arquivo": "src/app/mural-elogios/page.tsx",
+                "nome": "Elogios",
+                "acesso": "Todos autenticados",
+                "dados_carregados": [
+                    "elogios"
+                ],
+                "funcionalidades": [
+                    "Listagem elogios",
+                    "Destaque elogios",
+                    "Filtro por squad"
+                ]
+            },
+            {
+                "rota": "/nao-conformidades",
+                "arquivo": "src/app/nao-conformidades/page.tsx",
+                "nome": "N\u00e3o Conformidades",
+                "acesso": "Todos autenticados",
+                "dados_carregados": [
+                    "nc_records"
+                ],
+                "funcionalidades": [
+                    "Listagem NCs",
+                    "Filtros analista/squad/tipo",
+                    "Detalhes NC"
+                ]
+            },
+            {
+                "rota": "/historico",
+                "arquivo": "src/app/historico/page.tsx",
+                "nome": "Hist\u00f3rico",
+                "acesso": "Todos autenticados",
+                "dados_carregados": [
+                    "import_cycles"
+                ],
+                "funcionalidades": [
+                    "Hist\u00f3rico importa\u00e7\u00f5es",
+                    "Ciclos fechados",
+                    "Linha do tempo"
+                ]
+            },
+            {
+                "rota": "/importacoes",
+                "arquivo": "src/app/importacoes/page.tsx",
+                "nome": "Importa\u00e7\u00f5es",
+                "acesso": "Todos autenticados",
+                "funcionalidades": [
+                    "Gerenciamento importa\u00e7\u00f5es",
+                    "Status ciclos"
+                ]
+            },
+            {
+                "rota": "/auditoria",
+                "arquivo": "src/app/auditoria/page.tsx",
+                "nome": "Auditoria",
+                "acesso": "Todos autenticados",
+                "dados_carregados": [
+                    "cycle_scores",
+                    "nc_records"
+                ],
+                "funcionalidades": [
+                    "Vis\u00e3o auditoria por analista/ciclo"
+                ]
+            },
+            {
+                "rota": "/evolucao-geral",
+                "arquivo": "src/app/evolucao-geral/page.tsx",
+                "nome": "Evolu\u00e7\u00e3o dos Indicadores",
+                "acesso": "Todos autenticados",
+                "dados_carregados": [
+                    "MONTHLY_TREND (mock)"
+                ],
+                "funcionalidades": [
+                    "Gr\u00e1fico evolu\u00e7\u00e3o hist\u00f3rica QA/IEPC"
+                ]
+            },
+            {
+                "rota": "/gestao",
+                "arquivo": "src/app/gestao/page.tsx",
+                "nome": "Gest\u00e3o",
+                "acesso": "Admin only"
+            },
+            {
+                "rota": "/admin-config",
+                "arquivo": "src/app/admin-config/page.tsx",
+                "nome": "Config. Legado",
+                "acesso": "Admin only"
+            },
+            {
+                "rota": "/sign-up-login",
+                "arquivo": "src/app/sign-up-login/page.tsx",
+                "nome": "Login/Cadastro",
+                "acesso": "P\u00fablico"
+            }
+        ],
+        "componentes": {
+            "globais": [
+                {
+                    "nome": "AppHeader",
+                    "arquivo": "src/components/AppHeader.tsx",
+                    "props": [
+                        "onImportClick",
+                        "userName",
+                        "userRole",
+                        "userAvatar",
+                        "activeTab"
+                    ],
+                    "descricao": "Header sticky com logo, tabs de navega\u00e7\u00e3o agrupadas e menu de usu\u00e1rio",
+                    "grupos_tabs": [
+                        "VIS\u00c3O",
+                        "OPERA\u00c7\u00c3O",
+                        "HIST\u00d3RICO",
+                        "DADOS",
+                        "ADMIN"
+                    ]
+                },
+                {
+                    "nome": "AppFooter",
+                    "arquivo": "src/components/AppFooter.tsx",
+                    "descricao": "Rodap\u00e9 da aplica\u00e7\u00e3o"
+                },
+                {
+                    "nome": "ImportModal",
+                    "arquivo": "src/components/ImportModal.tsx",
+                    "props": [
+                        "isOpen",
+                        "onClose",
+                        "onImportSuccess"
+                    ],
+                    "steps": [
+                        "choose-type",
+                        "upload",
+                        "validate",
+                        "done"
+                    ],
+                    "tipos_arquivo": [
+                        "scores",
+                        "ncs",
+                        "elogios"
+                    ],
+                    "formatos_suportados": [
+                        "CSV",
+                        "XLSX"
+                    ],
+                    "descricao": "Modal de importa\u00e7\u00e3o de dados com valida\u00e7\u00e3o de colunas e preview"
+                },
+                {
+                    "nome": "RouteGuard",
+                    "arquivo": "src/components/RouteGuard.tsx",
+                    "props": [
+                        "children",
+                        "requireAdmin"
+                    ],
+                    "descricao": "Prote\u00e7\u00e3o de rotas \u2014 exibe login se sem sess\u00e3o, acesso negado se sem permiss\u00e3o"
+                },
+                {
+                    "nome": "SystemLoginScreen",
+                    "arquivo": "src/components/SystemLoginScreen.tsx",
+                    "descricao": "Tela de login com cadastro e recupera\u00e7\u00e3o de senha"
+                },
+                {
+                    "nome": "GoogleAnalytics",
+                    "arquivo": "src/components/GoogleAnalytics.tsx",
+                    "descricao": "Componente GA4 com tracking de page views"
+                }
+            ],
+            "home": [
+                {
+                    "nome": "HomeExecutiveView",
+                    "arquivo": "src/app/components/HomeExecutiveView.tsx"
+                },
+                {
+                    "nome": "HeroCycleStatus",
+                    "arquivo": "src/app/components/HeroCycleStatus.tsx"
+                },
+                {
+                    "nome": "HomeKPICards",
+                    "arquivo": "src/app/components/HomeKPICards.tsx"
+                },
+                {
+                    "nome": "MonthlyTrendChart",
+                    "arquivo": "src/app/components/MonthlyTrendChart.tsx"
+                },
+                {
+                    "nome": "MonthlyTrendChartInner",
+                    "arquivo": "src/app/components/MonthlyTrendChartInner.tsx"
+                },
+                {
+                    "nome": "TopAnalysts",
+                    "arquivo": "src/app/components/TopAnalysts.tsx"
+                },
+                {
+                    "nome": "NavigationShortcuts",
+                    "arquivo": "src/app/components/NavigationShortcuts.tsx"
+                }
+            ],
+            "cycle_dashboard": [
+                {
+                    "nome": "CycleDashboard",
+                    "arquivo": "src/app/cycle-dashboard/components/CycleDashboard.tsx"
+                },
+                {
+                    "nome": "CycleFilters",
+                    "arquivo": "src/app/cycle-dashboard/components/CycleFilters.tsx"
+                },
+                {
+                    "nome": "CycleKPICards",
+                    "arquivo": "src/app/cycle-dashboard/components/CycleKPICards.tsx"
+                },
+                {
+                    "nome": "SquadRankingChart",
+                    "arquivo": "src/app/cycle-dashboard/components/SquadRankingChart.tsx"
+                },
+                {
+                    "nome": "SquadRankingChartInner",
+                    "arquivo": "src/app/cycle-dashboard/components/SquadRankingChartInner.tsx"
+                },
+                {
+                    "nome": "PillarMatrix",
+                    "arquivo": "src/app/cycle-dashboard/components/PillarMatrix.tsx"
+                },
+                {
+                    "nome": "AnalystDrilldown",
+                    "arquivo": "src/app/cycle-dashboard/components/AnalystDrilldown.tsx"
+                },
+                {
+                    "nome": "AnalystRadarChart",
+                    "arquivo": "src/app/cycle-dashboard/components/AnalystRadarChart.tsx"
+                },
+                {
+                    "nome": "PillarDrilldownModal",
+                    "arquivo": "src/app/cycle-dashboard/components/PillarDrilldownModal.tsx"
+                },
+                {
+                    "nome": "CompareAnalystsModal",
+                    "arquivo": "src/app/cycle-dashboard/components/CompareAnalystsModal.tsx"
+                },
+                {
+                    "nome": "NonConformitiesGuide",
+                    "arquivo": "src/app/cycle-dashboard/components/NonConformitiesGuide.tsx"
+                },
+                {
+                    "nome": "ExecutiveInsights",
+                    "arquivo": "src/app/cycle-dashboard/components/ExecutiveInsights.tsx"
+                }
+            ]
+        },
+        "design_system": {
+            "cores": {
+                "backgrounds": {
+                    "pagina_principal": "#0D1117",
+                    "cards": "#161B22",
+                    "inputs": "#1C2333",
+                    "header": "#1E293B"
+                },
+                "primarias": {
+                    "primary": "#1E40AF",
+                    "secondary": "#3B82F6",
+                    "primary_light": "#60A5FA",
+                    "primary_hover": "#1D4ED8"
+                },
+                "semanticas": {
+                    "success": "#22C55E",
+                    "warning": "#EAB308",
+                    "danger": "#EF4444",
+                    "success_var": "#16A34A",
+                    "warning_var": "#D97706",
+                    "danger_var": "#DC2626"
+                },
+                "texto": {
+                    "branco": "#FFFFFF",
+                    "cinza_claro": "#C9D1D9",
+                    "cinza_medio": "#8B949E",
+                    "semi_transparente": "rgba(255,255,255,0.5)"
+                },
+                "bordas": {
+                    "sutil": "rgba(255,255,255,0.08)",
+                    "visivel": "rgba(255,255,255,0.12)"
+                },
+                "roles": {
+                    "Administrador": "#22C55E",
+                    "Coordenador": "#60A5FA",
+                    "Gestor": "#A78BFA",
+                    "Coordenador Geral": "#F59E0B",
+                    "Auditor": "#FB923C"
+                },
+                "scores": {
+                    "excelente_threshold": 85,
+                    "excelente_cor": "#22C55E",
+                    "atencao_threshold": 70,
+                    "atencao_cor": "#EAB308",
+                    "critico_cor": "#EF4444"
+                }
+            },
+            "tipografia": {
+                "corpo": {
+                    "fonte": "DM Sans",
+                    "variavel": "--font-dm-sans",
+                    "pesos": [
+                        "400",
+                        "500",
+                        "600",
+                        "700"
+                    ]
+                },
+                "display": {
+                    "fonte": "Playfair Display",
+                    "variavel": "--font-playfair",
+                    "pesos": [
+                        "400",
+                        "500",
+                        "600",
+                        "700"
+                    ]
+                }
+            },
+            "espacamento": {
+                "border_radius_padrao": "0.75rem",
+                "padding_cards": "1.5rem",
+                "gap_padrao": [
+                    "0.5rem",
+                    "1rem",
+                    "1.5rem"
+                ]
+            },
+            "animacoes": [
+                "fade-in",
+                "slide-up",
+                "pulse-subtle"
+            ]
+        },
+        "banco_dados": {
+            "provider": "Supabase (PostgreSQL)",
+            "tabelas": [
+                {
+                    "nome": "user_profiles",
+                    "descricao": "Perfis de usu\u00e1rios vinculados ao Supabase Auth",
+                    "colunas": [
+                        {
+                            "nome": "id",
+                            "tipo": "UUID",
+                            "pk": true,
+                            "fk": "auth.users(id)",
+                            "on_delete": "CASCADE"
+                        },
+                        {
+                            "nome": "email",
+                            "tipo": "TEXT",
+                            "unique": true,
+                            "not_null": true
+                        },
+                        {
+                            "nome": "full_name",
+                            "tipo": "TEXT",
+                            "default": "''"
+                        },
+                        {
+                            "nome": "role",
+                            "tipo": "user_role ENUM",
+                            "default": "'Coordenador'"
+                        },
+                        {
+                            "nome": "squad",
+                            "tipo": "TEXT"
+                        },
+                        {
+                            "nome": "avatar",
+                            "tipo": "TEXT",
+                            "default": "''"
+                        },
+                        {
+                            "nome": "created_at",
+                            "tipo": "TIMESTAMPTZ",
+                            "default": "CURRENT_TIMESTAMP"
+                        },
+                        {
+                            "nome": "updated_at",
+                            "tipo": "TIMESTAMPTZ",
+                            "default": "CURRENT_TIMESTAMP"
+                        }
+                    ],
+                    "indices": [
+                        "idx_user_profiles_email"
+                    ],
+                    "rls": true,
+                    "policies": [
+                        "users_manage_own_profile",
+                        "admins_manage_all_profiles"
+                    ]
+                },
+                {
+                    "nome": "import_cycles",
+                    "descricao": "Registro de cada importa\u00e7\u00e3o de dados por per\u00edodo",
+                    "colunas": [
+                        {
+                            "nome": "id",
+                            "tipo": "UUID",
+                            "pk": true,
+                            "default": "gen_random_uuid()"
+                        },
+                        {
+                            "nome": "periodo",
+                            "tipo": "TEXT",
+                            "not_null": true,
+                            "unique": true,
+                            "exemplo": "04/2026"
+                        },
+                        {
+                            "nome": "imported_by",
+                            "tipo": "UUID",
+                            "fk": "user_profiles(id)",
+                            "on_delete": "SET NULL"
+                        },
+                        {
+                            "nome": "imported_at",
+                            "tipo": "TIMESTAMPTZ",
+                            "default": "CURRENT_TIMESTAMP"
+                        },
+                        {
+                            "nome": "file_name",
+                            "tipo": "TEXT"
+                        },
+                        {
+                            "nome": "record_count",
+                            "tipo": "INTEGER",
+                            "default": 0
+                        }
+                    ],
+                    "rls": true,
+                    "policies": [
+                        "authenticated_read_cycles",
+                        "authenticated_insert_cycles"
+                    ]
+                },
+                {
+                    "nome": "cycle_scores",
+                    "descricao": "Pontua\u00e7\u00f5es QA e IEPC por analista por per\u00edodo",
+                    "colunas": [
+                        {
+                            "nome": "id",
+                            "tipo": "UUID",
+                            "pk": true
+                        },
+                        {
+                            "nome": "cycle_id",
+                            "tipo": "UUID",
+                            "fk": "import_cycles(id)",
+                            "on_delete": "CASCADE"
+                        },
+                        {
+                            "nome": "periodo",
+                            "tipo": "TEXT",
+                            "not_null": true
+                        },
+                        {
+                            "nome": "data_registro",
+                            "tipo": "TEXT"
+                        },
+                        {
+                            "nome": "analista",
+                            "tipo": "TEXT",
+                            "not_null": true
+                        },
+                        {
+                            "nome": "squad",
+                            "tipo": "TEXT",
+                            "not_null": true
+                        },
+                        {
+                            "nome": "coordenador",
+                            "tipo": "TEXT",
+                            "not_null": true
+                        },
+                        {
+                            "nome": "auditor",
+                            "tipo": "TEXT"
+                        },
+                        {
+                            "nome": "nota_final_qa",
+                            "tipo": "NUMERIC(6,2)",
+                            "default": 0,
+                            "range": "0-100"
+                        },
+                        {
+                            "nome": "iepc_total",
+                            "tipo": "NUMERIC(6,2)",
+                            "default": 0,
+                            "range": "0-100"
+                        },
+                        {
+                            "nome": "total_ncs",
+                            "tipo": "INTEGER",
+                            "default": 0
+                        },
+                        {
+                            "nome": "pontos_deduzidos_nc",
+                            "tipo": "NUMERIC(6,2)",
+                            "default": 0
+                        },
+                        {
+                            "nome": "p1",
+                            "tipo": "NUMERIC(6,2)",
+                            "default": 0,
+                            "max": 22
+                        },
+                        {
+                            "nome": "p2",
+                            "tipo": "NUMERIC(6,2)",
+                            "default": 0,
+                            "max": 34
+                        },
+                        {
+                            "nome": "p3",
+                            "tipo": "NUMERIC(6,2)",
+                            "default": 0,
+                            "max": 18
+                        },
+                        {
+                            "nome": "p4",
+                            "tipo": "NUMERIC(6,2)",
+                            "default": 0,
+                            "max": 14
+                        },
+                        {
+                            "nome": "p5",
+                            "tipo": "NUMERIC(6,2)",
+                            "default": 0,
+                            "max": 12
+                        },
+                        {
+                            "nome": "e1",
+                            "tipo": "NUMERIC(6,2)",
+                            "default": 0,
+                            "max": 30
+                        },
+                        {
+                            "nome": "e2",
+                            "tipo": "NUMERIC(6,2)",
+                            "default": 0,
+                            "max": 20
+                        },
+                        {
+                            "nome": "e3",
+                            "tipo": "NUMERIC(6,2)",
+                            "default": 0,
+                            "max": 20
+                        },
+                        {
+                            "nome": "e4",
+                            "tipo": "NUMERIC(6,2)",
+                            "default": 0,
+                            "max": 15
+                        },
+                        {
+                            "nome": "e5",
+                            "tipo": "NUMERIC(6,2)",
+                            "default": 0,
+                            "max": 15
+                        },
+                        {
+                            "nome": "created_at",
+                            "tipo": "TIMESTAMPTZ"
+                        }
+                    ],
+                    "indices": [
+                        "idx_cycle_scores_periodo",
+                        "idx_cycle_scores_analista",
+                        "idx_cycle_scores_squad"
+                    ],
+                    "rls": true,
+                    "policies": [
+                        "authenticated_read_scores",
+                        "authenticated_insert_scores",
+                        "authenticated_delete_scores"
+                    ]
+                },
+                {
+                    "nome": "nc_records",
+                    "descricao": "Registros de n\u00e3o conformidades",
+                    "colunas": [
+                        {
+                            "nome": "id",
+                            "tipo": "UUID",
+                            "pk": true
+                        },
+                        {
+                            "nome": "cycle_id",
+                            "tipo": "UUID",
+                            "fk": "import_cycles(id)",
+                            "on_delete": "CASCADE"
+                        },
+                        {
+                            "nome": "periodo",
+                            "tipo": "TEXT",
+                            "not_null": true
+                        },
+                        {
+                            "nome": "data_registro",
+                            "tipo": "TEXT"
+                        },
+                        {
+                            "nome": "analista",
+                            "tipo": "TEXT",
+                            "not_null": true
+                        },
+                        {
+                            "nome": "squad",
+                            "tipo": "TEXT",
+                            "not_null": true
+                        },
+                        {
+                            "nome": "coordenador",
+                            "tipo": "TEXT",
+                            "not_null": true
+                        },
+                        {
+                            "nome": "auditor",
+                            "tipo": "TEXT"
+                        },
+                        {
+                            "nome": "tipo_nc",
+                            "tipo": "TEXT",
+                            "not_null": true
+                        },
+                        {
+                            "nome": "descricao",
+                            "tipo": "TEXT"
+                        },
+                        {
+                            "nome": "pontos_deduzidos",
+                            "tipo": "NUMERIC(6,2)",
+                            "default": -20
+                        },
+                        {
+                            "nome": "protocolo_referencia",
+                            "tipo": "TEXT"
+                        },
+                        {
+                            "nome": "avaliacao_id",
+                            "tipo": "TEXT"
+                        },
+                        {
+                            "nome": "created_at",
+                            "tipo": "TIMESTAMPTZ"
+                        }
+                    ],
+                    "indices": [
+                        "idx_nc_records_periodo",
+                        "idx_nc_records_analista"
+                    ],
+                    "rls": true,
+                    "policies": [
+                        "authenticated_read_ncs",
+                        "authenticated_insert_ncs",
+                        "authenticated_delete_ncs"
+                    ]
+                },
+                {
+                    "nome": "elogios",
+                    "descricao": "Elogios recebidos pelos analistas",
+                    "colunas": [
+                        {
+                            "nome": "id",
+                            "tipo": "UUID",
+                            "pk": true
+                        },
+                        {
+                            "nome": "cycle_id",
+                            "tipo": "UUID",
+                            "fk": "import_cycles(id)",
+                            "on_delete": "CASCADE"
+                        },
+                        {
+                            "nome": "periodo",
+                            "tipo": "TEXT",
+                            "not_null": true
+                        },
+                        {
+                            "nome": "colaborador",
+                            "tipo": "TEXT",
+                            "not_null": true
+                        },
+                        {
+                            "nome": "squad",
+                            "tipo": "TEXT",
+                            "not_null": true
+                        },
+                        {
+                            "nome": "cliente",
+                            "tipo": "TEXT"
+                        },
+                        {
+                            "nome": "protocolo",
+                            "tipo": "TEXT"
+                        },
+                        {
+                            "nome": "elogio",
+                            "tipo": "TEXT",
+                            "not_null": true
+                        },
+                        {
+                            "nome": "destaque",
+                            "tipo": "BOOLEAN",
+                            "default": false
+                        },
+                        {
+                            "nome": "created_at",
+                            "tipo": "TIMESTAMPTZ"
+                        }
+                    ],
+                    "indices": [
+                        "idx_elogios_periodo",
+                        "idx_elogios_colaborador"
+                    ],
+                    "rls": true,
+                    "policies": [
+                        "authenticated_read_elogios",
+                        "authenticated_insert_elogios",
+                        "authenticated_update_elogios",
+                        "authenticated_delete_elogios"
+                    ]
+                }
+            ],
+            "enums": [
+                {
+                    "nome": "user_role",
+                    "valores": [
+                        "Admin",
+                        "Coordenador",
+                        "Diretoria",
+                        "Gestor",
+                        "Coordenador Geral",
+                        "Auditor"
+                    ]
+                }
+            ],
+            "funcoes": [
+                {
+                    "nome": "handle_new_user",
+                    "tipo": "TRIGGER FUNCTION",
+                    "descricao": "Cria user_profile automaticamente ao criar usu\u00e1rio no Supabase Auth",
+                    "trigger": "on_auth_user_created AFTER INSERT ON auth.users"
+                },
+                {
+                    "nome": "is_admin",
+                    "tipo": "FUNCTION",
+                    "retorno": "BOOLEAN",
+                    "descricao": "Verifica se o usu\u00e1rio atual tem role Admin"
+                },
+                {
+                    "nome": "is_admin_or_diretoria",
+                    "tipo": "FUNCTION",
+                    "retorno": "BOOLEAN",
+                    "descricao": "Verifica se o usu\u00e1rio atual tem role Admin ou Diretoria"
+                }
+            ],
+            "migrations": [
+                "20260505174502_zetti_quality_hub.sql \u2014 Schema principal completo",
+                "20260505200000_admin_users_setup.sql \u2014 Setup de usu\u00e1rios admin",
+                "20260508203000_add_roles_and_bruna.sql \u2014 Adi\u00e7\u00e3o de roles Gestor, Coordenador Geral, Auditor"
+            ]
+        },
+        "autenticacao": {
+            "sistemas": [
+                {
+                    "nome": "Sistema Local (authSystem.ts)",
+                    "tipo": "localStorage",
+                    "status": "PRIM\u00c1RIO \u2014 em uso",
+                    "armazenamento": {
+                        "usuarios": "localStorage key: zetti_system_users",
+                        "sessao": "localStorage key: zetti_session"
+                    },
+                    "hash_senha": "SHA-256 via Web Crypto API com salt fixo 'zetti_salt_2026'",
+                    "timeout_inatividade_ms": 1800000,
+                    "eventos_reset_timer": [
+                        "mousemove",
+                        "keydown",
+                        "click",
+                        "scroll",
+                        "touchstart"
+                    ]
+                },
+                {
+                    "nome": "Supabase Auth (AuthContext.tsx)",
+                    "tipo": "JWT",
+                    "status": "SECUND\u00c1RIO \u2014 integrado mas n\u00e3o \u00e9 fluxo principal",
+                    "tabela": "user_profiles"
+                }
+            ],
+            "roles": [
+                "Administrador",
+                "Coordenador",
+                "Gestor",
+                "Coordenador Geral",
+                "Auditor"
+            ],
+            "permissoes": [
+                {
+                    "chave": "acesso_total",
+                    "descricao": "Todas as permiss\u00f5es habilitadas"
+                },
+                {
+                    "chave": "visualizar_todas_equipes",
+                    "descricao": "Acesso a dados de todas as squads"
+                },
+                {
+                    "chave": "visualizar_equipes_especificas",
+                    "tipo": "string[]",
+                    "descricao": "Lista de squads permitidas"
+                },
+                {
+                    "chave": "permissao_editar",
+                    "descricao": "Pode editar registros e dados"
+                },
+                {
+                    "chave": "permissao_visualizar",
+                    "descricao": "Acesso somente leitura"
+                },
+                {
+                    "chave": "permissao_cadastrar_usuarios",
+                    "descricao": "Pode criar novos usu\u00e1rios"
+                },
+                {
+                    "chave": "permissao_excluir_usuarios",
+                    "descricao": "Pode remover usu\u00e1rios"
+                },
+                {
+                    "chave": "permissao_acessar_relatorios",
+                    "descricao": "Visualiza relat\u00f3rios e exporta\u00e7\u00f5es"
+                }
+            ],
+            "usuarios_padrao": [
+                {
+                    "email": "admin@zetti.com.br",
+                    "senha": "ZettiAdmin@2026",
+                    "cargo": "Administrador",
+                    "status": "Ativo"
+                },
+                {
+                    "email": "brunaramos1807@gmail.com",
+                    "senha": "ZettiAdmin@2026",
+                    "cargo": "Administrador",
+                    "status": "Ativo"
+                }
+            ],
+            "equipes": [
+                "PDV",
+                "PDV N1",
+                "Compras e Estoque",
+                "Financeiro Fiscal",
+                "Todas"
+            ]
+        },
+        "engine_qa_iepc": {
+            "qa_pilares": [
+                {
+                    "id": "P1",
+                    "nome": "Gest\u00e3o do Fluxo e Rastreabilidade do Atendimento",
+                    "max_pontos": 22,
+                    "criterios": [
+                        "P1.1.1 Identifica\u00e7\u00e3o e Boas-vindas (5pts)",
+                        "P1.1.2 Formaliza\u00e7\u00e3o e comunica\u00e7\u00e3o do protocolo SUP (9pts)",
+                        "P1.1.3 Encerramento da intera\u00e7\u00e3o por etapa (8pts)"
+                    ]
+                },
+                {
+                    "id": "P2",
+                    "nome": "Gest\u00e3o da Tratativa da Demanda",
+                    "max_pontos": 34,
+                    "criterios": [
+                        "P2.2.1 Valida\u00e7\u00e3o e esclarecimento de d\u00favidas (8pts)",
+                        "P2.2.2 Orienta\u00e7\u00e3o e condu\u00e7\u00e3o da execu\u00e7\u00e3o (9pts)",
+                        "P2.2.3 Resolu\u00e7\u00e3o ou direcionamento adequado (9pts)",
+                        "P2.2.4 Documenta\u00e7\u00e3o t\u00e9cnica do atendimento (8pts)"
+                    ]
+                },
+                {
+                    "id": "P3",
+                    "nome": "An\u00e1lise e Assertividade T\u00e9cnica da Demanda",
+                    "max_pontos": 18,
+                    "criterios": [
+                        "P3.3.1 An\u00e1lise t\u00e9cnica da demanda (10pts)",
+                        "P3.3.2 Uso adequado das ferramentas de apoio (8pts)"
+                    ]
+                },
+                {
+                    "id": "P4",
+                    "nome": "Qualidade da Comunica\u00e7\u00e3o no Atendimento",
+                    "max_pontos": 14,
+                    "criterios": [
+                        "P4.4.1 Uso adequado da l\u00edngua portuguesa (4pts)",
+                        "P4.4.2 Adequa\u00e7\u00e3o do tom e postura profissional (5pts)",
+                        "P4.4.3 Clareza e organiza\u00e7\u00e3o da comunica\u00e7\u00e3o (5pts)"
+                    ]
+                },
+                {
+                    "id": "P5",
+                    "nome": "Conduta Relacional no Atendimento",
+                    "max_pontos": 12,
+                    "criterios": [
+                        "P5.5.1 Cordialidade e empatia (4pts)",
+                        "P5.5.2 Proatividade na condu\u00e7\u00e3o (5pts)",
+                        "P5.5.3 Over delivery (3pts)"
+                    ]
+                }
+            ],
+            "qa_total_max": 100,
+            "iepc_dimensoes": [
+                {
+                    "id": "E1",
+                    "nome": "Resolu\u00e7\u00e3o Percebida",
+                    "max_pontos": 30,
+                    "descricao": "Percep\u00e7\u00e3o do cliente sobre se o problema foi efetivamente resolvido"
+                },
+                {
+                    "id": "E2",
+                    "nome": "Compreens\u00e3o e Seguran\u00e7a",
+                    "max_pontos": 20,
+                    "descricao": "Compreens\u00e3o do cliente e sensa\u00e7\u00e3o de seguran\u00e7a nas orienta\u00e7\u00f5es"
+                },
+                {
+                    "id": "E3",
+                    "nome": "Esfor\u00e7o do Cliente",
+                    "max_pontos": 20,
+                    "descricao": "Mede o quanto o cliente precisou se esfor\u00e7ar \u2014 menor esfor\u00e7o = maior pontua\u00e7\u00e3o"
+                },
+                {
+                    "id": "E4",
+                    "nome": "Tempo e Fluidez",
+                    "max_pontos": 15,
+                    "descricao": "Avalia o tempo de resposta e a fluidez da intera\u00e7\u00e3o"
+                },
+                {
+                    "id": "E5",
+                    "nome": "Experi\u00eancia Relacional",
+                    "max_pontos": 15,
+                    "descricao": "Cordialidade, personaliza\u00e7\u00e3o e empatia demonstradas pelo analista"
+                }
+            ],
+            "iepc_total_max": 100,
+            "formula_qa": "nota_final_qa = soma(p1+p2+p3+p4+p5) - pontos_deduzidos_nc",
+            "formula_iepc": "iepc_total = soma(e1+e2+e3+e4+e5)",
+            "nc_deducao_padrao": -20,
+            "classificacao_scores": [
+                {
+                    "label": "Excelente",
+                    "threshold_min": 85,
+                    "cor": "#22C55E"
+                },
+                {
+                    "label": "Aten\u00e7\u00e3o",
+                    "threshold_min": 70,
+                    "cor": "#EAB308"
+                },
+                {
+                    "label": "Cr\u00edtico",
+                    "threshold_min": 0,
+                    "cor": "#EF4444"
+                }
+            ],
+            "problema_iepc": {
+                "descricao": "Gr\u00e1fico IEPC pode n\u00e3o aparecer em alguns casos",
+                "causas_possiveis": [
+                    "Dados E1-E5 zerados quando CSV n\u00e3o cont\u00e9m colunas IEPC",
+                    "AnalystRadarChart usa ResponsiveContainer que precisa de altura definida no pai",
+                    "Componente Recharts requer 'use client' e pode ter problemas de hidrata\u00e7\u00e3o"
+                ],
+                "componente_responsavel": "AnalystRadarChart.tsx dentro de AnalystDrilldown.tsx"
+            }
+        },
+        "exportacoes": {
+            "pdf": {
+                "status": "Implementado",
+                "biblioteca": "jsPDF 4.2.1 + jspdf-autotable 5.0.7",
+                "formato": "A4 landscape",
+                "arquivo": "src/lib/utils/pdfExport.ts",
+                "conteudo": [
+                    "Header com per\u00edodo",
+                    "KPI summary",
+                    "Tabela QA/IEPC por analista",
+                    "Tabela NCs",
+                    "Tabela Elogios"
+                ],
+                "nome_arquivo": "relatorio_ciclo_{periodo}.pdf"
+            },
+            "csv": {
+                "status": "Implementado",
+                "biblioteca": "Nativo (Blob + URL.createObjectURL)",
+                "arquivo": "src/lib/services/dataService.ts",
+                "conteudo": [
+                    "cycle_scores do per\u00edodo selecionado"
+                ]
+            },
+            "xlsx": {
+                "status": "N\u00e3o implementado"
+            },
+            "docx": {
+                "status": "N\u00e3o implementado"
+            },
+            "json": {
+                "status": "N\u00e3o implementado"
+            },
+            "ppt": {
+                "status": "N\u00e3o implementado"
+            }
+        },
+        "graficos": [
+            {
+                "nome": "Tend\u00eancia Mensal",
+                "componente": "MonthlyTrendChartInner",
+                "tipo": "LineChart (Recharts)",
+                "dados": "MONTHLY_TREND do mockData.ts (apenas 1 m\u00eas \u2014 mock)",
+                "metricas": [
+                    "qa",
+                    "iepc"
+                ]
+            },
+            {
+                "nome": "Ranking de Squads",
+                "componente": "SquadRankingChartInner",
+                "tipo": "BarChart (Recharts)",
+                "dados": "cycle_scores agrupados por squad",
+                "metricas": [
+                    "avgQA",
+                    "avgIEPC"
+                ]
+            },
+            {
+                "nome": "Radar do Analista",
+                "componente": "AnalystRadarChart",
+                "tipo": "RadarChart (Recharts)",
+                "dados": "p1-p5, e1-e5 do analista selecionado",
+                "metricas": [
+                    "P1",
+                    "P2",
+                    "P3",
+                    "P4",
+                    "P5",
+                    "E1",
+                    "E2",
+                    "E3",
+                    "E4",
+                    "E5"
+                ]
+            },
+            {
+                "nome": "Matriz de Pilares",
+                "componente": "PillarMatrix",
+                "tipo": "Grid visual (n\u00e3o Recharts)",
+                "dados": "M\u00e9dias p1-p5 e e1-e5 por squad/analista"
+            }
+        ],
+        "storage": {
+            "supabase_buckets": "Nenhum configurado",
+            "arquivos_locais": "Processados em mem\u00f3ria durante importa\u00e7\u00e3o \u2014 n\u00e3o persistidos",
+            "pdfs": "Gerados client-side e baixados diretamente \u2014 n\u00e3o armazenados",
+            "imagens_estaticas": [
+                "public/assets/images/5f5559140_ChatGPTImage27deabrde202616_50_50-1777926706123.png (logo principal)",
+                "public/assets/images/no_image.png (placeholder)",
+                "public/assets/images/app_logo.png (logo alternativa)"
+            ]
+        },
+        "localstorage_keys": [
+            {
+                "chave": "zetti_system_users",
+                "conteudo": "Array de SystemUser (usu\u00e1rios do sistema)"
+            },
+            {
+                "chave": "zetti_session",
+                "conteudo": "SessionData (sess\u00e3o ativa)"
+            },
+            {
+                "chave": "zetti_cycle_scores",
+                "conteudo": "Array de CycleScoreRow"
+            },
+            {
+                "chave": "zetti_nc_records",
+                "conteudo": "Array de NCRow"
+            },
+            {
+                "chave": "zetti_elogios",
+                "conteudo": "Array de ElogioRow"
+            },
+            {
+                "chave": "zetti_import_cycles",
+                "conteudo": "Array de ciclos importados"
+            },
+            {
+                "chave": "zetti_closed_cycles",
+                "conteudo": "Array de ClosedCycle"
+            },
+            {
+                "chave": "zetti_analyst_profiles",
+                "conteudo": "Array de AnalystProfile"
+            },
+            {
+                "chave": "zetti_manual_cycles",
+                "conteudo": "Ciclos manuais"
+            },
+            {
+                "chave": "zetti_user_profiles",
+                "conteudo": "Perfis de usu\u00e1rios"
+            }
+        ],
+        "ia": {
+            "provedor_ativo": "Google Gemini",
+            "modelo": "gemini/gemini-2.5-flash",
+            "modo": "Streaming (SSE via API Route)",
+            "api_route": "POST /api/ai/chat-completion",
+            "sdk": "@rocketnew/llm-sdk",
+            "provedores_suportados": [
+                "OPEN_AI",
+                "ANTHROPIC",
+                "GEMINI",
+                "PERPLEXITY"
+            ],
+            "parametros_padrao": {
+                "temperature": 0.4,
+                "max_tokens": 2000
+            },
+            "prompt_sistema": "Consultor s\u00eanior de Qualidade Operacional especializado em an\u00e1lise de dados de call center e suporte t\u00e9cnico. Responda sempre em portugu\u00eas brasileiro com linguagem executiva e objetiva.",
+            "dados_enviados_no_prompt": [
+                "Total de analistas avaliados",
+                "QA M\u00e9dia e IEPC M\u00e9dio do ciclo",
+                "Total de NCs e Elogios",
+                "Desempenho por squad",
+                "Desempenho individual (QA, IEPC, NCs, P1-P5, E1-E5)",
+                "NCs por tipo",
+                "Elogios por squad"
+            ],
+            "saida_esperada": [
+                "Gargalos Operacionais",
+                "Temas Priorit\u00e1rios para Treinamento",
+                "Padr\u00f5es de Acerto e Reconhecimento"
+            ],
+            "limitacoes": [
+                "Usa dados mock (ANALYSTS do mockData.ts) em vez de dados reais importados",
+                "Sem fallback se Gemini estiver indispon\u00edvel",
+                "Sem cache de respostas",
+                "Sem hist\u00f3rico de an\u00e1lises geradas"
+            ]
+        },
+        "pontos_criticos": {
+            "criticos": [
+                {
+                    "id": "C1",
+                    "titulo": "Dois sistemas de autentica\u00e7\u00e3o paralelos",
+                    "descricao": "authSystem.ts (localStorage) e AuthContext.tsx (Supabase Auth) coexistem sem sincroniza\u00e7\u00e3o",
+                    "impacto": "Inconsist\u00eancia de dados, confus\u00e3o de sess\u00e3o, impossibilidade de gerenciamento centralizado"
+                },
+                {
+                    "id": "C2",
+                    "titulo": "Dados de usu\u00e1rios em localStorage",
+                    "descricao": "Usu\u00e1rios, senhas e permiss\u00f5es ficam apenas no browser",
+                    "impacto": "Dados perdidos ao limpar cache, sem persist\u00eancia real no servidor"
+                },
+                {
+                    "id": "C3",
+                    "titulo": "Salt de senha fixo e hardcoded",
+                    "descricao": "SHA-256 com salt est\u00e1tico 'zetti_salt_2026' em c\u00f3digo-fonte",
+                    "impacto": "Vulner\u00e1vel a ataques se c\u00f3digo for exposto"
+                }
+            ],
+            "altos": [
+                {
+                    "id": "A1",
+                    "titulo": "Dados prim\u00e1rios em localStorage",
+                    "descricao": "cycle_scores, nc_records, elogios ficam em localStorage como fonte prim\u00e1ria",
+                    "impacto": "Dados perdidos se localStorage for limpo"
+                },
+                {
+                    "id": "A2",
+                    "titulo": "Sem multiusu\u00e1rio real",
+                    "descricao": "Sem isolamento de dados por usu\u00e1rio/tenant, filtro de equipes apenas visual",
+                    "impacto": "Qualquer usu\u00e1rio autenticado v\u00ea todos os dados"
+                },
+                {
+                    "id": "A3",
+                    "titulo": "Mock data misturado com dados reais",
+                    "descricao": "ExecutiveInsights e MonthlyTrendChart usam dados mock",
+                    "impacto": "Insights baseados em dados fict\u00edcios"
+                }
+            ],
+            "medios": [
+                {
+                    "id": "M1",
+                    "titulo": "IEPC n\u00e3o renderiza em alguns casos",
+                    "descricao": "Dados E1-E5 podem ser zero se CSV n\u00e3o tiver colunas IEPC"
+                },
+                {
+                    "id": "M2",
+                    "titulo": "Sem pagina\u00e7\u00e3o",
+                    "descricao": "Todas as listas carregam todos os registros de uma vez"
+                },
+                {
+                    "id": "M3",
+                    "titulo": "Sem tratamento de erros robusto",
+                    "descricao": "Erros de Supabase logados no console mas n\u00e3o exibidos ao usu\u00e1rio"
+                }
+            ],
+            "dividas_tecnicas": [
+                "Sem testes automatizados",
+                "Sem CI/CD configurado",
+                "Sem documenta\u00e7\u00e3o de API",
+                "Sem monitoramento de erros (Sentry)",
+                "Sem rate limiting nas API Routes",
+                "RLS policies muito permissivas"
+            ]
+        },
+        "maturidade": {
+            "classificacao_geral": "MVP Funcional",
+            "adequado_para": "Uso interno controlado com 1-5 usu\u00e1rios, dados de teste, ambiente n\u00e3o cr\u00edtico",
+            "nao_adequado_para": "Produ\u00e7\u00e3o institucional sem corre\u00e7\u00f5es de seguran\u00e7a e persist\u00eancia",
+            "dimensoes": [
+                {
+                    "dimensao": "Funcionalidade core",
+                    "nota": "7/10",
+                    "status": "Funcional"
+                },
+                {
+                    "dimensao": "Autentica\u00e7\u00e3o",
+                    "nota": "4/10",
+                    "status": "Funcional mas fr\u00e1gil"
+                },
+                {
+                    "dimensao": "Persist\u00eancia de dados",
+                    "nota": "5/10",
+                    "status": "Dual (localStorage + Supabase)"
+                },
+                {
+                    "dimensao": "Seguran\u00e7a",
+                    "nota": "3/10",
+                    "status": "Cr\u00edtica"
+                },
+                {
+                    "dimensao": "Multiusu\u00e1rio",
+                    "nota": "2/10",
+                    "status": "N\u00e3o implementado"
+                },
+                {
+                    "dimensao": "Exporta\u00e7\u00f5es",
+                    "nota": "6/10",
+                    "status": "PDF + CSV"
+                },
+                {
+                    "dimensao": "IA/Insights",
+                    "nota": "5/10",
+                    "status": "Funcional (dados mock)"
+                },
+                {
+                    "dimensao": "Auditoria/Logs",
+                    "nota": "1/10",
+                    "status": "Ausente"
+                },
+                {
+                    "dimensao": "Testes",
+                    "nota": "0/10",
+                    "status": "Ausente"
+                },
+                {
+                    "dimensao": "Performance",
+                    "nota": "5/10",
+                    "status": "Aceit\u00e1vel (sem pagina\u00e7\u00e3o)"
+                },
+                {
+                    "dimensao": "Escalabilidade",
+                    "nota": "2/10",
+                    "status": "N\u00e3o preparado"
+                }
+            ],
+            "readiness": [
+                {
+                    "objetivo": "Uso interno b\u00e1sico",
+                    "status": "Pronto"
+                },
+                {
+                    "objetivo": "Multiusu\u00e1rio real",
+                    "status": "N\u00e3o pronto \u2014 requer refatora\u00e7\u00e3o auth"
+                },
+                {
+                    "objetivo": "ISO/Auditoria",
+                    "status": "N\u00e3o pronto \u2014 sem audit log"
+                },
+                {
+                    "objetivo": "Escala (>100 usu\u00e1rios)",
+                    "status": "N\u00e3o pronto \u2014 localStorage, sem pagina\u00e7\u00e3o"
+                },
+                {
+                    "objetivo": "Produ\u00e7\u00e3o institucional",
+                    "status": "Parcialmente pronto"
+                }
+            ]
+        },
+        "proximos_passos": {
+            "fase_1_estabilizacao": [
+                "Migrar auth para Supabase Auth como fonte \u00fanica",
+                "Migrar leitura de dados para Supabase como prim\u00e1rio",
+                "Corrigir RLS policies para isolamento real",
+                "Criar tabela system_users no Supabase"
+            ],
+            "fase_2_funcionalidades": [
+                "Corrigir IEPC (garantir importa\u00e7\u00e3o e exibi\u00e7\u00e3o de E1-E5)",
+                "Implementar evolu\u00e7\u00e3o hist\u00f3rica real",
+                "M\u00f3dulo de elogios completo",
+                "Consolida\u00e7\u00e3o por analista"
+            ],
+            "fase_3_governanca": [
+                "Audit log completo",
+                "Rastreabilidade ISO",
+                "Exporta\u00e7\u00f5es XLSX/DOCX",
+                "Testes automatizados",
+                "Monitoramento de erros"
+            ]
+        }
+    }
+}

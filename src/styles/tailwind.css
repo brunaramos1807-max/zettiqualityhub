@@ -1,0 +1,249 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --background: #0A0F1E;
+  --foreground: #F1F5F9;
+  --primary: #1E40AF;
+  --primary-foreground: #FFFFFF;
+  --secondary: #3B82F6;
+  --secondary-foreground: #FFFFFF;
+  --accent: rgba(59,130,246,0.1);
+  --accent-foreground: #60A5FA;
+  --muted: #111827;
+  --muted-foreground: rgba(255,255,255,0.4);
+  --card: #111827;
+  --card-foreground: #F1F5F9;
+  --border: rgba(255,255,255,0.06);
+  --input: rgba(255,255,255,0.04);
+  --ring: #3B82F6;
+  --radius: 0.75rem;
+  --font-sans: 'Inter', sans-serif;
+  --font-display: 'Playfair Display', serif;
+  --success: #22C55E;
+  --warning: #F59E0B;
+  --danger: #EF4444;
+  --success-bg: rgba(34,197,94,0.1);
+  --warning-bg: rgba(245,158,11,0.1);
+  --danger-bg: rgba(239,68,68,0.1);
+  --header-bg: #0F172A;
+  --header-border: rgba(255,255,255,0.06);
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    border-color: var(--border);
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  h1, h2, h3, h4, h5, h6, p {
+    margin: 0;
+  }
+  select option {
+    background-color: #1E293B;
+    color: #F1F5F9;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+  }
+  .font-playfair {
+    font-family: 'Playfair Display', serif;
+  }
+  .text-success {
+    color: var(--success);
+  }
+  .text-warning {
+    color: var(--warning);
+  }
+  .text-danger {
+    color: var(--danger);
+  }
+  .bg-success-subtle {
+    background-color: var(--success-bg);
+  }
+  .bg-warning-subtle {
+    background-color: var(--warning-bg);
+  }
+  .bg-danger-subtle {
+    background-color: var(--danger-bg);
+  }
+  .border-success {
+    border-color: var(--success);
+  }
+  .border-warning {
+    border-color: var(--warning);
+  }
+  .border-danger {
+    border-color: var(--danger);
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .tab-active {
+    color: #60A5FA;
+    border-bottom: 2px solid #3B82F6;
+    background-color: rgba(59,130,246,0.06);
+  }
+  .tab-inactive {
+    color: rgba(255,255,255,0.4);
+    border-bottom: 2px solid transparent;
+  }
+  .tab-inactive:hover {
+    color: rgba(255,255,255,0.7);
+    background-color: rgba(255,255,255,0.04);
+  }
+  .card-glow {
+    box-shadow: 0 0 0 1px rgba(59,130,246,0.1), 0 4px 24px rgba(0,0,0,0.3);
+  }
+  .metric-value {
+    font-variant-numeric: tabular-nums;
+  }
+  .section-divider {
+    border-top: 1px solid var(--border);
+    margin: 2rem 0;
+  }
+}
+
+@layer components {
+  .kpi-card {
+    background-color: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    transition: border-color 0.2s ease;
+  }
+  .kpi-card:hover {
+    border-color: rgba(59,130,246,0.2);
+  }
+  .btn-primary {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+    border-radius: 0.5rem;
+    padding: 0.5rem 1rem;
+    font-weight: 500;
+    font-size: 0.875rem;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-sans);
+  }
+  .btn-primary:hover {
+    background-color: #1D4ED8;
+  }
+  .btn-secondary {
+    background-color: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.7);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 0.5rem;
+    padding: 0.5rem 1rem;
+    font-weight: 500;
+    font-size: 0.875rem;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-sans);
+  }
+  .btn-secondary:hover {
+    background-color: rgba(255,255,255,0.1);
+  }
+  .input-field {
+    background-color: var(--input);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    color: var(--foreground);
+    padding: 0.5rem 0.875rem;
+    font-size: 0.875rem;
+    width: 100%;
+    transition: border-color 0.15s ease;
+    outline: none;
+    font-family: var(--font-sans);
+  }
+  .input-field:focus {
+    border-color: rgba(59,130,246,0.5);
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+  }
+  .input-field::placeholder {
+    color: var(--muted-foreground);
+  }
+  .badge-success {
+    background-color: var(--success-bg);
+    color: var(--success);
+    border: 1px solid rgba(34,197,94,0.2);
+    border-radius: 9999px;
+    padding: 0.125rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+  .badge-warning {
+    background-color: var(--warning-bg);
+    color: var(--warning);
+    border: 1px solid rgba(245,158,11,0.2);
+    border-radius: 9999px;
+    padding: 0.125rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+  .badge-danger {
+    background-color: var(--danger-bg);
+    color: var(--danger);
+    border: 1px solid rgba(239,68,68,0.2);
+    border-radius: 9999px;
+    padding: 0.125rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+  .pillar-square {
+    background-color: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 1rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    aspect-ratio: 1;
+  }
+  .pillar-square:hover {
+    border-color: rgba(59,130,246,0.3);
+    background-color: rgba(59,130,246,0.05);
+  }
+  .section-header {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--foreground);
+    margin-bottom: 1rem;
+  }
+  .page-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--foreground);
+  }
+  .page-subtitle {
+    font-size: 0.875rem;
+    color: var(--muted-foreground);
+    margin-top: 0.25rem;
+  }
+}

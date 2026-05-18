@@ -1,0 +1,968 @@
+DOSSIE TECNICO COMPLETO — Portal da Qualidade (ZettiQualityHub)
+================================================================================
+Versao: 1.0.0
+Data de geracao: 2026-05-11
+URL de producao: https://zettiquali9387.builtwithrocket.new
+Classificacao: Documento tecnico interno — uso restrito
+================================================================================
+
+
+================================================================================
+1. VISAO GERAL DO SISTEMA
+================================================================================
+
+OBJETIVO:
+O Portal da Qualidade (ZettiQualityHub) e uma plataforma interna de gestao da
+qualidade operacional da Zetti Tech. Centraliza a analise de desempenho de
+analistas de suporte, calcula indicadores QA e IEPC, registra nao conformidades,
+gerencia elogios e gera relatorios executivos com suporte de IA.
+
+TIPO DO SISTEMA:
+SaaS interno de gestao da qualidade — em evolucao para plataforma institucional
+
+ARQUITETURA:
+  [FRONTEND Next.js 15]
+    App Router (SSR/CSR)
+    Componentes React 19
+    Contexts + Hooks
+    localStorage (auth + dados primarios)
+         |
+    [SUPABASE (BaaS)]          [GEMINI AI]
+    PostgreSQL DB              Chat Completion
+    Auth (parcial)             Streaming SSE
+    Realtime                   gemini-2.5-flash
+    RLS Policies
+
+STACK TECNOLOGICA:
+  Framework:     Next.js 15.1.11
+  Linguagem:     TypeScript ^5.0.0
+  UI:            React 19.0.3
+  Estilizacao:   Tailwind CSS 3.4.6
+  Banco:         Supabase / @supabase/supabase-js 2.105.3
+  IA:            Google Gemini / gemini-2.5-flash / @rocketnew/llm-sdk
+  PDF:           jsPDF 4.2.1 + jspdf-autotable 5.0.7
+  CSV:           PapaParse 5.5.3
+  Excel:         XLSX 0.18.5
+  Notificacoes:  Sonner ^1.7.4
+  Icones:        Lucide React ^1.7.0
+  Graficos:      Recharts ^2.15.2
+  Fontes:        DM Sans + Playfair Display (Google Fonts)
+
+INTEGRACOES EXTERNAS:
+  Supabase       — Banco, Auth, Realtime       [ATIVO]
+  Google Gemini  — Insights IA                 [ATIVO]
+  Google Analytics — Rastreamento de uso       [CONFIGURADO]
+  OpenAI         — Chat completion disponivel  [KEY PENDENTE]
+  Anthropic      — Chat completion disponivel  [KEY PENDENTE]
+  Perplexity     — Chat completion disponivel  [KEY PENDENTE]
+  Stripe         — Pagamentos disponivel       [KEY PENDENTE]
+
+VARIAVEIS DE AMBIENTE:
+  NEXT_PUBLIC_SUPABASE_URL          [CONFIGURADA]
+  NEXT_PUBLIC_SUPABASE_ANON_KEY     [CONFIGURADA]
+  GEMINI_API_KEY                    [CONFIGURADA]
+  NEXT_PUBLIC_GA_MEASUREMENT_ID     [PENDENTE]
+  OPENAI_API_KEY                    [PENDENTE]
+  ANTHROPIC_API_KEY                 [PENDENTE]
+  NEXT_PUBLIC_SITE_URL              [CONFIGURADA]
+
+FLUXO MACRO:
+  1. Usuario acessa qualquer rota
+  2. RouteGuard verifica sessao em localStorage
+  3. Sem sessao → exibe SystemLoginScreen
+  4. Login valida contra localStorage (authSystem.ts)
+  5. Sessao criada com cargo + permissoes
+  6. AppHeader renderiza tabs filtradas por isAdmin
+  7. Usuario importa dados CSV/XLSX via ImportModal
+  8. Dados salvos em localStorage + Supabase (paralelo)
+  9. Dashboard le dados do localStorage (fallback Supabase)
+  10. Gemini AI gera insights executivos sob demanda
+  11. PDF/CSV exportados via jsPDF/dataService
+
+
+================================================================================
+2. ESTRUTURA DE PAGINAS
+================================================================================
+
+ROTAS E PAGINAS:
+  /                   → src/app/page.tsx                    [Todos autenticados]
+  /cycle-dashboard    → src/app/cycle-dashboard/page.tsx    [Todos autenticados]
+  /evolucao-geral     → src/app/evolucao-geral/page.tsx     [Todos autenticados]
+  /auditoria          → src/app/auditoria/page.tsx          [Todos autenticados]
+  /nao-conformidades  → src/app/nao-conformidades/page.tsx  [Todos autenticados]
+  /mural-elogios      → src/app/mural-elogios/page.tsx      [Todos autenticados]
+  /historico          → src/app/historico/page.tsx          [Todos autenticados]
+  /importacoes        → src/app/importacoes/page.tsx        [Todos autenticados]
+  /documentos         → src/app/documentos/page.tsx         [Todos autenticados]
+  /gestao             → src/app/gestao/page.tsx             [ADMIN ONLY]
+  /admin-config       → src/app/admin-config/page.tsx       [ADMIN ONLY]
+  /configuracoes      → src/app/configuracoes/page.tsx      [ADMIN ONLY]
+  /sign-up-login      → src/app/sign-up-login/page.tsx      [Publico]
+
+PAGINA: / (Visao Geral)
+  Componente principal: HomeExecutiveView
+  Componentes: AppHeader, HeroCycleStatus, HomeKPICards, MonthlyTrendChart,
+               TopAnalysts, ExecutiveInsights, AppFooter, ImportModal
+  Dados: cycle_scores, import_cycles
+  Funcionalidades: KPIs ciclo ativo, grafico tendencia mensal, ranking analistas,
+                   insights IA Gemini
+  Permissoes especiais:
+    Importar: permissao_editar ou admin
+    Insights: permissao_acessar_relatorios ou admin/gestor/coord.geral
+
+PAGINA: /cycle-dashboard (Dashboard do Ciclo)
+  Componente principal: CycleDashboard
+  Componentes: CycleFilters, CycleKPICards, SquadRankingChart, PillarMatrix,
+               AnalystDrilldown, PillarDrilldownModal, ExecutiveInsights,
+               CompareAnalystsModal, NonConformitiesGuide
+  Dados: cycle_scores, nc_records, elogios, import_cycles
+  Funcionalidades: Filtros squad/analista/periodo, ranking squads, matriz pilares
+                   QA/IEPC, drilldown analista, comparacao analistas, CSV/PDF
+  Permissoes: Importar (permissao_editar), Exportar (permissao_acessar_relatorios)
+
+PAGINA: /configuracoes (Configuracoes — Admin Only)
+  Protecao: RouteGuard requireAdmin=true
+  Abas: Usuarios | Cargos | Permissoes | Painel Administrativo
+  Funcionalidades: CRUD usuarios, visualizacao cargos, edicao permissoes,
+                   painel metricas admin
+  Dados: localStorage (zetti_system_users)
+
+PAGINA: /mural-elogios
+  Dados: elogios (localStorage/Supabase)
+  Funcionalidades: Listagem elogios, destaque, filtro por squad
+
+PAGINA: /nao-conformidades
+  Dados: nc_records (localStorage/Supabase)
+  Funcionalidades: Listagem NCs, filtros analista/squad/tipo, detalhes NC
+
+PAGINA: /historico
+  Dados: import_cycles
+  Funcionalidades: Historico importacoes, ciclos fechados, linha do tempo
+
+PAGINA: /evolucao-geral
+  Dados: MONTHLY_TREND (mock — apenas 1 mes)
+  Funcionalidades: Grafico evolucao historica QA/IEPC
+
+
+================================================================================
+3. COMPONENTES E FRONTEND
+================================================================================
+
+ESTRUTURA DE PASTAS:
+  src/
+  ├── app/
+  │   ├── api/ai/chat-completion/route.ts   ← API Route IA
+  │   ├── components/                        ← Componentes da Home
+  │   │   ├── HeroCycleStatus.tsx
+  │   │   ├── HomeKPICards.tsx
+  │   │   ├── HomeExecutiveView.tsx
+  │   │   ├── MonthlyTrendChart.tsx
+  │   │   ├── MonthlyTrendChartInner.tsx
+  │   │   ├── TopAnalysts.tsx
+  │   │   └── NavigationShortcuts.tsx
+  │   ├── cycle-dashboard/
+  │   │   ├── page.tsx
+  │   │   └── components/
+  │   │       ├── CycleDashboard.tsx
+  │   │       ├── CycleFilters.tsx
+  │   │       ├── CycleKPICards.tsx
+  │   │       ├── SquadRankingChart.tsx
+  │   │       ├── SquadRankingChartInner.tsx
+  │   │       ├── PillarMatrix.tsx
+  │   │       ├── AnalystDrilldown.tsx
+  │   │       ├── AnalystRadarChart.tsx
+  │   │       ├── PillarDrilldownModal.tsx
+  │   │       ├── CompareAnalystsModal.tsx
+  │   │       ├── NonConformitiesGuide.tsx
+  │   │       └── ExecutiveInsights.tsx
+  │   ├── configuracoes/page.tsx
+  │   ├── gestao/page.tsx
+  │   ├── admin-config/page.tsx
+  │   ├── auditoria/page.tsx
+  │   ├── nao-conformidades/page.tsx
+  │   ├── mural-elogios/page.tsx
+  │   ├── historico/page.tsx
+  │   ├── importacoes/page.tsx
+  │   ├── documentos/page.tsx
+  │   ├── evolucao-geral/page.tsx
+  │   ├── sign-up-login/
+  │   │   ├── page.tsx
+  │   │   └── components/LoginScreen.tsx
+  │   ├── layout.tsx
+  │   ├── page.tsx
+  │   └── not-found.tsx
+  ├── components/
+  │   ├── AppHeader.tsx
+  │   ├── AppFooter.tsx
+  │   ├── ImportModal.tsx
+  │   ├── RouteGuard.tsx
+  │   ├── SystemLoginScreen.tsx
+  │   ├── GoogleAnalytics.tsx
+  │   └── ui/
+  │       ├── AppIcon.tsx
+  │       ├── AppImage.tsx
+  │       └── AppLogo.tsx
+  ├── contexts/
+  │   ├── AuthContext.tsx
+  │   └── SystemAuthContext.tsx
+  ├── lib/
+  │   ├── authSystem.ts
+  │   ├── mockData.ts
+  │   ├── supabase/client.tsx
+  │   ├── ai/
+  │   │   ├── aiClient.ts
+  │   │   └── chatCompletion.ts
+  │   ├── hooks/
+  │   │   ├── useChat.ts
+  │   │   └── useRealtimeSync.ts
+  │   ├── services/
+  │   │   ├── dataService.ts
+  │   │   └── supabaseDataService.ts
+  │   └── utils/
+  │       └── pdfExport.ts
+  └── styles/
+      ├── index.css
+      └── tailwind.css
+
+COMPONENTES GLOBAIS:
+  AppHeader (src/components/AppHeader.tsx)
+    Props: onImportClick, userName, userRole, userAvatar, activeTab
+    Comportamento: Sticky header, tabs agrupadas, menu usuario com logout
+    Grupos de tabs: VISAO | OPERACAO | HISTORICO | DADOS | ADMIN
+    Tabs admin-only: Gestao, Config. Legado, Configuracoes
+
+  ImportModal (src/components/ImportModal.tsx)
+    Props: isOpen, onClose, onImportSuccess
+    Steps: choose-type → upload → validate → done
+    Tipos: scores (QA/IEPC) | ncs | elogios
+    Formatos: CSV (auto-detect ;/,) e XLSX
+    Persistencia: localStorage (primario) + Supabase (paralelo)
+
+  RouteGuard (src/components/RouteGuard.tsx)
+    Props: children, requireAdmin
+    Comportamento: Exibe login se sem sessao, acesso negado se sem permissao
+
+  SystemLoginScreen (src/components/SystemLoginScreen.tsx)
+    Funcionalidades: Login, Cadastro, Recuperacao de senha
+
+HOOKS:
+  useChat (lib/hooks/useChat.ts)
+    Finalidade: Chat com IA via API Route (streaming SSE)
+    Uso: ExecutiveInsights
+
+  useRealtimeSync (lib/hooks/useRealtimeSync.ts)
+    Finalidade: Supabase Realtime para tabelas especificas
+    Tabelas: cycle_scores, nc_records, elogios, import_cycles
+
+  useSystemAuth (contexts/SystemAuthContext.tsx)
+    Fornece: session, loading, isAdmin, login, logout
+
+  useAuth (contexts/AuthContext.tsx)
+    Fornece: user, userProfile, signOut (Supabase)
+
+
+================================================================================
+4. DESIGN SYSTEM E IDENTIDADE VISUAL
+================================================================================
+
+PALETA DE CORES:
+  Backgrounds:
+    #0D1117    — Background principal das paginas
+    #161B22    — Background de cards
+    #1C2333    — Background de inputs
+    #1E293B    — Background do header
+
+  Primarias:
+    #1E40AF    — Azul principal (--primary)
+    #3B82F6    — Azul secundario (--secondary)
+    #60A5FA    — Azul claro (textos/badges)
+    #1D4ED8    — Azul hover
+
+  Semanticas:
+    #22C55E    — Verde sucesso / score excelente (>=85)
+    #EAB308    — Amarelo atencao / score atencao (>=70)
+    #EF4444    — Vermelho critico / score critico (<70)
+    #16A34A    — Verde (--success)
+    #D97706    — Amarelo (--warning)
+    #DC2626    — Vermelho (--danger)
+
+  Texto:
+    #FFFFFF    — Texto branco principal
+    #C9D1D9    — Texto cinza claro
+    #8B949E    — Texto cinza medio (subtitulos)
+    rgba(255,255,255,0.5) — Texto semi-transparente
+
+  Bordas:
+    rgba(255,255,255,0.08)  — Borda sutil padrao
+    rgba(255,255,255,0.12)  — Borda mais visivel
+
+CORES POR CARGO:
+  Administrador:     #22C55E (verde)
+  Coordenador:       #60A5FA (azul claro)
+  Gestor:            #A78BFA (roxo)
+  Coordenador Geral: #F59E0B (ambar)
+  Auditor:           #FB923C (laranja)
+
+TIPOGRAFIA:
+  DM Sans         — Corpo, UI, labels (--font-dm-sans)
+  Playfair Display — Titulos, headings (--font-playfair)
+  Inter           — Fallback (--font-sans)
+
+TOKENS:
+  --radius: 0.75rem (12px) — border-radius padrao
+  Padding cards: 1.5rem (24px)
+  Gap padrao: 0.5rem / 1rem / 1.5rem
+
+TEMA:
+  Dark theme aplicado via inline styles (nao usa Tailwind dark:)
+  Responsividade: Mobile-first, breakpoints sm/md/lg/xl/2xl
+  Scrollbar: .scrollbar-hide para ocultar scrollbars horizontais
+
+CLASSIFICACAO DE SCORES:
+  >= 85 → "Excelente" (verde #22C55E)
+  >= 70 → "Atencao" (amarelo #EAB308)
+  <  70 → "Critico" (vermelho #EF4444)
+
+
+================================================================================
+5. BANCO DE DADOS (SUPABASE)
+================================================================================
+
+PROVIDER: Supabase (PostgreSQL)
+
+TABELA: user_profiles
+  id          UUID PK → auth.users(id) ON DELETE CASCADE
+  email       TEXT NOT NULL UNIQUE
+  full_name   TEXT DEFAULT ''
+  role        user_role ENUM
+  squad       TEXT
+  avatar      TEXT DEFAULT ''
+  created_at  TIMESTAMPTZ
+  updated_at  TIMESTAMPTZ
+  Indices: idx_user_profiles_email
+  RLS: Ativo — usuario gerencia proprio perfil; admin gerencia todos
+
+TABELA: import_cycles
+  id           UUID PK DEFAULT gen_random_uuid()
+  periodo      TEXT NOT NULL UNIQUE (ex: "04/2026")
+  imported_by  UUID → user_profiles(id) ON DELETE SET NULL
+  imported_at  TIMESTAMPTZ
+  file_name    TEXT
+  record_count INTEGER DEFAULT 0
+  RLS: SELECT/INSERT para todos autenticados
+
+TABELA: cycle_scores
+  id                  UUID PK
+  cycle_id            UUID → import_cycles(id) ON DELETE CASCADE
+  periodo             TEXT NOT NULL
+  data_registro       TEXT
+  analista            TEXT NOT NULL
+  squad               TEXT NOT NULL
+  coordenador         TEXT NOT NULL
+  auditor             TEXT
+  nota_final_qa       NUMERIC(6,2) DEFAULT 0  [0-100]
+  iepc_total          NUMERIC(6,2) DEFAULT 0  [0-100]
+  total_ncs           INTEGER DEFAULT 0
+  pontos_deduzidos_nc NUMERIC(6,2) DEFAULT 0
+  p1                  NUMERIC(6,2) DEFAULT 0  [max 22]
+  p2                  NUMERIC(6,2) DEFAULT 0  [max 34]
+  p3                  NUMERIC(6,2) DEFAULT 0  [max 18]
+  p4                  NUMERIC(6,2) DEFAULT 0  [max 14]
+  p5                  NUMERIC(6,2) DEFAULT 0  [max 12]
+  e1                  NUMERIC(6,2) DEFAULT 0  [max 30]
+  e2                  NUMERIC(6,2) DEFAULT 0  [max 20]
+  e3                  NUMERIC(6,2) DEFAULT 0  [max 20]
+  e4                  NUMERIC(6,2) DEFAULT 0  [max 15]
+  e5                  NUMERIC(6,2) DEFAULT 0  [max 15]
+  created_at          TIMESTAMPTZ
+  Indices: periodo, analista, squad
+  RLS: SELECT/INSERT/DELETE para todos autenticados
+
+TABELA: nc_records
+  id                    UUID PK
+  cycle_id              UUID → import_cycles(id) ON DELETE CASCADE
+  periodo               TEXT NOT NULL
+  data_registro         TEXT
+  analista              TEXT NOT NULL
+  squad                 TEXT NOT NULL
+  coordenador           TEXT NOT NULL
+  auditor               TEXT
+  tipo_nc               TEXT NOT NULL
+  descricao             TEXT
+  pontos_deduzidos      NUMERIC(6,2) DEFAULT -20
+  protocolo_referencia  TEXT
+  avaliacao_id          TEXT
+  created_at            TIMESTAMPTZ
+  Indices: periodo, analista
+  RLS: SELECT/INSERT/DELETE para todos autenticados
+
+TABELA: elogios
+  id           UUID PK
+  cycle_id     UUID → import_cycles(id) ON DELETE CASCADE
+  periodo      TEXT NOT NULL
+  colaborador  TEXT NOT NULL
+  squad        TEXT NOT NULL
+  cliente      TEXT
+  protocolo    TEXT
+  elogio       TEXT NOT NULL
+  destaque     BOOLEAN DEFAULT false
+  created_at   TIMESTAMPTZ
+  Indices: periodo, colaborador
+  RLS: SELECT/INSERT/UPDATE/DELETE para todos autenticados
+
+ENUM: user_role
+  Valores: 'Admin', 'Coordenador', 'Diretoria', 'Gestor', 'Coordenador Geral', 'Auditor'
+
+FUNCOES E TRIGGERS:
+  handle_new_user() — TRIGGER FUNCTION
+    Cria user_profile automaticamente ao criar usuario no Supabase Auth
+    Trigger: on_auth_user_created AFTER INSERT ON auth.users
+
+  is_admin() → BOOLEAN
+    Verifica se usuario atual tem role Admin
+
+  is_admin_or_diretoria() → BOOLEAN
+    Verifica se usuario atual tem role Admin ou Diretoria
+
+MIGRATIONS:
+  20260505174502_zetti_quality_hub.sql   — Schema principal completo
+  20260505200000_admin_users_setup.sql   — Setup de usuarios admin
+  20260508203000_add_roles_and_bruna.sql — Roles Gestor, Coord.Geral, Auditor
+
+MAPEAMENTO DADOS → ARMAZENAMENTO:
+  Usuarios do sistema    → localStorage: zetti_system_users
+  Sessao ativa           → localStorage: zetti_session
+  Scores QA/IEPC         → localStorage: zetti_cycle_scores + Supabase: cycle_scores
+  Nao Conformidades      → localStorage: zetti_nc_records + Supabase: nc_records
+  Elogios                → localStorage: zetti_elogios + Supabase: elogios
+  Ciclos de importacao   → localStorage: zetti_import_cycles + Supabase: import_cycles
+  Perfis Supabase        → Supabase: user_profiles
+  Ciclos fechados        → localStorage: zetti_closed_cycles
+  Perfis de analistas    → localStorage: zetti_analyst_profiles
+
+
+================================================================================
+6. AUTENTICACAO E USUARIOS
+================================================================================
+
+SISTEMA PRIMARIO: Auth Local (authSystem.ts)
+  Armazenamento: localStorage
+  Hash de senha: SHA-256 via Web Crypto API + salt fixo 'zetti_salt_2026'
+  Sessao: JSON em localStorage com timeout de inatividade (30 min)
+  Timeout: Detectado por eventos mousemove/keydown/click/scroll/touchstart
+  Logout automatico: setTimeout de 30 minutos sem atividade
+
+SISTEMA SECUNDARIO: Supabase Auth (AuthContext.tsx)
+  Armazenamento: Supabase Auth (JWT)
+  Tabela: user_profiles (criada via trigger)
+  Status: Integrado mas nao e o fluxo principal de login
+
+ROLES DISPONIVEIS:
+  Administrador | Coordenador | Gestor | Coordenador Geral | Auditor
+
+PERMISSOES GRANULARES:
+  acesso_total                    — Todas as permissoes
+  visualizar_todas_equipes        — Ver todas as squads
+  visualizar_equipes_especificas  — Lista de squads permitidas (array)
+  permissao_editar                — Editar registros e dados
+  permissao_visualizar            — Somente leitura
+  permissao_cadastrar_usuarios    — Criar usuarios
+  permissao_excluir_usuarios      — Deletar usuarios
+  permissao_acessar_relatorios    — Exportar relatorios
+
+PERMISSOES PADRAO:
+  Admin: TODAS as permissoes habilitadas
+  Outros: apenas permissao_visualizar = true
+
+USUARIOS PADRAO (SEED):
+  admin@zetti.com.br          / ZettiAdmin@2026 / Administrador / Ativo
+  brunaramos1807@gmail.com    / ZettiAdmin@2026 / Administrador / Ativo
+
+EQUIPES DISPONIVEIS:
+  PDV | PDV N1 | Compras e Estoque | Financeiro Fiscal | Todas
+
+FLUXO DE LOGIN:
+  1. Usuario preenche email + senha
+  2. loginUser() busca usuario em localStorage
+  3. Verifica status === 'Ativo'
+  4. Compara SHA-256(senha + salt) com senha_hash armazenada
+  5. Cria SessionData com userId, email, nome, cargo, permissoes
+  6. Salva em localStorage (zetti_session)
+  7. SystemAuthContext atualiza estado session
+  8. RouteGuard libera acesso ao conteudo
+  9. Timer de inatividade inicia (30 min)
+
+
+================================================================================
+7. FLUXO DA IMPORTACAO
+================================================================================
+
+FLUXO COMPLETO:
+  1. Usuario clica "Importar Dados" (visivel para permissao_editar ou admin)
+  2. ImportModal abre (step: choose-type)
+  3. Usuario seleciona tipo: scores | ncs | elogios
+  4. Usuario faz upload de arquivo CSV ou XLSX
+  5. parseFile() detecta formato e parseia
+  6. validateColumns() verifica colunas obrigatorias
+  7. buildValidationSummary() calcula preview dos dados
+  8. Usuario confirma importacao
+  9. importCycleData() salva em localStorage
+  10. importCycleDataToSupabase() salva em Supabase (paralelo)
+  11. window.dispatchEvent('zetti_import_done') notifica dashboard
+  12. Dashboard recarrega dados automaticamente
+
+COLUNAS OBRIGATORIAS POR TIPO:
+  scores: Analista, Squad, Coordenador, Nota Final QA (0-100),
+          IEPC - Indice de Experiencia Percebida pelo Cliente (0-100)
+  ncs:    Analista, Squad, Tipo de Nao Conformidade, Pontos Deduzidos
+  elogios: Colaborador, Elogio
+
+
+================================================================================
+8. ENGINE QA + IEPC
+================================================================================
+
+QA — 5 PILARES (Total: 100 pontos):
+  P1 — Gestao do Fluxo e Rastreabilidade do Atendimento (max 22pts)
+       P1.1.1 Identificacao e Boas-vindas (5pts)
+       P1.1.2 Formalizacao e comunicacao do protocolo SUP (9pts)
+       P1.1.3 Encerramento da interacao por etapa (8pts)
+
+  P2 — Gestao da Tratativa da Demanda (max 34pts)
+       P2.2.1 Validacao e esclarecimento de duvidas (8pts)
+       P2.2.2 Orientacao e conducao da execucao (9pts)
+       P2.2.3 Resolucao ou direcionamento adequado (9pts)
+       P2.2.4 Documentacao tecnica do atendimento (8pts)
+
+  P3 — Analise e Assertividade Tecnica da Demanda (max 18pts)
+       P3.3.1 Analise tecnica da demanda (10pts)
+       P3.3.2 Uso adequado das ferramentas de apoio (8pts)
+
+  P4 — Qualidade da Comunicacao no Atendimento (max 14pts)
+       P4.4.1 Uso adequado da lingua portuguesa (4pts)
+       P4.4.2 Adequacao do tom e postura profissional (5pts)
+       P4.4.3 Clareza e organizacao da comunicacao (5pts)
+
+  P5 — Conduta Relacional no Atendimento (max 12pts)
+       P5.5.1 Cordialidade e empatia (4pts)
+       P5.5.2 Proatividade na conducao (5pts)
+       P5.5.3 Over delivery (3pts)
+
+IEPC — 5 DIMENSOES (Total: 100 pontos):
+  E1 — Resolucao Percebida (max 30pts)
+       Percepcao do cliente sobre resolucao efetiva
+
+  E2 — Compreensao e Seguranca (max 20pts)
+       Clareza e confianca nas orientacoes
+
+  E3 — Esforco do Cliente (max 20pts)
+       Menor esforco = maior pontuacao
+
+  E4 — Tempo e Fluidez (max 15pts)
+       Agilidade e continuidade do atendimento
+
+  E5 — Experiencia Relacional (max 15pts)
+       Cordialidade, personalizacao, empatia
+
+FORMULAS:
+  nota_final_qa = soma(p1+p2+p3+p4+p5) - pontos_deduzidos_nc
+  iepc_total = soma(e1+e2+e3+e4+e5)
+  NC deducao padrao: -20 pontos por NC
+
+CLASSIFICACAO:
+  >= 85 → Excelente (verde)
+  >= 70 → Atencao (amarelo)
+  <  70 → Critico (vermelho)
+
+PROBLEMA DO GRAFICO IEPC:
+  Componente responsavel: AnalystRadarChart.tsx dentro de AnalystDrilldown.tsx
+  Causas possiveis:
+    1. Dados E1-E5 zerados quando CSV nao contem colunas IEPC
+    2. ResponsiveContainer precisa de altura definida no pai
+    3. Problemas de hidratacao com Recharts
+
+
+================================================================================
+9. EXPORTACOES
+================================================================================
+
+PDF (IMPLEMENTADO):
+  Biblioteca: jsPDF 4.2.1 + jspdf-autotable 5.0.7
+  Arquivo: src/lib/utils/pdfExport.ts
+  Formato: A4 landscape
+  Conteudo: Header, KPI summary, tabela QA/IEPC, tabela NCs, tabela Elogios
+  Nome do arquivo: relatorio_ciclo_{periodo}.pdf
+  Permissao: permissao_acessar_relatorios ou admin
+
+CSV (IMPLEMENTADO):
+  Biblioteca: Nativo (Blob + URL.createObjectURL)
+  Arquivo: src/lib/services/dataService.ts
+  Conteudo: cycle_scores do periodo selecionado
+
+XLSX: NAO IMPLEMENTADO
+DOCX: NAO IMPLEMENTADO
+JSON: NAO IMPLEMENTADO
+PPT:  NAO IMPLEMENTADO
+
+
+================================================================================
+10. DASHBOARDS E INDICADORES
+================================================================================
+
+GRAFICOS EXISTENTES:
+  Tendencia Mensal (MonthlyTrendChartInner)
+    Tipo: LineChart (Recharts)
+    Dados: MONTHLY_TREND do mockData.ts — APENAS 1 MES (MOCK)
+    Metricas: qa, iepc
+
+  Ranking de Squads (SquadRankingChartInner)
+    Tipo: BarChart (Recharts)
+    Dados: cycle_scores agrupados por squad
+    Metricas: avgQA, avgIEPC
+
+  Radar do Analista (AnalystRadarChart)
+    Tipo: RadarChart (Recharts)
+    Dados: p1-p5, e1-e5 do analista selecionado
+
+  Matriz de Pilares (PillarMatrix)
+    Tipo: Grid visual (nao Recharts)
+    Dados: Medias p1-p5 e e1-e5
+
+KPIs CALCULADOS:
+  QA Media: media de nota_final_qa de todos os analistas do periodo
+  IEPC Medio: media de iepc_total
+  Total NCs: soma de total_ncs
+  Total Elogios: count de elogios do periodo
+  Analistas Avaliados: count de registros em cycle_scores
+
+FILTROS DISPONIVEIS:
+  Por Squad | Por Analista | Por Periodo | Por ViewMode (overview/pilares/analistas)
+
+INDICADORES AUSENTES (a implementar):
+  Ranking individual de analistas
+  Elogios por analista no dashboard
+  Reincidencia de NCs
+  NCs por analista/auditor
+  IEPC mensal historico
+  Evolucao historica real (usa mock atualmente)
+
+
+================================================================================
+11. STORAGE E ARQUIVOS
+================================================================================
+
+SUPABASE STORAGE: Nenhum bucket configurado
+
+ARQUIVOS LOCAIS: Processados em memoria durante importacao — nao persistidos
+
+PDFs: Gerados client-side e baixados diretamente — nao armazenados no servidor
+
+IMAGENS ESTATICAS:
+  public/favicon.ico
+  public/assets/images/5f5559140_ChatGPTImage27deabrde202616_50_50-1777926706123.png
+    (Logo principal — usada no AppHeader)
+  public/assets/images/no_image.png (Placeholder)
+  public/assets/images/app_logo.png (Logo alternativa)
+
+
+================================================================================
+12. LOGS E AUDITORIA
+================================================================================
+
+LOGS EXISTENTES:
+  Console.error em supabaseDataService.ts para erros de Supabase
+  Campo ultimo_acesso em SystemUser (atualizado no login)
+  Registro de importacoes: import_cycles com imported_at, file_name, record_count
+
+TRILHA DE AUDITORIA: NAO IMPLEMENTADA
+  Sem tabela de audit_log no banco
+  Sem versionamento de alteracoes
+  Sem rastreamento de quem alterou o que
+
+
+================================================================================
+13. PONTOS CRITICOS DO SISTEMA
+================================================================================
+
+[CRITICO] C1 — Dois sistemas de autenticacao paralelos
+  authSystem.ts (localStorage) e AuthContext.tsx (Supabase Auth) coexistem
+  sem sincronizacao. Usuarios criados no sistema local nao existem no Supabase.
+  Risco: Inconsistencia de dados, confusao de sessao.
+
+[CRITICO] C2 — Dados de usuarios em localStorage
+  Todos os usuarios, senhas (hash) e permissoes ficam no browser.
+  Dados perdidos ao limpar cache/cookies.
+  Impossivel gerenciar usuarios de forma centralizada.
+
+[CRITICO] C3 — Salt de senha fixo e hardcoded
+  'zetti_salt_2026' e um salt estatico em codigo-fonte.
+  Vulneravel a ataques de rainbow table se o codigo for exposto.
+  Nao e bcrypt real — e SHA-256 com salt fixo.
+
+[ALTO] A1 — Dados primarios em localStorage
+  cycle_scores, nc_records, elogios ficam em localStorage como fonte primaria.
+  Supabase e sincronizado em paralelo mas nao e a fonte primaria.
+  Se localStorage for limpo, dados sao perdidos mesmo existindo no Supabase.
+
+[ALTO] A2 — Sem multiusuario real
+  Sem isolamento de dados por usuario/tenant.
+  Qualquer usuario autenticado ve todos os dados.
+  Filtro de equipes e apenas visual (frontend), sem RLS por squad.
+
+[ALTO] A3 — Mock data misturado com dados reais
+  ExecutiveInsights usa ANALYSTS/NC_RECORDS/ELOGIOS do mockData.ts.
+  MonthlyTrendChart usa MONTHLY_TREND mock (apenas 1 mes).
+  Insights baseados em dados ficticios.
+
+[MEDIO] M1 — IEPC nao renderiza em alguns casos
+  Dados E1-E5 podem ser zero se CSV nao tiver colunas IEPC.
+  AnalystRadarChart pode nao aparecer sem altura definida no container pai.
+
+[MEDIO] M2 — Sem paginacao
+  Todas as listas carregam todos os registros de uma vez.
+  Performance degradara com volumes maiores.
+
+[MEDIO] M3 — Sem tratamento de erros robusto
+  Erros de Supabase sao logados no console mas nao exibidos ao usuario.
+
+DIVIDAS TECNICAS:
+  - Sem testes automatizados (unitarios, integracao, e2e)
+  - Sem CI/CD configurado
+  - Sem documentacao de API
+  - Sem monitoramento de erros (Sentry, etc.)
+  - Sem rate limiting nas API Routes
+  - RLS policies muito permissivas (todos autenticados podem tudo)
+
+
+================================================================================
+14. MELHORIAS NECESSARIAS
+================================================================================
+
+PRIORIDADE ALTA (Bloqueadores para Producao):
+  1. Migrar auth para Supabase Auth exclusivamente
+  2. Migrar dados para Supabase como fonte primaria
+  3. Implementar RLS por squad/tenant
+  4. Usar bcrypt real (via Supabase Auth) para senhas
+  5. Criar tabela de usuarios no Supabase sincronizada com auth.users
+
+PRIORIDADE MEDIA (Funcionalidades Criticas):
+  6. Modulo de elogios completo (filtros, exportacao, ranking)
+  7. Uploads mensais acumulativos (nao sobrescrever, acumular)
+  8. IEPC completo (garantir E1-E5 sempre importados e exibidos)
+  9. Evolucao historica real (substituir mock por dados reais)
+  10. Consolidacao por analista (historico individual)
+
+PRIORIDADE BAIXA (Melhorias):
+  11. Exportacao XLSX/DOCX/PPT
+  12. Geracao automatica de apresentacoes
+  13. Modulo de BI com filtros avancados
+  14. Rastreabilidade ISO (audit log completo)
+  15. Paginacao em todas as listas
+  16. Testes automatizados
+  17. Monitoramento de erros
+
+
+================================================================================
+15. MAPA COMPLETO DE PASTAS E ARQUIVOS
+================================================================================
+
+/
+├── .env
+├── .eslintrc.json
+├── .prettierrc
+├── image-hosts.config.mjs
+├── next.config.mjs
+├── next-env.d.ts
+├── package.json
+├── package-lock.json
+├── postcss.config.js
+├── tailwind.config.js
+├── tsconfig.json
+├── README.md
+├── docs/
+│   ├── dossie-tecnico.md
+│   ├── dossie-tecnico.txt
+│   └── dossie-tecnico.json
+├── public/
+│   ├── favicon.ico
+│   └── assets/images/
+│       ├── app_logo.png
+│       ├── no_image.png
+│       └── 5f5559140_ChatGPTImage27deabrde202616_50_50-1777926706123.png
+├── supabase/
+│   └── migrations/
+│       ├── 20260505174502_zetti_quality_hub.sql
+│       ├── 20260505200000_admin_users_setup.sql
+│       └── 20260508203000_add_roles_and_bruna.sql
+└── src/
+    ├── app/
+    │   ├── api/ai/chat-completion/route.ts
+    │   ├── components/
+    │   │   ├── HeroCycleStatus.tsx
+    │   │   ├── HomeKPICards.tsx
+    │   │   ├── HomeExecutiveView.tsx
+    │   │   ├── MonthlyTrendChart.tsx
+    │   │   ├── MonthlyTrendChartInner.tsx
+    │   │   ├── TopAnalysts.tsx
+    │   │   └── NavigationShortcuts.tsx
+    │   ├── cycle-dashboard/
+    │   │   ├── page.tsx
+    │   │   └── components/
+    │   │       ├── AnalystDrilldown.tsx
+    │   │       ├── AnalystRadarChart.tsx
+    │   │       ├── CompareAnalystsModal.tsx
+    │   │       ├── CycleDashboard.tsx
+    │   │       ├── CycleFilters.tsx
+    │   │       ├── CycleKPICards.tsx
+    │   │       ├── ExecutiveInsights.tsx
+    │   │       ├── NonConformitiesGuide.tsx
+    │   │       ├── PillarDrilldownModal.tsx
+    │   │       ├── PillarMatrix.tsx
+    │   │       ├── SquadRankingChart.tsx
+    │   │       └── SquadRankingChartInner.tsx
+    │   ├── configuracoes/page.tsx
+    │   ├── gestao/page.tsx
+    │   ├── admin-config/page.tsx
+    │   ├── auditoria/page.tsx
+    │   ├── nao-conformidades/page.tsx
+    │   ├── mural-elogios/page.tsx
+    │   ├── historico/page.tsx
+    │   ├── importacoes/page.tsx
+    │   ├── documentos/page.tsx
+    │   ├── evolucao-geral/page.tsx
+    │   ├── sign-up-login/
+    │   │   ├── page.tsx
+    │   │   └── components/LoginScreen.tsx
+    │   ├── layout.tsx
+    │   ├── page.tsx
+    │   └── not-found.tsx
+    ├── components/
+    │   ├── AppFooter.tsx
+    │   ├── AppHeader.tsx
+    │   ├── GoogleAnalytics.tsx
+    │   ├── ImportModal.tsx
+    │   ├── RouteGuard.tsx
+    │   ├── SystemLoginScreen.tsx
+    │   └── ui/
+    │       ├── AppIcon.tsx
+    │       ├── AppImage.tsx
+    │       └── AppLogo.tsx
+    ├── contexts/
+    │   ├── AuthContext.tsx
+    │   └── SystemAuthContext.tsx
+    ├── lib/
+    │   ├── authSystem.ts
+    │   ├── mockData.ts
+    │   ├── supabase/client.tsx
+    │   ├── ai/
+    │   │   ├── aiClient.ts
+    │   │   └── chatCompletion.ts
+    │   ├── hooks/
+    │   │   ├── useChat.ts
+    │   │   └── useRealtimeSync.ts
+    │   ├── services/
+    │   │   ├── dataService.ts
+    │   │   └── supabaseDataService.ts
+    │   └── utils/
+    │       └── pdfExport.ts
+    └── styles/
+        ├── index.css
+        └── tailwind.css
+
+
+================================================================================
+16. PROMPTS E IA
+================================================================================
+
+PROVEDOR ATIVO: Google Gemini
+MODELO: gemini/gemini-2.5-flash
+MODO: Streaming (SSE via API Route)
+API ROUTE: POST /api/ai/chat-completion
+SDK: @rocketnew/llm-sdk (abstrai OpenAI, Anthropic, Gemini, Perplexity)
+
+PROMPT DO SISTEMA:
+  "Voce e um consultor senior de Qualidade Operacional especializado em analise
+  de dados de call center e suporte tecnico. Responda sempre em portugues
+  brasileiro com linguagem executiva e objetiva."
+
+DADOS ENVIADOS NO PROMPT:
+  - Total de analistas avaliados
+  - QA Media e IEPC Medio do ciclo
+  - Total de NCs e Elogios
+  - Desempenho por squad (QA, IEPC, count)
+  - Desempenho individual (QA, IEPC, NCs, P1-P5, E1-E5)
+  - NCs por tipo (contagem)
+  - Elogios por squad (contagem)
+
+SAIDA ESPERADA (3 secoes):
+  1. Gargalos Operacionais
+  2. Temas Prioritarios para Treinamento
+  3. Padroes de Acerto e Reconhecimento
+
+PARAMETROS: temperature=0.4, max_tokens=2000
+
+LIMITACOES:
+  - Usa dados mock (ANALYSTS do mockData.ts) em vez de dados reais importados
+  - Sem fallback se Gemini estiver indisponivel
+  - Sem cache de respostas
+  - Sem historico de analises geradas
+
+
+================================================================================
+17. STATUS REAL DO SISTEMA
+================================================================================
+
+CLASSIFICACAO GERAL: MVP Funcional
+ADEQUADO PARA: Uso interno controlado com 1-5 usuarios, dados de teste
+NAO ADEQUADO PARA: Producao institucional sem correcoes de seguranca
+
+DIMENSOES DE MATURIDADE:
+  Funcionalidade core (importacao + dashboard): 7/10 — Funcional
+  Autenticacao:                                 4/10 — Funcional mas fragil
+  Persistencia de dados:                        5/10 — Dual (localStorage + Supabase)
+  Seguranca:                                    3/10 — Critica
+  Multiusuario:                                 2/10 — Nao implementado
+  Exportacoes:                                  6/10 — PDF + CSV
+  IA/Insights:                                  5/10 — Funcional (dados mock)
+  Auditoria/Logs:                               1/10 — Ausente
+  Testes:                                       0/10 — Ausente
+  Performance:                                  5/10 — Aceitavel (sem paginacao)
+  Escalabilidade:                               2/10 — Nao preparado
+
+READINESS:
+  Uso interno basico:        PRONTO
+  Multiusuario real:         NAO PRONTO — requer refatoracao auth
+  ISO/Auditoria:             NAO PRONTO — sem audit log
+  Escala (>100 usuarios):    NAO PRONTO — localStorage, sem paginacao
+  Producao institucional:    PARCIALMENTE PRONTO
+
+
+================================================================================
+18. PROXIMOS PASSOS RECOMENDADOS
+================================================================================
+
+FASE 1 — ESTABILIZACAO (Sprint 1-2):
+  1. Migrar auth para Supabase Auth como fonte unica
+  2. Migrar leitura de dados para Supabase como primario
+  3. Corrigir RLS policies para isolamento real
+  4. Criar tabela system_users no Supabase para usuarios do sistema
+
+FASE 2 — FUNCIONALIDADES CORE (Sprint 3-4):
+  5. Corrigir IEPC (garantir importacao e exibicao de E1-E5)
+  6. Implementar evolucao historica real
+  7. Modulo de elogios completo
+  8. Consolidacao por analista
+
+FASE 3 — GOVERNANCA (Sprint 5-6):
+  9. Audit log completo
+  10. Rastreabilidade ISO
+  11. Exportacoes XLSX/DOCX
+  12. Testes automatizados
+  13. Monitoramento de erros
+
+
+================================================================================
+FIM DO DOSSIE TECNICO
+Documento gerado automaticamente a partir da analise do codigo-fonte em 2026-05-11
+Para atualizar este dossie, solicite nova geracao apos alteracoes significativas
+================================================================================
