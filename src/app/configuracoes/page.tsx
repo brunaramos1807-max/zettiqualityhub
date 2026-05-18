@@ -4,74 +4,93 @@ import React, { useState, useEffect, useCallback } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
-import { Shield, Users, Briefcase, Lock, Plus, Edit2, Trash2, X, Save, CheckCircle, Loader2, UserCheck, UserX, Clock, AlertTriangle, RefreshCw, Key, Database,  } from 'lucide-react';
+import { Shield, Users, Briefcase, Lock, Plus, Edit2, Trash2, X, Save, CheckCircle, Loader2, UserCheck, Clock, AlertTriangle, RefreshCw, Key, Database, Copy, ToggleLeft, ToggleRight, Search, Upload, Star, History } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type RBACRole = 'Admin' | 'Coordenador' | 'Coordenador Geral' | 'Gestor' | 'Analista Qualidade' | 'Coordenadora Qualidade' | 'Auditor';
+interface Cargo {
+  id: string;
+  nome: string;
+  descricao: string;
+  cor: string;
+  is_active: boolean;
+  is_admin_master: boolean;
+  created_at: string;
+  _userCount?: number;
+}
 
 interface UserProfile {
   id: string;
   email: string;
   full_name: string;
-  role: RBACRole;
+  role: string;
   squad: string | null;
   squads: string[];
+  equipes: string[];
   is_active: boolean;
+  status_usuario: string;
+  nivel: string;
+  cargo_id: string | null;
   created_at: string;
-  last_sign_in_at?: string;
 }
+
+interface PermissionModule {
+  nome: string;
+  label: string;
+  descricao: string;
+  sort_order: number;
+}
+
+interface UserPermission {
+  id?: string;
+  user_profile_id: string;
+  module_name: string;
+  can_view: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
+  can_import: boolean;
+  can_export: boolean;
+  can_close_cycle: boolean;
+  can_reopen_cycle: boolean;
+  can_approve: boolean;
+  can_admin: boolean;
+}
+
+interface PermissionLog {
+  id: string;
+  actor_email: string;
+  target_email: string;
+  action: string;
+  entity_type: string;
+  details: string;
+  created_at: string;
+}
+
+type Tab = 'usuarios' | 'cargos' | 'permissoes' | 'analistas' | 'logs';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const RBAC_ROLES: RBACRole[] = [
-  'Admin',
-  'Coordenadora Qualidade',
-  'Coordenador Geral',
-  'Gestor',
-  'Analista Qualidade',
-  'Coordenador',
-  'Auditor',
+const SQUAD_OPTIONS = ['PDV', 'PDV N1', 'Compras e Estoque', 'Financeiro Fiscal', 'Todas'];
+const STATUS_OPTIONS = ['ativo', 'ferias', 'afastado', 'inativo'];
+const NIVEL_OPTIONS = ['Junior', 'Pleno', 'Senior', 'Especialista', 'Lider'];
+
+const PERMISSION_ACTIONS = [
+  { key: 'can_view', label: 'Visualizar', short: 'Ver' },
+  { key: 'can_edit', label: 'Editar', short: 'Edit' },
+  { key: 'can_delete', label: 'Excluir', short: 'Del' },
+  { key: 'can_import', label: 'Importar', short: 'Imp' },
+  { key: 'can_export', label: 'Exportar', short: 'Exp' },
+  { key: 'can_close_cycle', label: 'Fechar Ciclo', short: 'FC' },
+  { key: 'can_reopen_cycle', label: 'Reabrir Ciclo', short: 'RC' },
+  { key: 'can_approve', label: 'Aprovar', short: 'Apr' },
+  { key: 'can_admin', label: 'Administrar', short: 'Adm' },
 ];
 
-const SQUAD_OPTIONS = ['PDV', 'PDV N1', 'Compras e Estoque', 'Financeiro Fiscal', 'Todas'];
-
-const ROLE_META: Record<RBACRole, { color: string; description: string; permissions: string[] }> = {
-  Admin: {
-    color: '#22C55E',
-    description: 'Controle total do sistema — todas as equipes, usuários e configurações',
-    permissions: ['Acesso total', 'Gerenciar usuários', 'Fechar ciclos', 'Auditoria ISO', 'Exclusões'],
-  },
-  'Coordenadora Qualidade': {
-    color: '#38BDF8',
-    description: 'Acesso total à governança, fechamento de ciclo, exclusões e auditoria ISO',
-    permissions: ['Acesso total', 'Governança', 'Fechar ciclos', 'Auditoria ISO', 'Exclusões'],
-  },
-  'Coordenador Geral': {
-    color: '#A78BFA',
-    description: 'Supervisiona todos os coordenadores e equipes — visão completa',
-    permissions: ['Visualizar todas squads', 'Relatórios', 'Analytics', 'Importar'],
-  },
-  Gestor: {
-    color: '#F59E0B',
-    description: 'Visão executiva completa — todos os indicadores e dashboards',
-    permissions: ['Visualizar tudo', 'Relatórios executivos', 'Analytics', 'Exportar'],
-  },
-  'Analista Qualidade': {
-    color: '#06B6D4',
-    description: 'Auditoria, avaliações, NC e consolidação de ciclos',
-    permissions: ['Auditoria', 'Avaliações', 'Não conformidades', 'Consolidação'],
-  },
-  Coordenador: {
-    color: '#60A5FA',
-    description: 'Visualiza apenas sua squad — dados operacionais da equipe',
-    permissions: ['Visualizar squad própria', 'Importar ciclos', 'Relatórios da squad'],
-  },
-  Auditor: {
-    color: '#FB923C',
-    description: 'Realiza auditorias e registra não conformidades',
-    permissions: ['Auditoria', 'Registrar NCs', 'Visualizar avaliações'],
-  },
+const STATUS_COLORS: Record<string, string> = {
+  ativo: '#22C55E',
+  ferias: '#F59E0B',
+  afastado: '#FB923C',
+  inativo: '#EF4444',
 };
 
 // ─── Shared Styles ────────────────────────────────────────────────────────────
@@ -96,92 +115,189 @@ const inputStyle: React.CSSProperties = {
 
 const selectStyle: React.CSSProperties = { ...inputStyle, cursor: 'pointer' };
 
-type Tab = 'usuarios' | 'cargos' | 'permissoes' | 'painel';
+// ─── Cargo Modal ──────────────────────────────────────────────────────────────
+
+interface CargoModalProps {
+  cargo?: Cargo | null;
+  onClose: () => void;
+  onSave: () => void;
+  actorEmail: string;
+}
+
+function CargoModal({ cargo, onClose, onSave, actorEmail }: CargoModalProps) {
+  const [nome, setNome] = useState(cargo?.nome || '');
+  const [descricao, setDescricao] = useState(cargo?.descricao || '');
+  const [cor, setCor] = useState(cargo?.cor || '#38BDF8');
+  const [isAdminMaster, setIsAdminMaster] = useState(cargo?.is_admin_master || false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSave = async () => {
+    if (!nome.trim()) { setError('Nome do cargo é obrigatório.'); return; }
+    setLoading(true);
+    setError('');
+    try {
+      const supabase = createClient();
+      if (!supabase) throw new Error('Supabase indisponível');
+      const payload = { nome: nome.trim(), descricao: descricao.trim(), cor, is_admin_master: isAdminMaster, updated_at: new Date().toISOString() };
+      if (cargo?.id) {
+        const { error: err } = await supabase.from('cargos').update(payload).eq('id', cargo.id);
+        if (err) throw err;
+        await supabase.from('permission_logs').insert({ actor_email: actorEmail, action: 'cargo_editado', entity_type: 'cargo', entity_id: cargo.id, details: `Cargo "${nome}" editado` });
+      } else {
+        const { error: err } = await supabase.from('cargos').insert({ ...payload, is_active: true });
+        if (err) throw err;
+        await supabase.from('permission_logs').insert({ actor_email: actorEmail, action: 'cargo_criado', entity_type: 'cargo', details: `Cargo "${nome}" criado` });
+      }
+      onSave();
+    } catch (e: any) { setError(e?.message || 'Erro ao salvar'); }
+    setLoading(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.8)' }}>
+      <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ backgroundColor: '#0A1628', border: '1px solid rgba(56,189,248,0.2)', boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}>
+        <div className="flex items-center justify-between p-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <h3 className="font-bold text-white">{cargo ? 'Editar Cargo' : 'Novo Cargo'}</h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#94A3B8' }}><X size={16} /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-white mb-2">Nome do Cargo *</label>
+            <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Coordenador, Gestor..." style={inputStyle} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-white mb-2">Descrição</label>
+            <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Descreva as responsabilidades..." rows={3}
+              style={{ ...inputStyle, height: 'auto', resize: 'none', padding: '0.625rem 0.875rem' }} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-white mb-2">Cor de Identificação</label>
+            <div className="flex items-center gap-3">
+              <input type="color" value={cor} onChange={(e) => setCor(e.target.value)} className="w-10 h-10 rounded-lg cursor-pointer border-0" style={{ backgroundColor: 'transparent' }} />
+              <input value={cor} onChange={(e) => setCor(e.target.value)} style={{ ...inputStyle, width: '120px' }} />
+              <div className="flex gap-1.5">
+                {['#22C55E','#38BDF8','#A78BFA','#F59E0B','#60A5FA','#FB923C','#EF4444','#06B6D4'].map((c) => (
+                  <button key={c} onClick={() => setCor(c)} className="w-6 h-6 rounded-full border-2 transition-all" style={{ backgroundColor: c, borderColor: cor === c ? '#fff' : 'transparent' }} />
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-between p-3 rounded-xl" style={{ backgroundColor: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.15)' }}>
+            <div>
+              <p className="text-sm font-medium text-white">Admin Master</p>
+              <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Acesso total irrestrito ao sistema</p>
+            </div>
+            <button type="button" onClick={() => setIsAdminMaster(!isAdminMaster)} className="relative w-11 h-6 rounded-full transition-colors" style={{ backgroundColor: isAdminMaster ? '#EF4444' : 'rgba(255,255,255,0.1)' }}>
+              <div className="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform shadow-sm" style={{ transform: isAdminMaster ? 'translateX(1.25rem)' : 'translateX(0.125rem)' }} />
+            </button>
+          </div>
+          {error && <p className="text-xs px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>{error}</p>}
+        </div>
+        <div className="flex gap-3 p-5" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
+          <button onClick={handleSave} disabled={loading} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60" style={{ backgroundColor: '#1E40AF' }}>
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            {loading ? 'Salvando...' : 'Salvar Cargo'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Edit User Modal ──────────────────────────────────────────────────────────
 
 interface EditUserModalProps {
   user: UserProfile;
+  cargos: Cargo[];
   onClose: () => void;
   onSave: () => void;
+  actorEmail: string;
 }
 
-function EditUserModal({ user, onClose, onSave }: EditUserModalProps) {
-  const [role, setRole] = useState<RBACRole>(user.role);
+function EditUserModal({ user, cargos, onClose, onSave, actorEmail }: EditUserModalProps) {
+  const [role, setRole] = useState(user.role || '');
+  const [cargoId, setCargoId] = useState(user.cargo_id || '');
   const [squad, setSquad] = useState(user.squad || '');
   const [squads, setSquads] = useState<string[]>(user.squads || []);
-  const [isActive, setIsActive] = useState(user.is_active);
+  const [statusUsuario, setStatusUsuario] = useState(user.status_usuario || 'ativo');
+  const [nivel, setNivel] = useState(user.nivel || 'Junior');
+  const [isActive, setIsActive] = useState(user.is_active !== false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const toggleSquad = (sq: string) => {
-    setSquads((prev) => prev.includes(sq) ? prev.filter((s) => s !== sq) : [...prev, sq]);
-  };
+  const toggleSquad = (sq: string) => setSquads((prev) => prev.includes(sq) ? prev.filter((s) => s !== sq) : [...prev, sq]);
 
   const handleSave = async () => {
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
       const supabase = createClient();
-      if (!supabase) throw new Error('Supabase não disponível');
-      const { error: err } = await supabase
-        .from('user_profiles')
-        .upsert({
-          id: user.id,
-          email: user.email,
-          full_name: user.full_name,
-          role,
-          squad: squad || null,
-          squads: squads.length > 0 ? squads : (squad ? [squad] : []),
-          is_active: isActive,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'id' });
+      if (!supabase) throw new Error('Supabase indisponível');
+      const { error: err } = await supabase.from('user_profiles').upsert({
+        id: user.id, email: user.email, full_name: user.full_name,
+        role, cargo_id: cargoId || null,
+        squad: squad || null, squads: squads.length > 0 ? squads : (squad ? [squad] : []),
+        is_active: isActive, status_usuario: statusUsuario, nivel,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
       if (err) throw err;
+      await supabase.from('permission_logs').insert({
+        actor_email: actorEmail, target_email: user.email,
+        action: 'usuario_editado', entity_type: 'usuario', entity_id: user.id,
+        details: `Usuário "${user.full_name}" editado — cargo: ${role}, status: ${statusUsuario}`,
+      });
       onSave();
-    } catch (e: any) {
-      setError(e?.message || 'Erro ao salvar');
-    }
+    } catch (e: any) { setError(e?.message || 'Erro ao salvar'); }
     setLoading(false);
   };
 
-  const roleColor = ROLE_META[role]?.color || '#94A3B8';
+  const selectedCargo = cargos.find((c) => c.id === cargoId);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.75)' }}>
-      <div className="w-full max-w-lg rounded-2xl overflow-hidden" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(56,189,248,0.15)', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.8)' }}>
+      <div className="w-full max-w-lg rounded-2xl overflow-hidden" style={{ backgroundColor: '#0A1628', border: '1px solid rgba(56,189,248,0.2)', boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}>
         <div className="flex items-center justify-between p-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <div>
-            <h3 className="font-bold text-white text-base">Editar Perfil de Acesso</h3>
+            <h3 className="font-bold text-white">Editar Perfil de Acesso</h3>
             <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{user.full_name || user.email}</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors" style={{ color: '#94A3B8' }}>
-            <X size={16} />
-          </button>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#94A3B8' }}><X size={16} /></button>
         </div>
-
-        <div className="p-5 space-y-4">
-          {/* Role selector */}
-          <div>
-            <label className="block text-xs font-semibold text-white mb-2">Perfil de Acesso (Role)</label>
-            <select value={role} onChange={(e) => setRole(e.target.value as RBACRole)} style={selectStyle}>
-              {RBAC_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
-            {role && (
-              <div className="mt-2 p-3 rounded-xl" style={{ backgroundColor: `${roleColor}10`, border: `1px solid ${roleColor}25` }}>
-                <p className="text-xs mb-1.5" style={{ color: roleColor, fontWeight: 600 }}>{role}</p>
-                <p className="text-xs mb-2" style={{ color: 'rgba(255,255,255,0.5)' }}>{ROLE_META[role]?.description}</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {ROLE_META[role]?.permissions.map((p) => (
-                    <span key={p} className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: `${roleColor}15`, color: roleColor }}>
-                      {p}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
+        <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-white mb-2">Cargo</label>
+              <select value={cargoId} onChange={(e) => setCargoId(e.target.value)} style={selectStyle}>
+                <option value="">Sem cargo</option>
+                {cargos.filter((c) => c.is_active).map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-white mb-2">Role (Sistema)</label>
+              <input value={role} onChange={(e) => setRole(e.target.value)} placeholder="Ex: Admin, Coordenador..." style={inputStyle} />
+            </div>
           </div>
-
-          {/* Squad (primary) */}
+          {selectedCargo && (
+            <div className="p-3 rounded-xl" style={{ backgroundColor: `${selectedCargo.cor}10`, border: `1px solid ${selectedCargo.cor}25` }}>
+              <p className="text-xs font-semibold mb-1" style={{ color: selectedCargo.cor }}>{selectedCargo.nome}</p>
+              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>{selectedCargo.descricao}</p>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-white mb-2">Status</label>
+              <select value={statusUsuario} onChange={(e) => setStatusUsuario(e.target.value)} style={selectStyle}>
+                {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-white mb-2">Nível</label>
+              <select value={nivel} onChange={(e) => setNivel(e.target.value)} style={selectStyle}>
+                {NIVEL_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+          </div>
           <div>
             <label className="block text-xs font-semibold text-white mb-2">Squad Principal</label>
             <select value={squad} onChange={(e) => setSquad(e.target.value)} style={selectStyle}>
@@ -189,69 +305,177 @@ function EditUserModal({ user, onClose, onSave }: EditUserModalProps) {
               {SQUAD_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
-
-          {/* Multi-squad (for Coordenador Geral / Admin) */}
-          {(role === 'Coordenador Geral' || role === 'Admin' || role === 'Coordenadora Qualidade') && (
-            <div>
-              <label className="block text-xs font-semibold text-white mb-2">Squads Visíveis</label>
-              <div className="flex flex-wrap gap-2">
-                {SQUAD_OPTIONS.map((sq) => (
-                  <button
-                    key={sq}
-                    type="button"
-                    onClick={() => toggleSquad(sq)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-                    style={{
-                      backgroundColor: squads.includes(sq) ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.04)',
-                      border: squads.includes(sq) ? '1px solid rgba(56,189,248,0.35)' : '1px solid rgba(255,255,255,0.08)',
-                      color: squads.includes(sq) ? '#38BDF8' : '#94A3B8',
-                    }}
-                  >
-                    {sq}
-                  </button>
-                ))}
-              </div>
+          <div>
+            <label className="block text-xs font-semibold text-white mb-2">Squads Visíveis</label>
+            <div className="flex flex-wrap gap-2">
+              {SQUAD_OPTIONS.map((sq) => (
+                <button key={sq} type="button" onClick={() => toggleSquad(sq)} className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                  style={{ backgroundColor: squads.includes(sq) ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.04)', border: squads.includes(sq) ? '1px solid rgba(56,189,248,0.35)' : '1px solid rgba(255,255,255,0.08)', color: squads.includes(sq) ? '#38BDF8' : '#94A3B8' }}>
+                  {sq}
+                </button>
+              ))}
             </div>
-          )}
-
-          {/* Status */}
+          </div>
           <div className="flex items-center justify-between p-3 rounded-xl" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
             <div>
-              <p className="text-sm font-medium text-white">Status do Usuário</p>
-              <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Usuários inativos não conseguem acessar o sistema</p>
+              <p className="text-sm font-medium text-white">Usuário Ativo</p>
+              <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Usuários inativos não acessam o sistema</p>
             </div>
-            <button
-              type="button"
-              onClick={() => setIsActive(!isActive)}
-              className="relative w-11 h-6 rounded-full transition-colors flex-shrink-0"
-              style={{ backgroundColor: isActive ? '#22C55E' : 'rgba(255,255,255,0.1)' }}
-            >
-              <div
-                className="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform shadow-sm"
-                style={{ transform: isActive ? 'translateX(1.25rem)' : 'translateX(0.125rem)' }}
-              />
+            <button type="button" onClick={() => setIsActive(!isActive)} className="relative w-11 h-6 rounded-full transition-colors" style={{ backgroundColor: isActive ? '#22C55E' : 'rgba(255,255,255,0.1)' }}>
+              <div className="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform shadow-sm" style={{ transform: isActive ? 'translateX(1.25rem)' : 'translateX(0.125rem)' }} />
             </button>
           </div>
-
-          {error && (
-            <p className="text-xs px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>
-              {error}
-            </p>
-          )}
+          {error && <p className="text-xs px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>{error}</p>}
         </div>
-
         <div className="flex gap-3 p-5" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>
-            Cancelar
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={loading}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60 transition-all"
-            style={{ backgroundColor: '#1E40AF', border: '1px solid rgba(56,189,248,0.2)' }}
-          >
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
+          <button onClick={handleSave} disabled={loading} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60" style={{ backgroundColor: '#1E40AF' }}>
             {loading ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {loading ? 'Salvando...' : 'Salvar Perfil'}
+            {loading ? 'Salvando...' : 'Salvar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Permissions Matrix Modal ─────────────────────────────────────────────────
+
+interface PermissionsMatrixModalProps {
+  user: UserProfile;
+  modules: PermissionModule[];
+  existingPermissions: UserPermission[];
+  onClose: () => void;
+  onSave: () => void;
+  actorEmail: string;
+}
+
+function PermissionsMatrixModal({ user, modules, existingPermissions, onClose, onSave, actorEmail }: PermissionsMatrixModalProps) {
+  const [perms, setPerms] = useState<Record<string, UserPermission>>(() => {
+    const map: Record<string, UserPermission> = {};
+    modules.forEach((m) => {
+      const existing = existingPermissions.find((p) => p.module_name === m.nome);
+      map[m.nome] = existing || {
+        user_profile_id: user.id, module_name: m.nome,
+        can_view: false, can_edit: false, can_delete: false, can_import: false,
+        can_export: false, can_close_cycle: false, can_reopen_cycle: false,
+        can_approve: false, can_admin: false,
+      };
+    });
+    return map;
+  });
+  const [loading, setLoading] = useState(false);
+
+  const togglePerm = (moduleName: string, action: string) => {
+    setPerms((prev) => ({
+      ...prev,
+      [moduleName]: { ...prev[moduleName], [action]: !prev[moduleName][action as keyof UserPermission] },
+    }));
+  };
+
+  const grantAll = (moduleName: string) => {
+    setPerms((prev) => ({
+      ...prev,
+      [moduleName]: { ...prev[moduleName], can_view: true, can_edit: true, can_delete: true, can_import: true, can_export: true, can_close_cycle: true, can_reopen_cycle: true, can_approve: true, can_admin: true },
+    }));
+  };
+
+  const revokeAll = (moduleName: string) => {
+    setPerms((prev) => ({
+      ...prev,
+      [moduleName]: { ...prev[moduleName], can_view: false, can_edit: false, can_delete: false, can_import: false, can_export: false, can_close_cycle: false, can_reopen_cycle: false, can_approve: false, can_admin: false },
+    }));
+  };
+
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+      const supabase = createClient();
+      if (!supabase) throw new Error('Supabase indisponível');
+      const upserts = Object.values(perms).map((p) => ({ ...p, updated_at: new Date().toISOString() }));
+      const { error: err } = await supabase.from('user_permissions').upsert(upserts, { onConflict: 'user_profile_id,module_name' });
+      if (err) throw err;
+      await supabase.from('permission_logs').insert({
+        actor_email: actorEmail, target_email: user.email,
+        action: 'permissoes_atualizadas', entity_type: 'permissao', entity_id: user.id,
+        details: `Permissões de "${user.full_name || user.email}" atualizadas manualmente`,
+        new_value: perms,
+      });
+      onSave();
+    } catch (e: any) { console.error(e); }
+    setLoading(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.85)' }}>
+      <div className="w-full max-w-5xl rounded-2xl overflow-hidden flex flex-col" style={{ backgroundColor: '#0A1628', border: '1px solid rgba(56,189,248,0.2)', boxShadow: '0 24px 64px rgba(0,0,0,0.7)', maxHeight: '90vh' }}>
+        <div className="flex items-center justify-between p-5 flex-shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div>
+            <h3 className="font-bold text-white flex items-center gap-2"><Lock size={16} style={{ color: '#38BDF8' }} /> Permissões Individuais</h3>
+            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{user.full_name || user.email} — configuração manual por módulo</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#94A3B8' }}><X size={16} /></button>
+        </div>
+        <div className="overflow-auto flex-1 p-5">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                  <th className="text-left py-3 px-3 font-semibold text-white" style={{ minWidth: '160px' }}>Módulo</th>
+                  {PERMISSION_ACTIONS.map((a) => (
+                    <th key={a.key} className="text-center py-3 px-2 font-semibold" style={{ color: '#94A3B8', minWidth: '60px' }}>{a.short}</th>
+                  ))}
+                  <th className="text-center py-3 px-2 font-semibold" style={{ color: '#94A3B8', minWidth: '80px' }}>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {modules.sort((a, b) => a.sort_order - b.sort_order).map((mod, i) => {
+                  const p = perms[mod.nome];
+                  if (!p) return null;
+                  const hasAny = PERMISSION_ACTIONS.some((a) => p[a.key as keyof UserPermission]);
+                  return (
+                    <tr key={mod.nome} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}>
+                      <td className="py-3 px-3">
+                        <p className="font-semibold text-white">{mod.label}</p>
+                        <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)', fontSize: '10px' }}>{mod.descricao}</p>
+                      </td>
+                      {PERMISSION_ACTIONS.map((action) => (
+                        <td key={action.key} className="py-3 px-2 text-center">
+                          <button
+                            onClick={() => togglePerm(mod.nome, action.key)}
+                            className="w-5 h-5 rounded flex items-center justify-center mx-auto transition-all"
+                            style={{
+                              backgroundColor: p[action.key as keyof UserPermission] ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.04)',
+                              border: p[action.key as keyof UserPermission] ? '1px solid rgba(34,197,94,0.4)' : '1px solid rgba(255,255,255,0.1)',
+                            }}
+                          >
+                            {p[action.key as keyof UserPermission] && <CheckCircle size={11} style={{ color: '#22C55E' }} />}
+                          </button>
+                        </td>
+                      ))}
+                      <td className="py-3 px-2 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => grantAll(mod.nome)} className="px-1.5 py-0.5 rounded text-xs transition-all" style={{ backgroundColor: 'rgba(34,197,94,0.1)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.2)' }} title="Conceder tudo">✓</button>
+                          <button onClick={() => revokeAll(mod.nome)} className="px-1.5 py-0.5 rounded text-xs transition-all" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }} title="Revogar tudo">✗</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-4 p-3 rounded-xl flex flex-wrap gap-4" style={{ backgroundColor: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.1)' }}>
+            {PERMISSION_ACTIONS.map((a) => (
+              <span key={a.key} className="text-xs" style={{ color: '#94A3B8' }}><strong className="text-white">{a.short}</strong> = {a.label}</span>
+            ))}
+          </div>
+        </div>
+        <div className="flex gap-3 p-5 flex-shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
+          <button onClick={handleSave} disabled={loading} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60" style={{ backgroundColor: '#1E40AF' }}>
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            {loading ? 'Salvando...' : 'Salvar Permissões'}
           </button>
         </div>
       </div>
@@ -262,62 +486,56 @@ function EditUserModal({ user, onClose, onSave }: EditUserModalProps) {
 // ─── Add User Modal ───────────────────────────────────────────────────────────
 
 interface AddUserModalProps {
+  cargos: Cargo[];
   onClose: () => void;
   onSave: () => void;
+  actorEmail: string;
 }
 
-function AddUserModal({ onClose, onSave }: AddUserModalProps) {
+function AddUserModal({ cargos, onClose, onSave, actorEmail }: AddUserModalProps) {
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
-  const [role, setRole] = useState<RBACRole>('Auditor');
+  const [role, setRole] = useState('');
+  const [cargoId, setCargoId] = useState('');
   const [squad, setSquad] = useState('');
+  const [nivel, setNivel] = useState('Junior');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleSave = async () => {
     if (!email.trim() || !fullName.trim()) { setError('Nome e e-mail são obrigatórios.'); return; }
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
       const supabase = createClient();
-      if (!supabase) throw new Error('Supabase não disponível');
-      // Insert into user_profiles (user must sign in via Google first to get auth.users entry)
-      const { error: err } = await supabase
-        .from('user_profiles')
-        .insert({
-          email: email.trim().toLowerCase(),
-          full_name: fullName.trim(),
-          role,
-          squad: squad || null,
-          squads: squad ? [squad] : [],
-          is_active: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
+      if (!supabase) throw new Error('Supabase indisponível');
+      const { error: err } = await supabase.from('user_profiles').insert({
+        email: email.trim().toLowerCase(), full_name: fullName.trim(),
+        role: role || 'Visualizador', cargo_id: cargoId || null,
+        squad: squad || null, squads: squad ? [squad] : [],
+        is_active: true, status_usuario: 'ativo', nivel,
+        created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      });
       if (err) throw err;
+      await supabase.from('permission_logs').insert({ actor_email: actorEmail, target_email: email, action: 'usuario_criado', entity_type: 'usuario', details: `Usuário "${fullName}" pré-cadastrado` });
       onSave();
-    } catch (e: any) {
-      setError(e?.message || 'Erro ao criar usuário');
-    }
+    } catch (e: any) { setError(e?.message || 'Erro ao criar usuário'); }
     setLoading(false);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.75)' }}>
-      <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(56,189,248,0.15)', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.8)' }}>
+      <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ backgroundColor: '#0A1628', border: '1px solid rgba(56,189,248,0.2)', boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}>
         <div className="flex items-center justify-between p-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <h3 className="font-bold text-white text-base">Pré-cadastrar Usuário</h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors" style={{ color: '#94A3B8' }}>
-            <X size={16} />
-          </button>
+          <h3 className="font-bold text-white">Pré-cadastrar Usuário</h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#94A3B8' }}><X size={16} /></button>
         </div>
         <div className="p-5 space-y-4">
           <div className="p-3 rounded-xl text-xs" style={{ backgroundColor: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', color: '#94A3B8' }}>
-            O usuário precisa fazer login via Google para criar a conta. Este cadastro define o perfil de acesso que será aplicado automaticamente.
+            O usuário precisa fazer login via Google para criar a conta. Este cadastro define o perfil de acesso aplicado automaticamente.
           </div>
           <div>
             <label className="block text-xs font-semibold text-white mb-2">Nome Completo *</label>
-            <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Nome do usuário" style={inputStyle} />
+            <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Nome do usuário" style={inputStyle} />
           </div>
           <div>
             <label className="block text-xs font-semibold text-white mb-2">E-mail Google *</label>
@@ -325,10 +543,23 @@ function AddUserModal({ onClose, onSave }: AddUserModalProps) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-white mb-2">Perfil (Role)</label>
-              <select value={role} onChange={(e) => setRole(e.target.value as RBACRole)} style={selectStyle}>
-                {RBAC_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+              <label className="block text-xs font-semibold text-white mb-2">Cargo</label>
+              <select value={cargoId} onChange={(e) => setCargoId(e.target.value)} style={selectStyle}>
+                <option value="">Sem cargo</option>
+                {cargos.filter((c) => c.is_active).map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
               </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-white mb-2">Nível</label>
+              <select value={nivel} onChange={(e) => setNivel(e.target.value)} style={selectStyle}>
+                {NIVEL_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-white mb-2">Role (Sistema)</label>
+              <input value={role} onChange={(e) => setRole(e.target.value)} placeholder="Ex: Coordenador" style={inputStyle} />
             </div>
             <div>
               <label className="block text-xs font-semibold text-white mb-2">Squad</label>
@@ -338,22 +569,11 @@ function AddUserModal({ onClose, onSave }: AddUserModalProps) {
               </select>
             </div>
           </div>
-          {error && (
-            <p className="text-xs px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>
-              {error}
-            </p>
-          )}
+          {error && <p className="text-xs px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>{error}</p>}
         </div>
         <div className="flex gap-3 p-5" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5 transition-colors" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>
-            Cancelar
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={loading}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
-            style={{ backgroundColor: '#1E40AF', border: '1px solid rgba(56,189,248,0.2)' }}
-          >
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
+          <button onClick={handleSave} disabled={loading} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60" style={{ backgroundColor: '#1E40AF' }}>
             {loading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
             {loading ? 'Salvando...' : 'Pré-cadastrar'}
           </button>
@@ -363,80 +583,360 @@ function AddUserModal({ onClose, onSave }: AddUserModalProps) {
   );
 }
 
+// ─── Analistas Tab ────────────────────────────────────────────────────────────
+
+interface AnalistasTabProps {
+  actorEmail: string;
+}
+
+interface Analista {
+  id: string;
+  nome: string;
+  email: string;
+  squad: string;
+  equipe: string;
+  coordenador: string;
+  nivel: string;
+  status: string;
+  aniversario: string;
+  tempo_empresa: string;
+  ultima_promocao: string;
+  observacoes: string;
+  created_at: string;
+}
+
+function AnalistasTab({ actorEmail }: AnalistasTabProps) {
+  const [analistas, setAnalistas] = useState<Analista[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingAnalista, setEditingAnalista] = useState<Analista | null>(null);
+  const [search, setSearch] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [importLoading, setImportLoading] = useState(false);
+  const [importMsg, setImportMsg] = useState('');
+  const [form, setForm] = useState({ nome: '', email: '', squad: '', equipe: '', coordenador: '', nivel: 'Junior', status: 'ativo', aniversario: '', tempo_empresa: '', ultima_promocao: '', observacoes: '' });
+  const [formLoading, setFormLoading] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  const loadAnalistas = useCallback(async () => {
+    setLoading(true);
+    try {
+      const supabase = createClient();
+      if (!supabase) return;
+      const { data } = await supabase.from('analistas').select('*').order('nome');
+      if (data) setAnalistas(data as Analista[]);
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadAnalistas(); }, [loadAnalistas]);
+
+  const handleSaveAnalista = async () => {
+    if (!form.nome.trim()) { setFormError('Nome é obrigatório.'); return; }
+    setFormLoading(true); setFormError('');
+    try {
+      const supabase = createClient();
+      if (!supabase) throw new Error('Supabase indisponível');
+      const payload = { ...form, updated_at: new Date().toISOString() };
+      if (editingAnalista) {
+        await supabase.from('analistas').update(payload).eq('id', editingAnalista.id);
+      } else {
+        await supabase.from('analistas').insert({ ...payload, created_at: new Date().toISOString() });
+      }
+      setShowForm(false); setEditingAnalista(null);
+      setForm({ nome: '', email: '', squad: '', equipe: '', coordenador: '', nivel: 'Junior', status: 'ativo', aniversario: '', tempo_empresa: '', ultima_promocao: '', observacoes: '' });
+      loadAnalistas();
+    } catch (e: any) { setFormError(e?.message || 'Erro ao salvar'); }
+    setFormLoading(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    const supabase = createClient();
+    if (!supabase) return;
+    await supabase.from('analistas').delete().eq('id', id);
+    loadAnalistas();
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportLoading(true); setImportMsg('');
+    try {
+      const { read, utils } = await import('xlsx');
+      const buffer = await file.arrayBuffer();
+      const wb = read(buffer, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[] = utils.sheet_to_json(ws, { defval: '' });
+      const supabase = createClient();
+      if (!supabase) throw new Error('Supabase indisponível');
+      let imported = 0; let updated = 0;
+      for (const row of rows) {
+        const nome = (row['nome'] || row['Nome'] || row['NOME'] || '').toString().trim();
+        if (!nome) continue;
+        const payload = {
+          nome, email: (row['email'] || row['Email'] || '').toString().trim(),
+          squad: (row['squad'] || row['Squad'] || '').toString().trim(),
+          equipe: (row['equipe'] || row['Equipe'] || '').toString().trim(),
+          coordenador: (row['coordenador'] || row['Coordenador'] || '').toString().trim(),
+          nivel: (row['nivel'] || row['Nível'] || 'Junior').toString().trim(),
+          status: (row['status'] || row['Status'] || 'ativo').toString().toLowerCase().trim(),
+          updated_at: new Date().toISOString(),
+        };
+        const { data: existing } = await supabase.from('analistas').select('id').eq('nome', nome).maybeSingle();
+        if (existing) {
+          await supabase.from('analistas').update(payload).eq('id', existing.id);
+          updated++;
+        } else {
+          await supabase.from('analistas').insert({ ...payload, created_at: new Date().toISOString() });
+          imported++;
+        }
+      }
+      setImportMsg(`✓ ${imported} importados, ${updated} atualizados`);
+      loadAnalistas();
+    } catch (e: any) { setImportMsg(`Erro: ${e?.message}`); }
+    setImportLoading(false);
+    e.target.value = '';
+  };
+
+  const filtered = analistas.filter((a) => {
+    const matchSearch = !search || a.nome.toLowerCase().includes(search.toLowerCase()) || a.squad?.toLowerCase().includes(search.toLowerCase());
+    const matchStatus = !filterStatus || a.status === filterStatus;
+    return matchSearch && matchStatus;
+  });
+
+  const STATUS_ANALISTA = ['ativo', 'ferias', 'afastado', 'desligado'];
+
+  return (
+    <div className="space-y-4">
+      {/* Header actions */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-48 relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar analista..." style={{ ...inputStyle, paddingLeft: '2.25rem' }} />
+        </div>
+        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{ ...selectStyle, width: '140px' }}>
+          <option value="">Todos status</option>
+          {STATUS_ANALISTA.map((s) => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+        </select>
+        <label className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all" style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}>
+          {importLoading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+          Importar XLSX/CSV
+          <input type="file" accept=".xlsx,.xls,.csv" onChange={handleImport} className="hidden" />
+        </label>
+        <button onClick={() => { setEditingAnalista(null); setForm({ nome: '', email: '', squad: '', equipe: '', coordenador: '', nivel: 'Junior', status: 'ativo', aniversario: '', tempo_empresa: '', ultima_promocao: '', observacoes: '' }); setShowForm(true); }}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: '#1E40AF' }}>
+          <Plus size={14} /> Novo Analista
+        </button>
+      </div>
+
+      {importMsg && (
+        <div className="p-3 rounded-xl text-sm" style={{ backgroundColor: importMsg.startsWith('✓') ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', color: importMsg.startsWith('✓') ? '#22C55E' : '#EF4444', border: `1px solid ${importMsg.startsWith('✓') ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}` }}>
+          {importMsg}
+        </div>
+      )}
+
+      {/* Form */}
+      {showForm && (
+        <div className="p-5 rounded-2xl space-y-4" style={cardStyle}>
+          <h3 className="text-sm font-bold text-white">{editingAnalista ? 'Editar Analista' : 'Novo Analista'}</h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div><label className="block text-xs font-semibold text-white mb-1.5">Nome *</label><input value={form.nome} onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} style={inputStyle} /></div>
+            <div><label className="block text-xs font-semibold text-white mb-1.5">E-mail</label><input value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} style={inputStyle} /></div>
+            <div><label className="block text-xs font-semibold text-white mb-1.5">Squad</label><input value={form.squad} onChange={(e) => setForm((f) => ({ ...f, squad: e.target.value }))} style={inputStyle} /></div>
+            <div><label className="block text-xs font-semibold text-white mb-1.5">Equipe</label><input value={form.equipe} onChange={(e) => setForm((f) => ({ ...f, equipe: e.target.value }))} style={inputStyle} /></div>
+            <div><label className="block text-xs font-semibold text-white mb-1.5">Coordenador</label><input value={form.coordenador} onChange={(e) => setForm((f) => ({ ...f, coordenador: e.target.value }))} style={inputStyle} /></div>
+            <div>
+              <label className="block text-xs font-semibold text-white mb-1.5">Nível</label>
+              <select value={form.nivel} onChange={(e) => setForm((f) => ({ ...f, nivel: e.target.value }))} style={selectStyle}>
+                {NIVEL_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-white mb-1.5">Status</label>
+              <select value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))} style={selectStyle}>
+                {STATUS_ANALISTA.map((s) => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+              </select>
+            </div>
+            <div><label className="block text-xs font-semibold text-white mb-1.5">Aniversário</label><input type="date" value={form.aniversario} onChange={(e) => setForm((f) => ({ ...f, aniversario: e.target.value }))} style={inputStyle} /></div>
+            <div><label className="block text-xs font-semibold text-white mb-1.5">Tempo de Empresa</label><input value={form.tempo_empresa} onChange={(e) => setForm((f) => ({ ...f, tempo_empresa: e.target.value }))} placeholder="Ex: 2 anos" style={inputStyle} /></div>
+          </div>
+          {formError && <p className="text-xs px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444' }}>{formError}</p>}
+          <div className="flex gap-3">
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-xl text-sm font-medium hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
+            <button onClick={handleSaveAnalista} disabled={formLoading} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-60" style={{ backgroundColor: '#1E40AF' }}>
+              {formLoading ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+              Salvar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Table */}
+      <div style={cardStyle}>
+        <div className="p-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <p className="text-sm font-semibold text-white">{filtered.length} analista{filtered.length !== 1 ? 's' : ''} encontrado{filtered.length !== 1 ? 's' : ''}</p>
+          <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Perfis operacionais — sem acesso ao sistema</p>
+        </div>
+        {loading ? (
+          <div className="flex items-center justify-center py-12"><Loader2 size={20} className="animate-spin" style={{ color: '#38BDF8' }} /></div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ backgroundColor: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  {['Nome', 'Squad', 'Coordenador', 'Nível', 'Status', 'Ações'].map((h) => (
+                    <th key={h} className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((a) => (
+                  <tr key={a.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.02)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}>
+                    <td className="py-3 px-4">
+                      <p className="font-medium text-white">{a.nome}</p>
+                      {a.email && <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{a.email}</p>}
+                    </td>
+                    <td className="py-3 px-4 text-xs" style={{ color: '#94A3B8' }}>{a.squad || '—'}</td>
+                    <td className="py-3 px-4 text-xs" style={{ color: '#94A3B8' }}>{a.coordenador || '—'}</td>
+                    <td className="py-3 px-4 text-xs" style={{ color: '#94A3B8' }}>{a.nivel || '—'}</td>
+                    <td className="py-3 px-4">
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: `${STATUS_COLORS[a.status] || '#94A3B8'}15`, color: STATUS_COLORS[a.status] || '#94A3B8' }}>
+                        {a.status}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => { setEditingAnalista(a); setForm({ nome: a.nome, email: a.email || '', squad: a.squad || '', equipe: a.equipe || '', coordenador: a.coordenador || '', nivel: a.nivel || 'Junior', status: a.status || 'ativo', aniversario: a.aniversario || '', tempo_empresa: a.tempo_empresa || '', ultima_promocao: a.ultima_promocao || '', observacoes: a.observacoes || '' }); setShowForm(true); }}
+                          className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#60A5FA' }}><Edit2 size={13} /></button>
+                        <button onClick={() => handleDelete(a.id)} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#EF4444' }}><Trash2 size={13} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr><td colSpan={6} className="py-12 text-center text-sm" style={{ color: '#94A3B8' }}>
+                    <Users size={28} className="mx-auto mb-2 opacity-30" />
+                    Nenhum analista encontrado
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 function ConfiguracoesContent() {
-  const { userRole } = useSystemAuth();
+  const { session, userRole } = useSystemAuth();
+  const actorEmail = session?.email || 'sistema';
   const [activeTab, setActiveTab] = useState<Tab>('usuarios');
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [cargos, setCargos] = useState<Cargo[]>([]);
+  const [modules, setModules] = useState<PermissionModule[]>([]);
+  const [userPermissions, setUserPermissions] = useState<UserPermission[]>([]);
+  const [permLogs, setPermLogs] = useState<PermissionLog[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [editingUser, setEditingUser] = useState<UserProfile | undefined>();
+  const [permissionsUser, setPermissionsUser] = useState<UserProfile | undefined>();
   const [showAddUser, setShowAddUser] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [editingCargo, setEditingCargo] = useState<Cargo | null | undefined>(undefined);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'user' | 'cargo'; id: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState('');
+  const [searchUsers, setSearchUsers] = useState('');
 
-  const loadUsers = useCallback(async () => {
+  const loadAll = useCallback(async () => {
     setLoadingUsers(true);
     try {
       const supabase = createClient();
       if (!supabase) return;
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (!error && data) {
-        setUsers(data as UserProfile[]);
+      const [usersRes, cargosRes, modulesRes, permsRes, logsRes] = await Promise.all([
+        supabase.from('user_profiles').select('*').order('created_at', { ascending: false }),
+        supabase.from('cargos').select('*').order('nome'),
+        supabase.from('permission_modules').select('*').order('sort_order'),
+        supabase.from('user_permissions').select('*'),
+        supabase.from('permission_logs').select('*').order('created_at', { ascending: false }).limit(100),
+      ]);
+      if (usersRes.data) setUsers(usersRes.data as UserProfile[]);
+      if (cargosRes.data) {
+        const cargosWithCount = (cargosRes.data as Cargo[]).map((c) => ({
+          ...c,
+          _userCount: usersRes.data?.filter((u: any) => u.cargo_id === c.id).length || 0,
+        }));
+        setCargos(cargosWithCount);
       }
-    } catch (e) {
-      console.error('Erro ao carregar usuários:', e);
-    }
+      if (modulesRes.data) setModules(modulesRes.data as PermissionModule[]);
+      if (permsRes.data) setUserPermissions(permsRes.data as UserPermission[]);
+      if (logsRes.data) setPermLogs(logsRes.data as PermissionLog[]);
+    } catch (e) { console.error(e); }
     setLoadingUsers(false);
   }, []);
 
-  useEffect(() => {
-    loadUsers();
-  }, [loadUsers]);
+  useEffect(() => { loadAll(); }, [loadAll]);
 
-  const handleDelete = async (userId: string) => {
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
     setDeleteLoading(true);
     try {
       const supabase = createClient();
       if (!supabase) return;
-      await supabase.from('user_profiles').delete().eq('id', userId);
+      if (deleteConfirm.type === 'user') {
+        await supabase.from('user_profiles').delete().eq('id', deleteConfirm.id);
+      } else {
+        await supabase.from('cargos').delete().eq('id', deleteConfirm.id);
+      }
       setDeleteConfirm(null);
-      loadUsers();
-    } catch (e) {
-      console.error('Erro ao excluir:', e);
-    }
+      loadAll();
+    } catch (e) { console.error(e); }
     setDeleteLoading(false);
   };
 
-  const handleSaveSuccess = (msg: string) => {
+  const handleToggleCargo = async (cargo: Cargo) => {
+    const supabase = createClient();
+    if (!supabase) return;
+    await supabase.from('cargos').update({ is_active: !cargo.is_active, updated_at: new Date().toISOString() }).eq('id', cargo.id);
+    await supabase.from('permission_logs').insert({ actor_email: actorEmail, action: cargo.is_active ? 'cargo_inativado' : 'cargo_ativado', entity_type: 'cargo', entity_id: cargo.id, details: `Cargo "${cargo.nome}" ${cargo.is_active ? 'inativado' : 'ativado'}` });
+    loadAll();
+  };
+
+  const handleDuplicateCargo = async (cargo: Cargo) => {
+    const supabase = createClient();
+    if (!supabase) return;
+    await supabase.from('cargos').insert({ nome: `${cargo.nome} (cópia)`, descricao: cargo.descricao, cor: cargo.cor, is_active: true, is_admin_master: false });
+    loadAll();
+    showSuccessToast('Cargo duplicado com sucesso!');
+  };
+
+  const showSuccessToast = (msg: string) => {
     setSaveSuccess(msg);
-    loadUsers();
-    setEditingUser(undefined);
-    setShowAddUser(false);
     setTimeout(() => setSaveSuccess(''), 3000);
   };
 
-  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: 'usuarios', label: 'Usuários & Acessos', icon: <Users size={14} /> },
-    { id: 'cargos', label: 'Perfis de Acesso', icon: <Briefcase size={14} /> },
-    { id: 'permissoes', label: 'Matriz de Permissões', icon: <Lock size={14} /> },
-    { id: 'painel', label: 'Painel Admin', icon: <Shield size={14} /> },
-  ];
+  const filteredUsers = users.filter((u) => {
+    if (!searchUsers) return true;
+    const q = searchUsers.toLowerCase();
+    return (u.full_name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q) || (u.role || '').toLowerCase().includes(q);
+  });
 
-  const activeUsers = users.filter((u) => u.is_active !== false);
-  const inactiveUsers = users.filter((u) => u.is_active === false);
+  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    { id: 'usuarios', label: 'Usuários', icon: <Users size={14} /> },
+    { id: 'cargos', label: 'Cargos', icon: <Briefcase size={14} /> },
+    { id: 'permissoes', label: 'Permissões', icon: <Lock size={14} /> },
+    { id: 'analistas', label: 'Analistas', icon: <Star size={14} /> },
+    { id: 'logs', label: 'Logs de Auditoria', icon: <History size={14} /> },
+  ];
 
   return (
     <div className="p-6 max-w-screen-2xl mx-auto w-full">
-      {/* Success toast */}
       {saveSuccess && (
         <div className="fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium text-white" style={{ backgroundColor: '#166534', border: '1px solid rgba(34,197,94,0.3)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
-          <CheckCircle size={14} style={{ color: '#22C55E' }} />
-          {saveSuccess}
+          <CheckCircle size={14} style={{ color: '#22C55E' }} />{saveSuccess}
         </div>
       )}
 
@@ -447,152 +947,116 @@ function ConfiguracoesContent() {
             <Shield size={20} style={{ color: '#38BDF8' }} />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">Configurações</h1>
-            <p className="text-sm" style={{ color: '#94A3B8' }}>Gerenciamento RBAC — usuários, perfis e controle de acesso</p>
+            <h1 className="text-2xl font-bold text-white">Controle de Acessos</h1>
+            <p className="text-sm" style={{ color: '#94A3B8' }}>RBAC Enterprise — cargos, usuários, permissões individuais e analistas</p>
           </div>
         </div>
-        <div className="mt-4 p-3 rounded-xl flex items-center gap-2" style={{ backgroundColor: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)' }}>
-          <Database size={13} style={{ color: '#38BDF8' }} />
-          <p className="text-xs" style={{ color: '#94A3B8' }}>
-            Dados sincronizados com <strong className="text-white">Supabase</strong> · Perfis de acesso aplicados em tempo real via RBAC
-          </p>
+        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { label: 'Usuários', value: users.length, color: '#38BDF8', icon: <Users size={14} /> },
+            { label: 'Cargos', value: cargos.length, color: '#A78BFA', icon: <Briefcase size={14} /> },
+            { label: 'Ativos', value: users.filter((u) => u.is_active !== false).length, color: '#22C55E', icon: <UserCheck size={14} /> },
+            { label: 'Logs', value: permLogs.length, color: '#F59E0B', icon: <History size={14} /> },
+          ].map((s) => (
+            <div key={s.label} className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <span style={{ color: s.color }}>{s.icon}</span>
+              <div>
+                <p className="text-lg font-bold text-white">{s.value}</p>
+                <p className="text-xs" style={{ color: '#94A3B8' }}>{s.label}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 p-1 rounded-xl overflow-x-auto" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
         {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all"
-            style={{
-              backgroundColor: activeTab === tab.id ? '#1E40AF' : 'transparent',
-              color: activeTab === tab.id ? '#FFFFFF' : '#94A3B8',
-            }}
-          >
-            {tab.icon}
-            {tab.label}
+            style={{ backgroundColor: activeTab === tab.id ? '#1E40AF' : 'transparent', color: activeTab === tab.id ? '#FFFFFF' : '#94A3B8' }}>
+            {tab.icon}{tab.label}
           </button>
         ))}
       </div>
 
-      {/* ── TAB: Usuários & Acessos ── */}
+      {/* ── TAB: Usuários ── */}
       {activeTab === 'usuarios' && (
         <div style={cardStyle}>
-          <div className="flex items-center justify-between p-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="flex flex-wrap items-center justify-between gap-3 p-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
             <div>
               <h2 className="text-base font-semibold text-white">Usuários Cadastrados</h2>
-              <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>
-                {users.length} usuário{users.length !== 1 ? 's' : ''} · {activeUsers.length} ativo{activeUsers.length !== 1 ? 's' : ''}
-              </p>
+              <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{users.length} usuário{users.length !== 1 ? 's' : ''} · {users.filter((u) => u.is_active !== false).length} ativo{users.filter((u) => u.is_active !== false).length !== 1 ? 's' : ''}</p>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={loadUsers} className="p-2 rounded-lg transition-colors hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>
-                <RefreshCw size={14} />
-              </button>
-              <button
-                onClick={() => setShowAddUser(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-all"
-                style={{ backgroundColor: '#1E40AF', border: '1px solid rgba(56,189,248,0.2)' }}
-              >
+              <div className="relative">
+                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
+                <input value={searchUsers} onChange={(e) => setSearchUsers(e.target.value)} placeholder="Buscar..." style={{ ...inputStyle, paddingLeft: '2rem', width: '180px', height: '36px', fontSize: '0.8rem' }} />
+              </div>
+              <button onClick={loadAll} className="p-2 rounded-lg hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}><RefreshCw size={14} /></button>
+              <button onClick={() => setShowAddUser(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: '#1E40AF' }}>
                 <Plus size={14} /> Pré-cadastrar
               </button>
             </div>
           </div>
-
           {loadingUsers ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 size={20} className="animate-spin" style={{ color: '#38BDF8' }} />
-            </div>
+            <div className="flex items-center justify-center py-16"><Loader2 size={20} className="animate-spin" style={{ color: '#38BDF8' }} /></div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr style={{ backgroundColor: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    {['Usuário', 'E-mail', 'Perfil (Role)', 'Squad', 'Status', 'Cadastrado em', 'Ações'].map((h) => (
-                      <th key={h} className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>
-                        {h}
-                      </th>
+                    {['Usuário', 'E-mail', 'Cargo / Role', 'Squad', 'Status', 'Nível', 'Ações'].map((h) => (
+                      <th key={h} className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((u) => {
-                    const roleMeta = ROLE_META[u.role] || { color: '#94A3B8' };
+                  {filteredUsers.map((u) => {
+                    const cargo = cargos.find((c) => c.id === u.cargo_id);
+                    const roleColor = cargo?.cor || '#94A3B8';
                     const initials = (u.full_name || u.email || 'U').split(' ').slice(0, 2).map((n: string) => n[0]).join('').toUpperCase();
+                    const statusColor = STATUS_COLORS[u.status_usuario || 'ativo'] || '#22C55E';
                     return (
-                      <tr
-                        key={u.id}
-                        style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
+                      <tr key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
                         onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.02)')}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                      >
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}>
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-2.5">
-                            <div
-                              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                              style={{ backgroundColor: roleMeta.color, opacity: u.is_active === false ? 0.5 : 1 }}
-                            >
-                              {initials}
-                            </div>
-                            <span className="font-medium text-white text-sm">{u.full_name || '—'}</span>
+                            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ backgroundColor: roleColor, opacity: u.is_active === false ? 0.5 : 1 }}>{initials}</div>
+                            <span className="font-medium text-white">{u.full_name || '—'}</span>
                           </div>
                         </td>
                         <td className="py-3 px-4 text-xs" style={{ color: '#94A3B8' }}>{u.email}</td>
                         <td className="py-3 px-4">
-                          <span
-                            className="px-2.5 py-1 rounded-full text-xs font-semibold"
-                            style={{ backgroundColor: `${roleMeta.color}18`, color: roleMeta.color, border: `1px solid ${roleMeta.color}30` }}
-                          >
-                            {u.role}
-                          </span>
+                          <div className="space-y-1">
+                            {cargo && <span className="block px-2 py-0.5 rounded-full text-xs font-semibold w-fit" style={{ backgroundColor: `${cargo.cor}18`, color: cargo.cor, border: `1px solid ${cargo.cor}30` }}>{cargo.nome}</span>}
+                            {u.role && <span className="block text-xs" style={{ color: '#94A3B8' }}>{u.role}</span>}
+                          </div>
                         </td>
                         <td className="py-3 px-4 text-xs" style={{ color: '#94A3B8' }}>{u.squad || '—'}</td>
                         <td className="py-3 px-4">
-                          <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: u.is_active !== false ? '#22C55E' : '#EF4444' }}>
-                            {u.is_active !== false ? <UserCheck size={12} /> : <UserX size={12} />}
-                            {u.is_active !== false ? 'Ativo' : 'Inativo'}
+                          <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: statusColor }}>
+                            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: statusColor }} />
+                            {(u.status_usuario || 'ativo').charAt(0).toUpperCase() + (u.status_usuario || 'ativo').slice(1)}
                           </span>
                         </td>
-                        <td className="py-3 px-4 text-xs" style={{ color: '#94A3B8' }}>
-                          {u.created_at ? (
-                            <span className="flex items-center gap-1">
-                              <Clock size={11} />
-                              {new Date(u.created_at).toLocaleDateString('pt-BR')}
-                            </span>
-                          ) : '—'}
-                        </td>
+                        <td className="py-3 px-4 text-xs" style={{ color: '#94A3B8' }}>{u.nivel || '—'}</td>
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => setEditingUser(u)}
-                              className="p-1.5 rounded-lg transition-colors hover:bg-white/10"
-                              style={{ color: '#60A5FA' }}
-                              title="Editar perfil"
-                            >
-                              <Edit2 size={13} />
-                            </button>
-                            <button
-                              onClick={() => setDeleteConfirm(u.id)}
-                              className="p-1.5 rounded-lg transition-colors hover:bg-white/10"
-                              style={{ color: '#EF4444' }}
-                              title="Remover"
-                            >
-                              <Trash2 size={13} />
-                            </button>
+                            <button onClick={() => setEditingUser(u)} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#60A5FA' }} title="Editar"><Edit2 size={13} /></button>
+                            <button onClick={() => setPermissionsUser(u)} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#A78BFA' }} title="Permissões"><Lock size={13} /></button>
+                            <button onClick={() => setDeleteConfirm({ type: 'user', id: u.id })} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#EF4444' }} title="Remover"><Trash2 size={13} /></button>
                           </div>
                         </td>
                       </tr>
                     );
                   })}
-                  {users.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="py-16 text-center text-sm" style={{ color: '#94A3B8' }}>
-                        <Database size={32} className="mx-auto mb-3 opacity-30" />
-                        Nenhum usuário cadastrado no Supabase
-                      </td>
-                    </tr>
+                  {filteredUsers.length === 0 && (
+                    <tr><td colSpan={7} className="py-16 text-center text-sm" style={{ color: '#94A3B8' }}>
+                      <Database size={32} className="mx-auto mb-3 opacity-30" />
+                      Nenhum usuário encontrado
+                    </td></tr>
                   )}
                 </tbody>
               </table>
@@ -601,261 +1065,187 @@ function ConfiguracoesContent() {
         </div>
       )}
 
-      {/* ── TAB: Perfis de Acesso ── */}
+      {/* ── TAB: Cargos ── */}
       {activeTab === 'cargos' && (
         <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-white">Cargos Configuráveis</h2>
+              <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Estrutura base — permissões são definidas individualmente por usuário</p>
+            </div>
+            <button onClick={() => setEditingCargo(null)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: '#1E40AF' }}>
+              <Plus size={14} /> Novo Cargo
+            </button>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {RBAC_ROLES.map((role) => {
-              const meta = ROLE_META[role];
-              const count = users.filter((u) => u.role === role).length;
-              return (
-                <div key={role} className="p-5 rounded-2xl" style={cardStyle}>
-                  <div className="flex items-start gap-4">
-                    <div
-                      className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: `${meta.color}15`, border: `1px solid ${meta.color}25` }}
-                    >
-                      <Key size={18} style={{ color: meta.color }} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <h3 className="text-sm font-bold text-white">{role}</h3>
-                        <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: `${meta.color}15`, color: meta.color }}>
-                          {count}
-                        </span>
-                      </div>
-                      <p className="text-xs leading-relaxed mb-3" style={{ color: '#94A3B8' }}>{meta.description}</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {meta.permissions.map((p) => (
-                          <span key={p} className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: `${meta.color}10`, color: meta.color }}>
-                            {p}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
+            {cargos.map((cargo) => (
+              <div key={cargo.id} className="p-5 rounded-2xl" style={{ ...cardStyle, opacity: cargo.is_active ? 1 : 0.6 }}>
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${cargo.cor}15`, border: `1px solid ${cargo.cor}25` }}>
+                    <Key size={16} style={{ color: cargo.cor }} />
                   </div>
-                  {count > 0 && (
-                    <div className="mt-4 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                      <p className="text-xs font-medium mb-2" style={{ color: '#94A3B8' }}>Usuários:</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {users.filter((u) => u.role === role).map((u) => (
-                          <span key={u.id} className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: '#F8FAFC' }}>
-                            {(u.full_name || u.email || '').split(' ')[0]}
-                          </span>
-                        ))}
-                      </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <h3 className="text-sm font-bold text-white truncate">{cargo.nome}</h3>
+                      {cargo.is_admin_master && <span className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.25)' }}>MASTER</span>}
                     </div>
-                  )}
+                    <p className="text-xs leading-relaxed" style={{ color: '#94A3B8' }}>{cargo.descricao || 'Sem descrição'}</p>
+                  </div>
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0" style={{ backgroundColor: `${cargo.cor}15`, color: cargo.cor }}>{cargo._userCount || 0}</span>
                 </div>
-              );
-            })}
+                <div className="flex items-center gap-1.5 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                  <button onClick={() => setEditingCargo(cargo)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all hover:bg-white/5" style={{ color: '#60A5FA' }}><Edit2 size={11} /> Editar</button>
+                  <button onClick={() => handleDuplicateCargo(cargo)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all hover:bg-white/5" style={{ color: '#94A3B8' }}><Copy size={11} /> Duplicar</button>
+                  <button onClick={() => handleToggleCargo(cargo)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all hover:bg-white/5" style={{ color: cargo.is_active ? '#F59E0B' : '#22C55E' }}>
+                    {cargo.is_active ? <ToggleRight size={11} /> : <ToggleLeft size={11} />}
+                    {cargo.is_active ? 'Inativar' : 'Ativar'}
+                  </button>
+                  <button onClick={() => setDeleteConfirm({ type: 'cargo', id: cargo.id })} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all hover:bg-white/5 ml-auto" style={{ color: '#EF4444' }}><Trash2 size={11} /></button>
+                </div>
+              </div>
+            ))}
+            {cargos.length === 0 && (
+              <div className="col-span-3 py-16 text-center" style={{ color: '#94A3B8' }}>
+                <Briefcase size={32} className="mx-auto mb-3 opacity-30" />
+                <p className="text-sm">Nenhum cargo cadastrado</p>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* ── TAB: Matriz de Permissões ── */}
+      {/* ── TAB: Permissões ── */}
       {activeTab === 'permissoes' && (
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-base font-semibold text-white">Matriz de Permissões por Usuário</h2>
+            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Permissões individuais — independentes do cargo. Clique em um usuário para configurar.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {users.map((u) => {
+              const cargo = cargos.find((c) => c.id === u.cargo_id);
+              const userPerms = userPermissions.filter((p) => p.user_profile_id === u.id);
+              const totalGranted = userPerms.reduce((acc, p) => {
+                return acc + PERMISSION_ACTIONS.filter((a) => p[a.key as keyof UserPermission]).length;
+              }, 0);
+              const initials = (u.full_name || u.email || 'U').split(' ').slice(0, 2).map((n: string) => n[0]).join('').toUpperCase();
+              return (
+                <div key={u.id} className="p-4 rounded-xl cursor-pointer transition-all hover:border-sky-500/30" style={{ ...cardStyle, border: '1px solid rgba(255,255,255,0.07)' }}
+                  onClick={() => setPermissionsUser(u)}>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ backgroundColor: cargo?.cor || '#1E40AF' }}>{initials}</div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">{u.full_name || u.email}</p>
+                      <p className="text-xs truncate" style={{ color: '#94A3B8' }}>{cargo?.nome || u.role || 'Sem cargo'}</p>
+                    </div>
+                    <Lock size={14} style={{ color: '#38BDF8', flexShrink: 0 }} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs" style={{ color: '#94A3B8' }}>{userPerms.length} módulo{userPerms.length !== 1 ? 's' : ''} configurado{userPerms.length !== 1 ? 's' : ''}</span>
+                    <span className="text-xs font-semibold" style={{ color: totalGranted > 0 ? '#22C55E' : '#94A3B8' }}>{totalGranted} permissão{totalGranted !== 1 ? 'ões' : ''}</span>
+                  </div>
+                </div>
+              );
+            })}
+            {users.length === 0 && (
+              <div className="col-span-3 py-16 text-center" style={{ color: '#94A3B8' }}>
+                <Lock size={32} className="mx-auto mb-3 opacity-30" />
+                <p className="text-sm">Nenhum usuário para configurar permissões</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB: Analistas ── */}
+      {activeTab === 'analistas' && <AnalistasTab actorEmail={actorEmail} />}
+
+      {/* ── TAB: Logs ── */}
+      {activeTab === 'logs' && (
         <div style={cardStyle}>
           <div className="p-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-            <h2 className="text-base font-semibold text-white">Matriz de Permissões por Perfil</h2>
-            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Visão consolidada das permissões por role no sistema</p>
+            <h2 className="text-base font-semibold text-white">Logs de Auditoria</h2>
+            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Registro completo de alterações em permissões, cargos e usuários</p>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+            <table className="w-full text-sm">
               <thead>
                 <tr style={{ backgroundColor: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <th className="text-left py-3 px-4 font-semibold uppercase tracking-wide" style={{ color: '#94A3B8', minWidth: '180px' }}>Permissão</th>
-                  {RBAC_ROLES.map((r) => (
-                    <th key={r} className="text-center py-3 px-3 font-semibold" style={{ color: ROLE_META[r].color, minWidth: '100px' }}>
-                      {r.split(' ')[0]}
-                    </th>
+                  {['Data/Hora', 'Ator', 'Alvo', 'Ação', 'Detalhes'].map((h) => (
+                    <th key={h} className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {[
-                  { label: 'Acesso Total', key: 'total', roles: ['Admin', 'Coordenadora Qualidade'] },
-                  { label: 'Visualizar Todas Squads', key: 'all_squads', roles: ['Admin', 'Coordenadora Qualidade', 'Coordenador Geral', 'Gestor'] },
-                  { label: 'Visualizar Squad Própria', key: 'own_squad', roles: ['Admin', 'Coordenadora Qualidade', 'Coordenador Geral', 'Gestor', 'Analista Qualidade', 'Coordenador', 'Auditor'] },
-                  { label: 'Importar Ciclos', key: 'import', roles: ['Admin', 'Coordenadora Qualidade', 'Coordenador Geral', 'Analista Qualidade', 'Coordenador'] },
-                  { label: 'Fechar Ciclo', key: 'close_cycle', roles: ['Admin', 'Coordenadora Qualidade', 'Coordenador Geral'] },
-                  { label: 'Auditoria ISO', key: 'audit', roles: ['Admin', 'Coordenadora Qualidade', 'Analista Qualidade', 'Auditor'] },
-                  { label: 'Gerenciar Usuários', key: 'manage_users', roles: ['Admin'] },
-                  { label: 'Excluir Registros', key: 'delete', roles: ['Admin', 'Coordenadora Qualidade'] },
-                  { label: 'Exportar Relatórios', key: 'export', roles: ['Admin', 'Coordenadora Qualidade', 'Coordenador Geral', 'Gestor', 'Analista Qualidade'] },
-                  { label: 'Analytics Executivo', key: 'analytics', roles: ['Admin', 'Coordenadora Qualidade', 'Coordenador Geral', 'Gestor'] },
-                ].map((row, i) => (
-                  <tr
-                    key={row.key}
-                    style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}
-                  >
-                    <td className="py-3 px-4 font-medium text-white">{row.label}</td>
-                    {RBAC_ROLES.map((r) => (
-                      <td key={r} className="py-3 px-3 text-center">
-                        {row.roles.includes(r) ? (
-                          <span style={{ color: '#22C55E', fontSize: '1rem' }}>✓</span>
-                        ) : (
-                          <span style={{ color: 'rgba(255,255,255,0.1)', fontSize: '0.8rem' }}>—</span>
-                        )}
-                      </td>
-                    ))}
+                {permLogs.map((log) => (
+                  <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.02)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}>
+                    <td className="py-3 px-4 text-xs" style={{ color: '#94A3B8' }}>
+                      <span className="flex items-center gap-1"><Clock size={11} />{new Date(log.created_at).toLocaleString('pt-BR')}</span>
+                    </td>
+                    <td className="py-3 px-4 text-xs text-white">{log.actor_email || '—'}</td>
+                    <td className="py-3 px-4 text-xs" style={{ color: '#94A3B8' }}>{log.target_email || '—'}</td>
+                    <td className="py-3 px-4">
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}>
+                        {log.action?.replace(/_/g, ' ')}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-xs" style={{ color: '#94A3B8' }}>{log.details || '—'}</td>
                   </tr>
                 ))}
+                {permLogs.length === 0 && (
+                  <tr><td colSpan={5} className="py-16 text-center text-sm" style={{ color: '#94A3B8' }}>
+                    <History size={32} className="mx-auto mb-3 opacity-30" />
+                    Nenhum log registrado ainda
+                  </td></tr>
+                )}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
-      {/* ── TAB: Painel Admin ── */}
-      {activeTab === 'painel' && (
-        <div className="space-y-6">
-          {/* Summary KPIs */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              { label: 'Total Usuários', value: users.length, color: '#38BDF8', icon: <Users size={18} /> },
-              { label: 'Usuários Ativos', value: activeUsers.length, color: '#22C55E', icon: <UserCheck size={18} /> },
-              { label: 'Usuários Inativos', value: inactiveUsers.length, color: '#EF4444', icon: <UserX size={18} /> },
-              { label: 'Admins', value: users.filter((u) => u.role === 'Admin').length, color: '#F59E0B', icon: <Shield size={18} /> },
-            ].map((card) => (
-              <div key={card.label} className="p-5 rounded-2xl" style={cardStyle}>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${card.color}15`, color: card.color }}>
-                    {card.icon}
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-white">{card.value}</p>
-                    <p className="text-xs" style={{ color: '#94A3B8' }}>{card.label}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Role distribution */}
-          <div className="p-5 rounded-2xl" style={cardStyle}>
-            <h3 className="text-sm font-semibold text-white mb-4">Distribuição por Perfil</h3>
-            <div className="space-y-3">
-              {RBAC_ROLES.map((role) => {
-                const count = users.filter((u) => u.role === role).length;
-                const pct = users.length > 0 ? (count / users.length) * 100 : 0;
-                const meta = ROLE_META[role];
-                return (
-                  <div key={role} className="flex items-center gap-3">
-                    <span className="text-xs font-medium w-40 flex-shrink-0" style={{ color: meta.color }}>{role}</span>
-                    <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${pct}%`, backgroundColor: meta.color, opacity: 0.7 }}
-                      />
-                    </div>
-                    <span className="text-xs w-8 text-right" style={{ color: '#94A3B8' }}>{count}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Recent users */}
-          <div className="p-5 rounded-2xl" style={cardStyle}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-white">Usuários Recentes</h3>
-              <button
-                onClick={() => setActiveTab('usuarios')}
-                className="text-xs px-3 py-1.5 rounded-lg transition-colors"
-                style={{ color: '#38BDF8', backgroundColor: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.15)' }}
-              >
-                Ver todos
-              </button>
-            </div>
-            <div className="space-y-2">
-              {users.slice(0, 5).map((u) => {
-                const meta = ROLE_META[u.role] || { color: '#94A3B8' };
-                return (
-                  <div key={u.id} className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: 'rgba(255,255,255,0.02)' }}>
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ backgroundColor: meta.color }}>
-                      {(u.full_name || u.email || 'U').split(' ').slice(0, 2).map((n: string) => n[0]).join('').toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white truncate">{u.full_name || u.email}</p>
-                      <p className="text-xs" style={{ color: '#94A3B8' }}>{u.email}</p>
-                    </div>
-                    <span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0" style={{ backgroundColor: `${meta.color}15`, color: meta.color }}>
-                      {u.role}
-                    </span>
-                  </div>
-                );
-              })}
-              {users.length === 0 && (
-                <p className="text-center py-6 text-sm" style={{ color: '#94A3B8' }}>Nenhum usuário cadastrado</p>
-              )}
-            </div>
-          </div>
-
-          {/* Quick actions */}
-          <div className="p-5 rounded-2xl" style={cardStyle}>
-            <h3 className="text-sm font-semibold text-white mb-4">Ações Rápidas</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {[
-                { label: 'Pré-cadastrar Usuário', icon: <Plus size={15} />, color: '#1E40AF', action: () => setShowAddUser(true) },
-                { label: 'Gerenciar Perfis', icon: <Key size={15} />, color: '#7C3AED', action: () => setActiveTab('cargos') },
-                { label: 'Matriz de Permissões', icon: <Lock size={15} />, color: '#D97706', action: () => setActiveTab('permissoes') },
-              ].map((action) => (
-                <button
-                  key={action.label}
-                  onClick={action.action}
-                  className="flex items-center gap-3 p-4 rounded-xl text-sm font-medium text-left transition-all hover:opacity-90"
-                  style={{ backgroundColor: `${action.color}15`, border: `1px solid ${action.color}25`, color: action.color }}
-                >
-                  {action.icon}
-                  {action.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Modals */}
       {editingUser && (
-        <EditUserModal
-          user={editingUser}
-          onClose={() => setEditingUser(undefined)}
-          onSave={() => handleSaveSuccess('Perfil de acesso atualizado com sucesso!')}
-        />
+        <EditUserModal user={editingUser} cargos={cargos} onClose={() => setEditingUser(undefined)} actorEmail={actorEmail}
+          onSave={() => { showSuccessToast('Usuário atualizado!'); loadAll(); setEditingUser(undefined); }} />
+      )}
+
+      {permissionsUser && (
+        <PermissionsMatrixModal user={permissionsUser} modules={modules}
+          existingPermissions={userPermissions.filter((p) => p.user_profile_id === permissionsUser.id)}
+          onClose={() => setPermissionsUser(undefined)} actorEmail={actorEmail}
+          onSave={() => { showSuccessToast('Permissões salvas!'); loadAll(); setPermissionsUser(undefined); }} />
       )}
 
       {showAddUser && (
-        <AddUserModal
-          onClose={() => setShowAddUser(false)}
-          onSave={() => handleSaveSuccess('Usuário pré-cadastrado com sucesso!')}
-        />
+        <AddUserModal cargos={cargos} onClose={() => setShowAddUser(false)} actorEmail={actorEmail}
+          onSave={() => { showSuccessToast('Usuário pré-cadastrado!'); loadAll(); setShowAddUser(false); }} />
+      )}
+
+      {editingCargo !== undefined && (
+        <CargoModal cargo={editingCargo} onClose={() => setEditingCargo(undefined)} actorEmail={actorEmail}
+          onSave={() => { showSuccessToast(editingCargo ? 'Cargo atualizado!' : 'Cargo criado!'); loadAll(); setEditingCargo(undefined); }} />
       )}
 
       {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.75)' }}>
-          <div className="w-full max-w-sm rounded-2xl p-6" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(239,68,68,0.2)', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.8)' }}>
+          <div className="w-full max-w-sm rounded-2xl p-6" style={{ backgroundColor: '#0A1628', border: '1px solid rgba(239,68,68,0.2)', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(239,68,68,0.1)' }}>
                 <AlertTriangle size={18} style={{ color: '#EF4444' }} />
               </div>
               <div>
-                <h3 className="text-base font-semibold text-white">Remover Usuário</h3>
+                <h3 className="text-base font-semibold text-white">Confirmar Exclusão</h3>
                 <p className="text-xs" style={{ color: '#94A3B8' }}>Esta ação não pode ser desfeita.</p>
               </div>
             </div>
             <div className="flex gap-3">
-              <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5 transition-colors" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>
-                Cancelar
-              </button>
-              <button
-                onClick={() => handleDelete(deleteConfirm)}
-                disabled={deleteLoading}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
-                style={{ backgroundColor: '#DC2626' }}
-              >
+              <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
+              <button onClick={handleDelete} disabled={deleteLoading} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60" style={{ backgroundColor: '#DC2626' }}>
                 {deleteLoading ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                Remover
+                Excluir
               </button>
             </div>
           </div>
