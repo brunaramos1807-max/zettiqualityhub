@@ -96,7 +96,7 @@ export default function LoginScreen() {
           <div className="flex items-center gap-3 mb-16">
             <div className="w-12 h-12 rounded-xl overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}>
               <AppImage
-                src="/assets/images/5f5559140_ChatGPTImage27deabrde202616_50_50-1777926706123.png"
+                src="/assets/images/ChatGPT_Image_18_de_mai._de_2026__16_36_10-1779133005009.png"
                 alt="Zetti Quality Hub logo — quality analytics icon with magnifying glass and chart"
                 width={48}
                 height={48}
@@ -142,7 +142,7 @@ export default function LoginScreen() {
           <div className="flex items-center gap-3 mb-8 lg:hidden">
             <div className="w-10 h-10 rounded-xl overflow-hidden" style={{ backgroundColor: '#1E3A5F' }}>
               <AppImage
-                src="/assets/images/5f5559140_ChatGPTImage27deabrde202616_50_50-1777926706123.png"
+                src="/assets/images/ChatGPT_Image_18_de_mai._de_2026__16_36_10-1779133005009.png"
                 alt="Zetti Quality Hub logo"
                 width={40}
                 height={40}

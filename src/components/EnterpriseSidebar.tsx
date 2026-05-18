@@ -132,7 +132,7 @@ export default function EnterpriseSidebar({ collapsed = false, onToggle }: Enter
           style={{ backgroundColor: '#1E40AF' }}
         >
           <AppImage
-            src="/assets/images/5f5559140_ChatGPTImage27deabrde202616_50_50-1777926706123.png"
+            src="/assets/images/ChatGPT_Image_18_de_mai._de_2026__16_36_10-1779133005009.png"
             alt="QualiVisão logo"
             width={32}
             height={32}
