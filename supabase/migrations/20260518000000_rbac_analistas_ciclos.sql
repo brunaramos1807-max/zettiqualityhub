@@ -152,16 +152,47 @@ ALTER TABLE public.permission_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cycle_closure_history ENABLE ROW LEVEL SECURITY;
 
 -- Allow authenticated users to read cargos and modules
-CREATE POLICY "cargos_read" ON public.cargos FOR SELECT TO authenticated USING (true);
-CREATE POLICY "permission_modules_read" ON public.permission_modules FOR SELECT TO authenticated USING (true);
-CREATE POLICY "user_permissions_read" ON public.user_permissions FOR SELECT TO authenticated USING (true);
-CREATE POLICY "analistas_read" ON public.analistas FOR SELECT TO authenticated USING (true);
-CREATE POLICY "permission_logs_read" ON public.permission_logs FOR SELECT TO authenticated USING (true);
-CREATE POLICY "cycle_closure_history_read" ON public.cycle_closure_history FOR SELECT TO authenticated USING (true);
+DO $$ BEGIN
+  CREATE POLICY "cargos_read" ON public.cargos FOR SELECT TO authenticated USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "permission_modules_read" ON public.permission_modules FOR SELECT TO authenticated USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "user_permissions_read" ON public.user_permissions FOR SELECT TO authenticated USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "analistas_read" ON public.analistas FOR SELECT TO authenticated USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "permission_logs_read" ON public.permission_logs FOR SELECT TO authenticated USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "cycle_closure_history_read" ON public.cycle_closure_history FOR SELECT TO authenticated USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- Allow authenticated users to write
-CREATE POLICY "cargos_write" ON public.cargos FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "user_permissions_write" ON public.user_permissions FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "analistas_write" ON public.analistas FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "permission_logs_write" ON public.permission_logs FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "cycle_closure_history_write" ON public.cycle_closure_history FOR INSERT TO authenticated WITH CHECK (true);
+DO $$ BEGIN
+  CREATE POLICY "cargos_write" ON public.cargos FOR ALL TO authenticated USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "user_permissions_write" ON public.user_permissions FOR ALL TO authenticated USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "analistas_write" ON public.analistas FOR ALL TO authenticated USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "permission_logs_write" ON public.permission_logs FOR INSERT TO authenticated WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "cycle_closure_history_write" ON public.cycle_closure_history FOR INSERT TO authenticated WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
