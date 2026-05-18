@@ -14,6 +14,7 @@ import { TrendingUp, TrendingDown, Minus, AlertTriangle, Star, Users, BarChart2,
 import Link from 'next/link';
 import { useChat } from '@/lib/hooks/useChat';
 import { createClient } from '@/lib/supabase/client';
+import { DrilldownPanel } from '@/components/DrilldownNavigation';
 
 interface PeriodSummary {
   periodo: string;
@@ -224,9 +225,10 @@ export default function HomeExecutiveView() {
   const [consolidateResult, setConsolidateResult] = useState('');
   const [closeCycleOpen, setCloseCycleOpen] = useState(false);
   const [closeCycleSuccess, setCloseCycleSuccess] = useState(false);
+  const [drilldownCiclo, setDrilldownCiclo] = useState<string | null>(null);
 
-  const { response: aiResponse, isLoading: aiChatLoading, sendMessage } = useChat('GEMINI', 'gemini/gemini-2.5-flash', false);
-  const { response: consolidateResponse, isLoading: consolidateLoading, sendMessage: sendConsolidate } = useChat('GEMINI', 'gemini/gemini-2.5-flash', false);
+  const { response: aiResponse, isLoading: aiChatLoading, error: aiError, sendMessage } = useChat('GEMINI', 'gemini/gemini-2.5-flash', false);
+  const { response: consolidateResponse, isLoading: consolidateLoading, error: consolidateError, sendMessage: sendConsolidate } = useChat('GEMINI', 'gemini/gemini-2.5-flash', false);
 
   const canImport = session?.permissoes?.permissao_editar ||
     session?.permissoes?.acesso_total ||
@@ -577,6 +579,12 @@ Seja analítico, preciso e orientado a dados.`;
                 {aiChatLoading ? 'Analisando...' : 'Gerar Insight'}
               </button>
             </div>
+            {aiError && (
+              <div className="mb-3 p-3 rounded-xl flex items-start gap-2 text-xs" style={{ backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#EF4444' }}>
+                <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+                <span>{(aiError as any)?.userMessage || aiError?.message || 'Erro ao conectar com Gemini'}</span>
+              </div>
+            )}
             {aiInsight ? (
               <p className="text-sm leading-relaxed" style={{ color: '#94A3B8' }}>{aiInsight}</p>
             ) : (
@@ -715,7 +723,7 @@ Seja analítico, preciso e orientado a dados.`;
                 <table className="w-full text-xs">
                   <thead>
                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                      {['Período', 'QA Médio', 'IEPC Médio', 'NCs', 'Elogios', 'Analistas'].map((h) => (
+                      {['Período', 'QA Médio', 'IEPC Médio', 'NCs', 'Elogios', 'Analistas', ''].map((h) => (
                         <th key={h} className="text-left py-2 pr-4 font-medium" style={{ color: '#94A3B8' }}>{h}</th>
                       ))}
                     </tr>
@@ -729,6 +737,16 @@ Seja analítico, preciso e orientado a dados.`;
                         <td className="py-2 pr-4" style={{ color: row.ncs > 10 ? '#EF4444' : 'rgba(255,255,255,0.6)' }}>{row.ncs}</td>
                         <td className="py-2 pr-4" style={{ color: '#F59E0B' }}>{row.elogios}</td>
                         <td className="py-2 pr-4" style={{ color: '#94A3B8' }}>{row.analistas}</td>
+                        <td className="py-2">
+                          <button
+                            onClick={() => setDrilldownCiclo(row.periodo)}
+                            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all"
+                            style={{ color: '#38BDF8', backgroundColor: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.15)' }}
+                          >
+                            <ChevronRight size={10} />
+                            Detalhar
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -750,6 +768,13 @@ Seja analítico, preciso e orientado a dados.`;
           summary={lastPeriod}
           onClose={() => setCloseCycleOpen(false)}
           onConfirm={handleCloseCycle}
+        />
+      )}
+
+      {drilldownCiclo && (
+        <DrilldownPanel
+          initialCiclo={drilldownCiclo}
+          onClose={() => setDrilldownCiclo(null)}
         />
       )}
     </div>
