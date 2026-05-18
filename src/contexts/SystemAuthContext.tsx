@@ -13,10 +13,15 @@ import {
 } from '@/lib/authSystem';
 import { createClient } from '@/lib/supabase/client';
 
+export type UserRole = 'Admin' | 'Coordenador' | 'Diretoria' | 'Gestor' | 'Coordenador Geral' | 'Auditor' | 'Analista';
+
 interface SystemAuthContextType {
   session: SessionData | null;
   loading: boolean;
   isAdmin: boolean;
+  userRole: UserRole | null;
+  userSquad: string | null;
+  userSquads: string[];
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
 }
@@ -25,13 +30,16 @@ const SystemAuthContext = createContext<SystemAuthContextType>({
   session: null,
   loading: true,
   isAdmin: false,
+  userRole: null,
+  userSquad: null,
+  userSquads: [],
   login: async () => ({ success: false }),
   logout: () => {},
 });
 
 export const useSystemAuth = () => useContext(SystemAuthContext);
 
-const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 min
+const INACTIVITY_TIMEOUT = 30 * 60 * 1000;
 
 // Known admin emails for Supabase Auth fallback
 const ADMIN_EMAILS = ['brunaramos1807@gmail.com', 'bruna.silva@zetti.tech', 'admin@zetti.com.br'];
@@ -51,9 +59,32 @@ function buildSupabaseSession(supaUser: any): SessionData {
   };
 }
 
+async function fetchUserProfile(userId: string): Promise<{ role: UserRole | null; squad: string | null; squads: string[] }> {
+  try {
+    const supabase = createClient();
+    if (!supabase) return { role: null, squad: null, squads: [] };
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('role, squad, squads')
+      .eq('id', userId)
+      .single();
+    if (error || !data) return { role: null, squad: null, squads: [] };
+    return {
+      role: (data.role as UserRole) || null,
+      squad: data.squad || null,
+      squads: Array.isArray(data.squads) ? data.squads : (data.squad ? [data.squad] : []),
+    };
+  } catch {
+    return { role: null, squad: null, squads: [] };
+  }
+}
+
 export function SystemAuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<SessionData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [userSquad, setUserSquad] = useState<string | null>(null);
+  const [userSquads, setUserSquads] = useState<string[]>([]);
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearTimer = () => {
@@ -68,20 +99,42 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
     inactivityTimer.current = setTimeout(() => {
       logoutUser();
       setSession(null);
+      setUserRole(null);
+      setUserSquad(null);
+      setUserSquads([]);
     }, INACTIVITY_TIMEOUT);
   }, []);
 
   const resetTimer = useCallback(() => {
-    if (session) {
-      startInactivityTimer();
-    }
+    if (session) startInactivityTimer();
   }, [session, startInactivityTimer]);
+
+  const applySupabaseUser = useCallback(
+    async (supaUser: any) => {
+      const derived = buildSupabaseSession(supaUser);
+      setSession(derived);
+      startInactivityTimer();
+      // Load role from DB
+      const profile = await fetchUserProfile(supaUser.id);
+      if (profile.role) {
+        setUserRole(profile.role);
+        // Override cargo with DB role
+        derived.cargo = profile.role;
+      } else {
+        // Fallback: admin emails get Admin role
+        const email: string = supaUser.email || '';
+        setUserRole(ADMIN_EMAILS.includes(email.toLowerCase()) ? 'Admin' : 'Auditor');
+      }
+      setUserSquad(profile.squad);
+      setUserSquads(profile.squads);
+    },
+    [startInactivityTimer],
+  );
 
   useEffect(() => {
     const init = async () => {
       await seedDefaultAdmin();
 
-      // 1. Check localStorage session first
       const localSession = getCurrentSession();
       if (localSession) {
         setSession(localSession);
@@ -90,26 +143,23 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
         return;
       }
 
-      // 2. Fall back to Supabase Auth session
       const supabase = createClient();
       if (supabase) {
         const { data: { session: supaSession } } = await supabase.auth.getSession();
         if (supaSession?.user) {
-          const derived = buildSupabaseSession(supaSession.user);
-          setSession(derived);
+          await applySupabaseUser(supaSession.user);
           setLoading(false);
-          startInactivityTimer();
           return;
         }
 
-        // Listen for Supabase auth state changes (e.g. after email confirmation redirect)
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, supaSession) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, supaSession) => {
           if (supaSession?.user) {
-            const derived = buildSupabaseSession(supaSession.user);
-            setSession(derived);
-            startInactivityTimer();
+            await applySupabaseUser(supaSession.user);
           } else if (!getCurrentSession()) {
             setSession(null);
+            setUserRole(null);
+            setUserSquad(null);
+            setUserSquads([]);
           }
           setLoading(false);
         });
@@ -126,7 +176,7 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
       clearTimer();
       cleanup?.then?.((fn) => fn?.());
     };
-  }, [startInactivityTimer]);
+  }, [applySupabaseUser, startInactivityTimer]);
 
   // Reset inactivity timer on user activity
   useEffect(() => {
@@ -137,7 +187,6 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
   }, [session, resetTimer]);
 
   const login = async (email: string, password: string) => {
-    // 1. Try localStorage-based auth first
     const result = await loginUser(email, password);
     if (result.success && result.session) {
       setSession(result.session);
@@ -145,20 +194,14 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
       return { success: true };
     }
 
-    // 2. Fall back to Supabase Auth (for users who confirmed email)
     const supabase = createClient();
     if (supabase) {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (!error && data.user) {
-        const derived = buildSupabaseSession(data.user);
-        setSession(derived);
-        startInactivityTimer();
+        await applySupabaseUser(data.user);
         return { success: true };
       }
-      if (error) {
-        // Return the most helpful error message
-        return { success: false, error: result.error || error.message };
-      }
+      if (error) return { success: false, error: result.error || error.message };
     }
 
     return { success: false, error: result.error || 'Credenciais inválidas.' };
@@ -167,12 +210,12 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
   const logout = async () => {
     logoutUser();
     setSession(null);
+    setUserRole(null);
+    setUserSquad(null);
+    setUserSquads([]);
     clearTimer();
-    // Also sign out from Supabase
     const supabase = createClient();
-    if (supabase) {
-      await supabase.auth.signOut();
-    }
+    if (supabase) await supabase.auth.signOut();
   };
 
   return (
@@ -180,7 +223,10 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
       value={{
         session,
         loading,
-        isAdmin: checkIsAdmin(session),
+        isAdmin: checkIsAdmin(session) || userRole === 'Admin',
+        userRole,
+        userSquad,
+        userSquads,
         login,
         logout,
       }}
