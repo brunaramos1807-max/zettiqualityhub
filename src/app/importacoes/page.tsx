@@ -1,13 +1,11 @@
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
 
-
 import ImportModal from '@/components/ImportModal';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
-import { fetchCycleScores, fetchAllPeriodos, type RealAnalyst,  } from '@/lib/services/dataService';
-import { createClient } from '@/lib/supabase/client';
-import { BarChart2, Activity, Plus, Save, X, Loader2 } from 'lucide-react';
+import { fetchCycleScores, fetchAllPeriodos, type RealAnalyst, exportCycleToCSV, deletePeriodData } from '@/lib/services/dataService';
+import { BarChart2, Activity, Plus, Save, X, Loader2, Trash2, Download, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface ManualEvalForm {
@@ -24,6 +22,16 @@ interface ManualEvalForm {
   observacoes: string;
 }
 
+interface ImportRecord {
+  id: string;
+  fileName: string;
+  tipo: string;
+  modo: string;
+  periodo: string;
+  data: string;
+  rows: number;
+}
+
 const EMPTY_FORM: ManualEvalForm = {
   analista: '', squad: '', coordenador: '', auditor: '',
   nota_final_qa: '', iepc_total: '', total_ncs: '0', pontos_deduzidos_nc: '0',
@@ -33,6 +41,22 @@ const EMPTY_FORM: ManualEvalForm = {
 };
 
 const SQUADS = ['PDV', 'PDV N1', 'Compras e Estoque', 'Financeiro Fiscal'];
+const IMPORT_STORAGE_KEY = 'zetti_import_records';
+
+function loadImportRecords(): ImportRecord[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    return JSON.parse(localStorage.getItem(IMPORT_STORAGE_KEY) || '[]');
+  } catch { return []; }
+}
+
+function deleteImportRecord(id: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const existing = loadImportRecords();
+    localStorage.setItem(IMPORT_STORAGE_KEY, JSON.stringify(existing.filter((r) => r.id !== id)));
+  } catch { /* ignore */ }
+}
 
 function ImportacoesContent() {
   const [importOpen, setImportOpen] = useState(false);
@@ -45,15 +69,14 @@ function ImportacoesContent() {
   const [saving, setSaving] = useState(false);
   const [analysts, setAnalysts] = useState<RealAnalyst[]>([]);
   const [loading, setLoading] = useState(true);
-  const [imports, setImports] = useState<any[]>([]);
+  const [imports, setImports] = useState<ImportRecord[]>([]);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const canImport = session?.permissoes?.permissao_editar ||
     session?.permissoes?.acesso_total ||
     session?.cargo === 'Administrador' ||
     session?.cargo === 'Coordenador' ||
     session?.cargo === 'Coordenador Geral';
-
-  const supabase = createClient();
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -66,15 +89,8 @@ function ImportacoesContent() {
       setSelectedPeriodo(allPeriodos[allPeriodos.length - 1]);
     }
 
-    // Load import records from Supabase
-    if (supabase) {
-      const { data } = await supabase
-        .from('import_cycles')
-        .select('*')
-        .order('imported_at', { ascending: false });
-      setImports(data || []);
-    }
-
+    // Load import records from localStorage
+    setImports(loadImportRecords());
     setLoading(false);
   }, [selectedPeriodo]);
 
@@ -96,7 +112,7 @@ function ImportacoesContent() {
     const p4 = parseFloat(form.p4) || 0;
     const p5 = parseFloat(form.p5) || 0;
     const total = p1 + p2 + p3 + p4 + p5;
-    const maxTotal = 22 + 34 + 18 + 14 + 12; // 100
+    const maxTotal = 22 + 34 + 18 + 14 + 12;
     const qa = (total / maxTotal) * 100;
     setForm((prev) => ({ ...prev, nota_final_qa: qa.toFixed(2) }));
   };
@@ -108,7 +124,7 @@ function ImportacoesContent() {
     const e4 = parseFloat(form.e4) || 0;
     const e5 = parseFloat(form.e5) || 0;
     const total = e1 + e2 + e3 + e4 + e5;
-    const maxTotal = 30 + 20 + 20 + 15 + 15; // 100
+    const maxTotal = 30 + 20 + 20 + 15 + 15;
     const iepc = (total / maxTotal) * 100;
     setForm((prev) => ({ ...prev, iepc_total: iepc.toFixed(2) }));
   };
@@ -120,38 +136,17 @@ function ImportacoesContent() {
       toast.error('Preencha analista, squad e coordenador');
       return;
     }
-    if (!supabase) { toast.error('Supabase não configurado'); return; }
 
     setSaving(true);
     try {
-      // Ensure cycle exists
-      let cycleId: string | null = null;
-      const { data: existingCycle } = await supabase
-        .from('import_cycles')
-        .select('id')
-        .eq('periodo', periodo)
-        .single();
-
-      if (existingCycle) {
-        cycleId = existingCycle.id;
-      } else {
-        const { data: newCycle, error: cycleError } = await supabase
-          .from('import_cycles')
-          .insert({ periodo, file_name: 'Entrada Manual', record_count: 1 })
-          .select('id')
-          .single();
-        if (cycleError) throw new Error(cycleError.message);
-        cycleId = newCycle?.id;
-      }
-
-      // Insert into cycle_scores
-      const { error: scoreError } = await supabase.from('cycle_scores').insert({
-        cycle_id: cycleId,
+      // Save to localStorage via dataService
+      const { importCycleData } = await import('@/lib/services/dataService');
+      const score = {
         periodo,
         analista: form.analista,
         squad: form.squad,
         coordenador: form.coordenador,
-        auditor: form.auditor || null,
+        auditor: form.auditor || '',
         nota_final_qa: parseFloat(form.nota_final_qa) || 0,
         iepc_total: parseFloat(form.iepc_total) || 0,
         total_ncs: parseInt(form.total_ncs) || 0,
@@ -166,10 +161,22 @@ function ImportacoesContent() {
         e3: parseFloat(form.e3) || 0,
         e4: parseFloat(form.e4) || 0,
         e5: parseFloat(form.e5) || 0,
-        is_manual: true,
-      });
+      };
+      const result = await importCycleData([score], [], [], periodo, 'Entrada Manual');
+      if (!result.success) throw new Error(result.error || 'Erro ao salvar');
 
-      if (scoreError) throw new Error(scoreError.message);
+      // Save import record
+      const existing = loadImportRecords();
+      const newRecord: ImportRecord = {
+        id: `import-${Date.now()}`,
+        fileName: 'Entrada Manual',
+        tipo: 'Qualidade',
+        modo: 'Manual',
+        periodo,
+        data: new Date().toISOString(),
+        rows: 1,
+      };
+      localStorage.setItem(IMPORT_STORAGE_KEY, JSON.stringify([newRecord, ...existing]));
 
       toast.success(`Avaliação de ${form.analista} salva para ${periodo}!`);
       setForm(EMPTY_FORM);
@@ -181,6 +188,36 @@ function ImportacoesContent() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDeleteImport = (record: ImportRecord) => {
+    setDeleteConfirm(record.id);
+  };
+
+  const confirmDelete = (record: ImportRecord) => {
+    // Remove from import records list
+    deleteImportRecord(record.id);
+    // Also remove period data from localStorage if no other imports for same period
+    const remaining = loadImportRecords().filter((r) => r.id !== record.id && r.periodo === record.periodo);
+    if (remaining.length === 0) {
+      deletePeriodData(record.periodo);
+    }
+    setDeleteConfirm(null);
+    setImports(loadImportRecords());
+    toast.success(`Importação "${record.fileName}" excluída`);
+    window.dispatchEvent(new CustomEvent('zetti_import_done'));
+  };
+
+  const handleDownload = (record: ImportRecord) => {
+    exportCycleToCSV(record.periodo);
+    toast.success(`Download iniciado para o ciclo ${record.periodo}`);
+  };
+
+  const getTipoColor = (tipo: string) => {
+    if (tipo === 'Qualidade') return { color: '#38BDF8', bg: 'rgba(56,189,248,0.12)', border: 'rgba(56,189,248,0.25)' };
+    if (tipo === 'Não Conformidades') return { color: '#EF4444', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.25)' };
+    if (tipo === 'Elogios') return { color: '#10B981', bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.25)' };
+    return { color: '#94A3B8', bg: 'rgba(148,163,184,0.12)', border: 'rgba(148,163,184,0.25)' };
   };
 
   const inputCls = 'w-full px-3 py-2 rounded-lg text-sm text-white outline-none transition-all focus:ring-1 focus:ring-blue-500/40';
@@ -229,7 +266,7 @@ function ImportacoesContent() {
                 <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>
                   Use o <strong>Lançamento Manual</strong> para inserir avaliações individuais durante o ciclo ou cadastrar ciclos históricos.
                   Use <strong>Importar CSV</strong> para importar planilhas consolidadas ao final do ciclo.
-                  Os dados são armazenados no Supabase e calculados automaticamente.
+                  Os dados são armazenados localmente e calculados automaticamente.
                 </p>
               </div>
             </div>
@@ -237,8 +274,11 @@ function ImportacoesContent() {
 
           {/* Import history */}
           <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
-            <div className="px-5 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
               <h3 className="text-sm font-semibold text-white">Histórico de Importações</h3>
+              <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}>
+                {imports.length} {imports.length === 1 ? 'importação' : 'importações'}
+              </span>
             </div>
             {loading ? (
               <div className="flex items-center justify-center py-12">
@@ -246,29 +286,84 @@ function ImportacoesContent() {
               </div>
             ) : imports.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-sm" style={{ color: 'rgba(255,255,255,0.3)' }}>Nenhuma importação registrada</p>
+                <FileText size={32} className="mx-auto mb-3" style={{ color: 'rgba(255,255,255,0.1)' }} />
+                <p className="text-sm font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>Nenhuma importação registrada</p>
+                <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.2)' }}>Importe um CSV ou faça um lançamento manual para começar</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                      {['Período', 'Arquivo', 'Registros', 'Data de Importação'].map((h) => (
+                      {['Período', 'Arquivo', 'Tipo', 'Modo', 'Registros', 'Data de Importação', 'Ações'].map((h) => (
                         <th key={h} className="text-left px-5 py-3 font-medium" style={{ color: 'rgba(255,255,255,0.35)' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {imports.map((imp) => (
-                      <tr key={imp.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                        <td className="px-5 py-3 font-medium text-white">{imp.periodo}</td>
-                        <td className="px-5 py-3" style={{ color: 'rgba(255,255,255,0.5)' }}>{imp.file_name || '—'}</td>
-                        <td className="px-5 py-3" style={{ color: 'rgba(255,255,255,0.5)' }}>{imp.record_count || 0}</td>
-                        <td className="px-5 py-3" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                          {imp.imported_at ? new Date(imp.imported_at).toLocaleDateString('pt-BR') : '—'}
-                        </td>
-                      </tr>
-                    ))}
+                    {imports.map((imp) => {
+                      const tipoStyle = getTipoColor(imp.tipo);
+                      return (
+                        <tr key={imp.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                          <td className="px-5 py-3 font-medium text-white">{imp.periodo}</td>
+                          <td className="px-5 py-3" style={{ color: 'rgba(255,255,255,0.5)' }}>{imp.fileName || '—'}</td>
+                          <td className="px-5 py-3">
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ color: tipoStyle.color, backgroundColor: tipoStyle.bg, border: `1px solid ${tipoStyle.border}` }}>
+                              {imp.tipo}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3" style={{ color: 'rgba(255,255,255,0.4)' }}>{imp.modo || 'Ciclo Completo'}</td>
+                          <td className="px-5 py-3" style={{ color: 'rgba(255,255,255,0.5)' }}>{imp.rows || 0}</td>
+                          <td className="px-5 py-3" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                            {imp.data ? new Date(imp.data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                          </td>
+                          <td className="px-5 py-3">
+                            {deleteConfirm === imp.id ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs" style={{ color: '#EF4444' }}>Confirmar?</span>
+                                <button
+                                  onClick={() => confirmDelete(imp)}
+                                  className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium"
+                                  style={{ backgroundColor: 'rgba(239,68,68,0.2)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.3)' }}
+                                >
+                                  Sim
+                                </button>
+                                <button
+                                  onClick={() => setDeleteConfirm(null)}
+                                  className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium"
+                                  style={{ backgroundColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}
+                                >
+                                  Não
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleDownload(imp)}
+                                  title="Baixar dados do ciclo"
+                                  className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-all hover:opacity-80"
+                                  style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}
+                                >
+                                  <Download size={11} />
+                                  Baixar
+                                </button>
+                                {canImport && (
+                                  <button
+                                    onClick={() => handleDeleteImport(imp)}
+                                    title="Excluir importação"
+                                    className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-all hover:opacity-80"
+                                    style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}
+                                  >
+                                    <Trash2 size={11} />
+                                    Excluir
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

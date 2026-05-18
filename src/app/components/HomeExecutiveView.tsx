@@ -10,6 +10,12 @@ import {
   buildAnalystsFromScores,
 } from '@/lib/services/dataService';
 import {
+  fetchCycleScoresFromSupabase,
+  fetchNCRecordsFromSupabase,
+  fetchElogiosFromSupabase,
+  fetchAllPeriodosFromSupabase,
+} from '@/lib/services/supabaseDataService';
+import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   LabelList,
@@ -503,12 +509,29 @@ export default function HomeExecutiveView() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [scores, periodos, ncs, elogios] = await Promise.all([
+      let [scores, periodos, ncs, elogios] = await Promise.all([
         fetchCycleScores(),
         fetchAllPeriodos(),
         fetchNCRecords(),
         fetchElogios(),
       ]);
+
+      // Fallback: if localStorage is empty, try Supabase
+      if (scores.length === 0) {
+        const [sbScores, sbPeriodos, sbNcs, sbElogios] = await Promise.all([
+          fetchCycleScoresFromSupabase(),
+          fetchAllPeriodosFromSupabase(),
+          fetchNCRecordsFromSupabase(),
+          fetchElogiosFromSupabase(),
+        ]);
+        if (sbScores.length > 0) {
+          scores = sbScores;
+          periodos = sbPeriodos;
+          ncs = sbNcs;
+          elogios = sbElogios;
+        }
+      }
+
       setAllPeriodos(periodos);
 
       if (scores.length === 0) {

@@ -573,7 +573,21 @@ export async function fetchElogios(periodo?: string) {
 
 export async function fetchAllPeriodos(): Promise<string[]> {
   const cycles = lsGet<any>(LS_CYCLES);
-  const periodos = [...new Set(cycles.map((c: any) => c.periodo as string))];
+  let periodos = [...new Set(cycles.map((c: any) => c.periodo as string))].filter(Boolean);
+
+  // Fallback: if no cycles registered but scores exist, derive periods from scores
+  if (periodos.length === 0) {
+    const scores = lsGet<any>(LS_SCORES);
+    const ncs = lsGet<any>(LS_NCS);
+    const elogios = lsGet<any>(LS_ELOGIOS);
+    const allPeriodos = [
+      ...scores.map((s: any) => s.periodo),
+      ...ncs.map((n: any) => n.periodo),
+      ...elogios.map((e: any) => e.periodo),
+    ].filter(Boolean);
+    periodos = [...new Set(allPeriodos)] as string[];
+  }
+
   return periodos;
 }
 
