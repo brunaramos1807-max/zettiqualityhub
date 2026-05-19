@@ -3,8 +3,48 @@
 -- 20260519130000_rbac_full_overhaul.sql
 -- ============================================================
 
+-- ─── 0. Ensure squads table exists (not created in earlier migrations) ───────
+CREATE TABLE IF NOT EXISTS public.squads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  coordinator_name TEXT,
+  coordinator_email TEXT,
+  active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Ensure unique constraint on squads.name for ON CONFLICT to work
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.squads'::regclass
+      AND contype = 'u'
+      AND conname = 'squads_name_key'
+  ) THEN
+    ALTER TABLE public.squads ADD CONSTRAINT squads_name_key UNIQUE (name);
+  END IF;
+END $$;
+
+-- Ensure unique constraint on analistas.email for ON CONFLICT to work
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.analistas'::regclass
+      AND contype = 'u'
+      AND conname = 'analistas_email_key'
+  ) THEN
+    ALTER TABLE public.analistas ADD CONSTRAINT analistas_email_key UNIQUE (email);
+  END IF;
+END $$;
+
 -- ─── 1. Enable RLS on analyst_profiles (was disabled) ────────────────────────
 ALTER TABLE public.analyst_profiles ENABLE ROW LEVEL SECURITY;
+
+-- Enable RLS on squads
+ALTER TABLE public.squads ENABLE ROW LEVEL SECURITY;
 
 -- ─── 2. Drop all existing policies to rebuild cleanly ────────────────────────
 DO $$
