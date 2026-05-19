@@ -116,6 +116,15 @@ CREATE TABLE IF NOT EXISTS public.import_logs (
   actor_email TEXT
 );
 
+-- Ensure columns exist if table was created by a prior migration without them
+ALTER TABLE public.import_logs
+  ADD COLUMN IF NOT EXISTS level TEXT NOT NULL DEFAULT 'info',
+  ADD COLUMN IF NOT EXISTS file_name TEXT,
+  ADD COLUMN IF NOT EXISTS details JSONB,
+  ADD COLUMN IF NOT EXISTS cycle_id UUID,
+  ADD COLUMN IF NOT EXISTS rows_affected INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS actor_email TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_import_logs_periodo ON public.import_logs (periodo);
 CREATE INDEX IF NOT EXISTS idx_import_logs_created_at ON public.import_logs (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_import_logs_level ON public.import_logs (level);
