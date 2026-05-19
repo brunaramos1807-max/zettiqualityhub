@@ -654,16 +654,21 @@ export async function fetchCycleScores(periodo?: string): Promise<any[]> {
       let query = supabase.from('cycle_scores').select('*');
       if (periodo) query = query.eq('periodo', periodo);
       const { data, error } = await query.order('nota_final_qa', { ascending: false });
-      if (!error) {
+      if (error) {
+        console.error('[fetchCycleScores] Supabase error:', error.message, error.code);
+      } else {
+        console.log(`[fetchCycleScores] ${data?.length || 0} registros${periodo ? ` para ${periodo}` : ''}`);
         // Supabase is authoritative — return its data (even if empty)
         return (data || []);
       }
     }
-  } catch { /* fall through to localStorage */ }
+  } catch (err: any) {
+    console.error('[fetchCycleScores] Supabase unreachable:', err.message);
+  }
 
   // Fallback: localStorage (only when Supabase is unreachable)
   const data = lsGet<any>(LS_SCORES);
-  if (periodo) return data.filter((r) => r.periodo === periodo);
+  if (periodo) return data.filter((r: any) => r.periodo === periodo);
   return data.sort((a: any, b: any) => b.nota_final_qa - a.nota_final_qa);
 }
 
@@ -715,27 +720,27 @@ export async function fetchAllPeriodos(): Promise<string[]> {
     const { createClient } = await import('@/lib/supabase/client');
     const supabase = createClient();
     if (supabase) {
-      const [cyclesRes, scoresRes, ncsRes, elogiosRes] = await Promise.all([
-        supabase.from('import_cycles').select('periodo'),
+      const [cyclesRes, scoresRes] = await Promise.all([
+        supabase.from('import_cycles').select('periodo').order('periodo', { ascending: false }),
         supabase.from('cycle_scores').select('periodo'),
-        supabase.from('nc_records').select('periodo'),
-        supabase.from('elogios').select('periodo'),
       ]);
-      // If any query succeeded (no error), use Supabase data exclusively
-      const anySuccess = !cyclesRes.error || !scoresRes.error || !ncsRes.error || !elogiosRes.error;
-      if (anySuccess) {
-        const all = [
-          ...(cyclesRes.data || []).map((r: any) => r.periodo),
-          ...(scoresRes.data || []).map((r: any) => r.periodo),
-          ...(ncsRes.data || []).map((r: any) => r.periodo),
-          ...(elogiosRes.data || []).map((r: any) => r.periodo),
-        ].filter(Boolean);
-        const unique = [...new Set(all)] as string[];
-        unique.sort((a, b) => a.localeCompare(b));
-        return unique;
-      }
+
+      if (cyclesRes.error) console.error('[fetchAllPeriodos] import_cycles error:', cyclesRes.error.message, cyclesRes.error.code);
+      if (scoresRes.error) console.error('[fetchAllPeriodos] cycle_scores error:', scoresRes.error.message, scoresRes.error.code);
+
+      // Use Supabase data exclusively (even if empty — empty means no data imported yet)
+      const all = [
+        ...(cyclesRes.data || []).map((r: any) => r.periodo),
+        ...(scoresRes.data || []).map((r: any) => r.periodo),
+      ].filter(Boolean);
+      const unique = [...new Set(all)] as string[];
+      unique.sort((a, b) => b.localeCompare(a));
+      console.log('[fetchAllPeriodos] Períodos do Supabase:', unique.join(', ') || 'nenhum');
+      return unique;
     }
-  } catch { /* fall through to localStorage */ }
+  } catch (err: any) {
+    console.error('[fetchAllPeriodos] Supabase unreachable:', err.message);
+  }
 
   // Fallback: localStorage (only when Supabase is unreachable)
   const cycles = lsGet<any>(LS_CYCLES);

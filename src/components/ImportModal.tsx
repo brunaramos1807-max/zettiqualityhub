@@ -4,16 +4,7 @@ import { X, Upload, CheckCircle, Loader2, AlertCircle, ChevronRight, Database, I
 import { toast } from 'sonner';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
-import {
-  parseQAScoresCSV,
-  parseNCsCSV,
-  parseElogiosCSV,
-  importCycleData,
-  isCycleClosed,
-  type CycleScoreRow,
-  type NCRow,
-  type ElogioRow,
-} from '@/lib/services/dataService';
+import { parseQAScoresCSV, parseNCsCSV, parseElogiosCSV, isCycleClosed, type CycleScoreRow, type NCRow, type ElogioRow,  } from '@/lib/services/dataService';
 import { importCycleDataToSupabase, isCycleClosedInSupabase } from '@/lib/services/supabaseDataService';
 
 interface ImportModalProps {
@@ -275,20 +266,33 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
         setAndamentoCount(parsedScores.length);
       }
 
-      // PRIMARY: Save to Supabase so ALL users see the data
-      const supabaseResult = await importCycleDataToSupabase(parsedScores, parsedNCs, parsedElogios, periodo, fileEntry.name);
-      if (!supabaseResult.success) {
-        // If Supabase fails, still try localStorage as fallback but warn
-        console.warn('Supabase import failed, falling back to localStorage:', supabaseResult.error);
-      }
+      console.log(`[IMPORT MODAL] Iniciando importação — período: ${periodo}, tipo: ${selectedType}`);
+      console.log(`[IMPORT MODAL] Dados: ${parsedScores.length} scores, ${parsedNCs.length} NCs, ${parsedElogios.length} elogios`);
 
-      // SECONDARY: Also save to localStorage as local cache/fallback
-      const result = await importCycleData(parsedScores, parsedNCs, parsedElogios, periodo, fileEntry.name);
-      if (!result.success && !supabaseResult.success) {
-        setImportError(supabaseResult.error || result.error || 'Erro desconhecido');
+      // PRIMARY: Save to Supabase — single source of truth
+      const supabaseResult = await importCycleDataToSupabase(parsedScores, parsedNCs, parsedElogios, periodo, fileEntry.name);
+
+      if (!supabaseResult.success) {
+        console.error('[IMPORT MODAL] Falha no Supabase:', supabaseResult.error);
+        setImportError(`Erro ao salvar no banco de dados: ${supabaseResult.error || 'Erro desconhecido'}`);
         setImporting(false);
         return;
       }
+
+      console.log(`[IMPORT MODAL] ✅ Supabase OK — cycleId: ${supabaseResult.cycleId}`);
+
+      // Clear stale localStorage data for this period
+      try {
+        const LS_SCORES = 'zetti_cycle_scores';
+        const LS_NCS = 'zetti_nc_records';
+        const LS_ELOGIOS = 'zetti_elogios';
+        const LS_CYCLES = 'zetti_import_cycles';
+        const parse = (k: string) => { try { return JSON.parse(localStorage.getItem(k) || '[]'); } catch { return []; } };
+        localStorage.setItem(LS_SCORES, JSON.stringify(parse(LS_SCORES).filter((r: any) => r.periodo !== periodo)));
+        localStorage.setItem(LS_NCS, JSON.stringify(parse(LS_NCS).filter((r: any) => r.periodo !== periodo)));
+        localStorage.setItem(LS_ELOGIOS, JSON.stringify(parse(LS_ELOGIOS).filter((r: any) => r.periodo !== periodo)));
+        localStorage.setItem(LS_CYCLES, JSON.stringify(parse(LS_CYCLES).filter((r: any) => r.periodo !== periodo)));
+      } catch { /* ignore localStorage errors */ }
 
       const IMPORT_STORAGE_KEY = 'zetti_import_records';
       const count = parsedScores.length || parsedNCs.length || parsedElogios.length;
@@ -311,7 +315,6 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
       setStep('done');
 
       window.dispatchEvent(new CustomEvent('zetti_import_done', { detail: { tipo: tipoLabel, periodo, count, modo: importMode } }));
-      // Also fire auditoria event for Por Andamento
       if (importMode === 'por-andamento') {
         window.dispatchEvent(new CustomEvent('zetti_andamento_update', { detail: { periodo, count: parsedScores.length } }));
       }
@@ -319,6 +322,7 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
       toast.success('Dados importados com sucesso!', { description: `${count} registros de ${selectedTypeInfo?.label} — Ciclo ${periodo}${importMode === 'por-andamento' ? ' (Por Andamento)' : ''}` });
       onImportSuccess?.();
     } catch (err: any) {
+      console.error('[IMPORT MODAL] Erro inesperado:', err);
       setImportError(err.message);
     } finally {
       setImporting(false);
