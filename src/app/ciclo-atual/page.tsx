@@ -53,9 +53,9 @@ function CicloAtualContent() {
       return;
     }
 
-    // Current = latest period, last closed = second to last
-    const current = periodos[periodos.length - 1];
-    const lastClosed = periodos.length > 1 ? periodos[periodos.length - 2] : '';
+    // periodos is sorted descending (newest first), so index 0 is the latest by calendar date
+    const current = periodos[0];
+    const lastClosed = periodos.length > 1 ? periodos[1] : '';
 
     setCurrentPeriodo(current);
     setLastPeriodo(lastClosed);
