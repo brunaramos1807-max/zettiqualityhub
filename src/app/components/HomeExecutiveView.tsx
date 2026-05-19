@@ -48,6 +48,26 @@ const PILLAR_COLORS = {
 
 const NC_COLORS = ['#3B82F6', '#06B6D4', '#F59E0B', '#EF4444', '#8B5CF6'];
 
+// Official NC categories with fixed colors
+const NC_CATEGORY_MAP: Record<string, { label: string; color: string }> = {
+  'NC-1': { label: 'NC-1 Postura e Ética', color: '#3B82F6' },
+  'NC-2': { label: 'NC-2 Acuracidade Técnica', color: '#06B6D4' },
+  'NC-3': { label: 'NC-3 Registro e Rastreab.', color: '#F59E0B' },
+  'NC-4': { label: 'NC-4 Fluxo Operacional', color: '#EF4444' },
+  'NC-5': { label: 'NC-5 Segurança da Info.', color: '#8B5CF6' },
+};
+
+function normalizeNCType(raw: string): string {
+  if (!raw) return 'Outros';
+  const upper = raw.toUpperCase().trim();
+  if (upper.includes('NC-1') || upper.includes('NC1') || upper.includes('POSTURA') || upper.includes('ÉTICA') || upper.includes('ETICA')) return 'NC-1';
+  if (upper.includes('NC-2') || upper.includes('NC2') || upper.includes('ACURAC') || upper.includes('TÉCNIC') || upper.includes('TECNIC')) return 'NC-2';
+  if (upper.includes('NC-3') || upper.includes('NC3') || upper.includes('REGISTRO') || upper.includes('RASTREAB')) return 'NC-3';
+  if (upper.includes('NC-4') || upper.includes('NC4') || upper.includes('FLUXO') || upper.includes('OPERAC')) return 'NC-4';
+  if (upper.includes('NC-5') || upper.includes('NC5') || upper.includes('SEGURANÇA') || upper.includes('SEGURANCA') || upper.includes('INFORMA')) return 'NC-5';
+  return raw.trim();
+}
+
 // ─── Performance Classification ──────────────────────────────────────────────
 function getPerformanceClass(score: number): { label: string; color: string; bg: string; border: string } {
   if (score >= 90) return { label: 'Excelência Operacional', color: '#10b981', bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.3)' };
@@ -739,16 +759,37 @@ export default function HomeExecutiveView() {
         const ncByType = (() => {
           const typeCounts: Record<string, number> = {};
           pNCs.forEach((nc: any) => {
-            const t = nc.tipo || nc.category || 'Outros';
+            const raw = nc.tipo_nc || nc.tipo || nc.category || '';
+            const t = normalizeNCType(raw);
             typeCounts[t] = (typeCounts[t] || 0) + 1;
           });
           const total = pNCs.length;
-          return Object.entries(typeCounts).map(([name, value], idx) => ({
-            name,
-            value,
-            color: NC_COLORS[idx % NC_COLORS.length],
-            pct: total > 0 ? Math.round((value / total) * 100) : 0,
-          }));
+          // Build ordered list: NC-1 through NC-5 first, then any others
+          const orderedKeys = ['NC-1', 'NC-2', 'NC-3', 'NC-4', 'NC-5'];
+          const result: { name: string; value: number; color: string; pct: number }[] = [];
+          orderedKeys.forEach((key) => {
+            if (typeCounts[key]) {
+              const cat = NC_CATEGORY_MAP[key];
+              result.push({
+                name: cat.label,
+                value: typeCounts[key],
+                color: cat.color,
+                pct: total > 0 ? Math.round((typeCounts[key] / total) * 100) : 0,
+              });
+            }
+          });
+          // Add any unrecognized types
+          Object.entries(typeCounts).forEach(([name, value], idx) => {
+            if (!orderedKeys.includes(name)) {
+              result.push({
+                name,
+                value,
+                color: NC_COLORS[idx % NC_COLORS.length],
+                pct: total > 0 ? Math.round((value / total) * 100) : 0,
+              });
+            }
+          });
+          return result;
         })();
 
         if (analysts.length > 0) {
