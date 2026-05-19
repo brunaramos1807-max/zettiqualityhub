@@ -144,11 +144,17 @@ ON CONFLICT (email) DO UPDATE SET
   status           = EXCLUDED.status;
 
 -- ─── 7. Seed QA/IEPC Scores — Ciclo 03/2026 ─────────────────────────────────
+-- Delete existing seed rows first to avoid conflicts with uq_cycle_scores_pad
+-- (which keys on periodo+analista+data_registro, different from our squad-based upsert key)
 
 DO $$
 DECLARE v_cycle_id UUID;
 BEGIN
   SELECT id INTO v_cycle_id FROM public.import_cycles WHERE periodo = '03/2026' LIMIT 1;
+
+  -- Remove any previously seeded rows for this cycle to allow clean re-insert
+  DELETE FROM public.cycle_scores
+  WHERE periodo = '03/2026' AND source = 'seed';
 
   INSERT INTO public.cycle_scores
     (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
@@ -178,19 +184,9 @@ BEGIN
     (v_cycle_id,'03/2026','2026-03-25','Rafael Andrade',    'PDV',              'Ayron Silva',    'Bruna Silva', 90.80, 86.00, 0,  0,16.00,34.00,20.00,10.00,17.75,27.00,17.00,16.00,11.00,15.00,'seed'),
     (v_cycle_id,'03/2026','2026-03-24','Thallison Silva',   'Compras e Estoque','Jonatas Jesus',  'Bruna Silva', 80.40, 77.00, 1,-20,10.00,18.00,12.00, 7.00,12.00,25.00,16.00,14.00,11.00,11.00,'seed'),
     (v_cycle_id,'03/2026','2026-03-25','Thiago Maroja',     'PDV',              'Ayron Silva',    'Bruna Silva', 82.80, 82.00, 0,  0,12.00,27.00,16.80, 8.40,18.80,25.00,17.00,17.00,11.00,12.00,'seed'),
-    -- Frederico Couto appears 3x in the data (different squads/dates) — using squad as differentiator
-    (v_cycle_id,'03/2026','2026-03-10','Frederico Couto',   'Compras e Estoque','Amanda Cristina','Bruna Silva', 66.25, 73.44, 2,-40, 9.33,21.67,17.50, 6.00,10.50,22.50,15.00,12.50, 9.38,14.06,'seed'),
-    (v_cycle_id,'03/2026','2026-03-20','Frederico Couto',   'Financeiro Fiscal','Amanda Cristina','Bruna Silva', 63.20, 42.80, 2,-40, 6.40,18.70,17.20, 8.20, 8.00, 8.00, 6.80, 5.20,12.00,10.80,'seed')
-  ON CONFLICT (periodo, analista, squad) DO UPDATE SET
-    nota_final_qa       = EXCLUDED.nota_final_qa,
-    iepc_total          = EXCLUDED.iepc_total,
-    total_ncs           = EXCLUDED.total_ncs,
-    pontos_deduzidos_nc = EXCLUDED.pontos_deduzidos_nc,
-    p1 = EXCLUDED.p1, p2 = EXCLUDED.p2, p3 = EXCLUDED.p3,
-    p4 = EXCLUDED.p4, p5 = EXCLUDED.p5,
-    e1 = EXCLUDED.e1, e2 = EXCLUDED.e2, e3 = EXCLUDED.e3,
-    e4 = EXCLUDED.e4, e5 = EXCLUDED.e5,
-    cycle_id = EXCLUDED.cycle_id;
+    -- Frederico Couto appears in 2 squads — different squads, different dates to satisfy uq_cycle_scores_pad
+    (v_cycle_id,'03/2026','2026-03-11','Frederico Couto',   'Compras e Estoque','Amanda Cristina','Bruna Silva', 66.25, 73.44, 2,-40, 9.33,21.67,17.50, 6.00,10.50,22.50,15.00,12.50, 9.38,14.06,'seed'),
+    (v_cycle_id,'03/2026','2026-03-20','Frederico Couto',   'Financeiro Fiscal','Amanda Cristina','Bruna Silva', 63.20, 42.80, 2,-40, 6.40,18.70,17.20, 8.20, 8.00, 8.00, 6.80, 5.20,12.00,10.80,'seed');
 END $$;
 
 -- ─── 8. Seed QA/IEPC Scores — Ciclo 04/2026 ─────────────────────────────────
@@ -199,6 +195,10 @@ DO $$
 DECLARE v_cycle_id UUID;
 BEGIN
   SELECT id INTO v_cycle_id FROM public.import_cycles WHERE periodo = '04/2026' LIMIT 1;
+
+  -- Remove any previously seeded rows for this cycle to allow clean re-insert
+  DELETE FROM public.cycle_scores
+  WHERE periodo = '04/2026' AND source = 'seed';
 
   INSERT INTO public.cycle_scores
     (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
@@ -227,17 +227,7 @@ BEGIN
     (v_cycle_id,'04/2026','2026-04-25','Thiago Fonseca',    'PDV',              'Ayron Silva',    'Bruna Silva', 74.00, 81.00, 4,-80,12.00,26.00,16.00,11.00, 8.00,26.00,17.00,16.00, 9.00,13.00,'seed'),
     (v_cycle_id,'04/2026','2026-04-25','Michelly Pereira',  'Financeiro Fiscal','Amanda Cristina','Bruna Silva', 83.00, 85.00, 0,  0,18.30,24.50,15.50,12.20,10.00,24.00,18.00,16.00,12.00,15.00,'seed'),
     (v_cycle_id,'04/2026','2026-04-25','Larissa Marques',   'Financeiro Fiscal','Amanda Cristina','Bruna Silva', 63.20, 56.00, 4,-80,15.80,22.50,13.00,11.30, 6.20,18.00,10.00,10.00, 7.00,11.00,'seed'),
-    (v_cycle_id,'04/2026','2026-04-25','Peterson Silva',    'Financeiro Fiscal','Amanda Cristina','Bruna Silva', 60.50, 70.00, 3,-60,17.00,18.00,14.00,11.00, 7.00,22.00,15.00,12.00,10.00,11.00,'seed')
-  ON CONFLICT (periodo, analista, squad) DO UPDATE SET
-    nota_final_qa       = EXCLUDED.nota_final_qa,
-    iepc_total          = EXCLUDED.iepc_total,
-    total_ncs           = EXCLUDED.total_ncs,
-    pontos_deduzidos_nc = EXCLUDED.pontos_deduzidos_nc,
-    p1 = EXCLUDED.p1, p2 = EXCLUDED.p2, p3 = EXCLUDED.p3,
-    p4 = EXCLUDED.p4, p5 = EXCLUDED.p5,
-    e1 = EXCLUDED.e1, e2 = EXCLUDED.e2, e3 = EXCLUDED.e3,
-    e4 = EXCLUDED.e4, e5 = EXCLUDED.e5,
-    cycle_id = EXCLUDED.cycle_id;
+    (v_cycle_id,'04/2026','2026-04-25','Peterson Silva',    'Financeiro Fiscal','Amanda Cristina','Bruna Silva', 60.50, 70.00, 3,-60,17.00,18.00,14.00,11.00, 7.00,22.00,15.00,12.00,10.00,11.00,'seed');
 END $$;
 
 -- ─── 9. Seed NCs — Ciclo 04/2026 ─────────────────────────────────────────────
