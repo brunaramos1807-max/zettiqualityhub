@@ -618,7 +618,7 @@ function CiclosContent() {
                         Reabrir
                       </button>
                     )}
-                    {isAdmin && !isClosed && (
+                    {isAdmin && (
                       <button onClick={() => setDeletingCycle(cycle.periodo)} disabled={actionLoading === cycle.periodo}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
                         style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>
@@ -702,6 +702,12 @@ function CiclosContent() {
                   <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{deletingCycle}</p>
                 </div>
               </div>
+              {cycles.find((c) => c.periodo === deletingCycle)?.isClosed && (
+                <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                  <p className="text-xs font-semibold" style={{ color: '#F59E0B' }}>⚠️ Ciclo fechado — exclusão como Admin</p>
+                  <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Este ciclo está fechado. Como administrador, você pode excluí-lo mesmo assim.</p>
+                </div>
+              )}
               <p className="text-sm mb-5" style={{ color: '#94A3B8' }}>Todos os dados deste ciclo (avaliações, NCs, elogios, PDIs) serão excluídos permanentemente do banco de dados.</p>
               <div className="flex gap-3">
                 <button onClick={() => setDeletingCycle(null)} className="flex-1 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
