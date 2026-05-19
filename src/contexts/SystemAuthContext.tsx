@@ -455,6 +455,31 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
   }, [session, resetTimer]);
 
   const login = async (email: string, password: string) => {
+    const supabase = createClient();
+
+    // Always check pre-registration first (except known admin emails)
+    const isAdminEmail = ADMIN_EMAILS.includes(email.toLowerCase());
+    if (!isAdminEmail && supabase) {
+      const { data: preReg } = await supabase
+        .from('pre_registered_users')
+        .select('id, is_active')
+        .eq('email', email.toLowerCase())
+        .maybeSingle();
+      if (!preReg || preReg.is_active === false) {
+        return { success: false, error: 'Acesso negado. Usuário não cadastrado no sistema.' };
+      }
+    }
+
+    // Try Supabase email/password first
+    if (supabase) {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (!error && data.user) {
+        await applySupabaseUser(data.user);
+        return { success: true };
+      }
+    }
+
+    // Fallback: localStorage-based auth (for admin accounts seeded locally)
     const result = await loginUser(email, password);
     if (result.success && result.session) {
       setSession(result.session);
@@ -469,16 +494,6 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
       setIsAdminMaster(isAdminLocal);
       setModulePermissions(buildDefaultPermissions(role, isAdminLocal));
       return { success: true };
-    }
-
-    const supabase = createClient();
-    if (supabase) {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (!error && data.user) {
-        await applySupabaseUser(data.user);
-        return { success: true };
-      }
-      if (error) return { success: false, error: result.error || error.message };
     }
 
     return { success: false, error: result.error || 'Credenciais inválidas.' };
