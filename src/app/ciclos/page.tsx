@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
-import { fetchCycleScores, fetchAllPeriodos, fetchNCRecords, fetchElogios, buildAnalystsFromScores } from '@/lib/services/dataService';
+import { fetchCycleScores, fetchAllPeriodos, fetchNCRecords, fetchElogios, buildAnalystsFromScores, syncClosedCyclesFromSupabase, closeCycle, reopenCycle } from '@/lib/services/dataService';
 import { createClient } from '@/lib/supabase/client';
 import { RefreshCw, Lock, Unlock, BarChart2, ChevronRight, Activity, CheckCircle, X, Clock, History, Loader2, Trash2, RotateCcw, Shield } from 'lucide-react';
 import Link from 'next/link';
@@ -313,7 +313,11 @@ function CiclosContent() {
       let cycleData: Record<string, any> = {};
       if (supabase) {
         const { data } = await supabase.from('import_cycles').select('periodo, is_closed, status, closed_at, closed_by_email, reopened_at, reopened_by_email, id');
-        if (data) data.forEach((d: any) => { cycleData[d.periodo] = d; });
+        if (data) {
+          data.forEach((d: any) => { cycleData[d.periodo] = d; });
+          // Sync Supabase closed status into localStorage so isCycleClosed() works everywhere
+          syncClosedCyclesFromSupabase(data.map((d: any) => ({ periodo: d.periodo, is_closed: !!d.is_closed, closed_at: d.closed_at })));
+        }
       }
 
       const summaries: CycleSummary[] = periodos.map((periodo) => {
@@ -390,6 +394,8 @@ function CiclosContent() {
         // Audit log
         await supabase.from('permission_logs').insert({ actor_email: actorEmail, action: 'ciclo_fechado', entity_type: 'ciclo', entity_id: periodo, details: `Ciclo ${periodo} fechado por ${actorEmail}` });
       }
+      // Also persist to localStorage so isCycleClosed() works everywhere
+      await closeCycle(periodo);
       setClosingCycle(null);
       await loadData(); await loadHistory();
     } catch { /* ignore */ }
@@ -416,6 +422,8 @@ function CiclosContent() {
 
         await supabase.from('permission_logs').insert({ actor_email: actorEmail, action: 'ciclo_reaberto', entity_type: 'ciclo', entity_id: periodo, details: `Ciclo ${periodo} reaberto por ${actorEmail}. Motivo: ${notes}` });
       }
+      // Also remove from localStorage
+      reopenCycle(periodo);
       setReopeningCycle(null);
       await loadData(); await loadHistory();
     } catch { /* ignore */ }

@@ -423,6 +423,7 @@ export async function closeCycle(periodo: string): Promise<{ success: boolean; e
 
     const existing = lsGet<ClosedCycle>(LS_CLOSED_CYCLES).filter((c) => c.periodo !== periodo);
     lsSet(LS_CLOSED_CYCLES, [...existing, closedCycle]);
+    dispatchDataChanged({ tipo: 'cycle_closed', periodo });
 
     return { success: true };
   } catch (err: any) {
@@ -437,10 +438,37 @@ export function fetchClosedCycles(): ClosedCycle[] {
 export function reopenCycle(periodo: string): void {
   const existing = lsGet<ClosedCycle>(LS_CLOSED_CYCLES).filter((c) => c.periodo !== periodo);
   lsSet(LS_CLOSED_CYCLES, existing);
+  dispatchDataChanged({ tipo: 'cycle_reopened', periodo });
 }
 
 export function isCycleClosed(periodo: string): boolean {
   return lsGet<ClosedCycle>(LS_CLOSED_CYCLES).some((c) => c.periodo === periodo);
+}
+
+/**
+ * Sync closed cycle status from Supabase into localStorage.
+ * Call this on app init or after loading cycle data from Supabase.
+ */
+export function syncClosedCyclesFromSupabase(supabaseCycles: { periodo: string; is_closed: boolean; closed_at?: string }[]): void {
+  const existing = lsGet<ClosedCycle>(LS_CLOSED_CYCLES);
+  const existingPeriodos = new Set(existing.map((c) => c.periodo));
+
+  const toAdd: ClosedCycle[] = supabaseCycles
+    .filter((c) => c.is_closed && !existingPeriodos.has(c.periodo))
+    .map((c) => ({
+      id: `closed-supabase-${c.periodo}`,
+      periodo: c.periodo,
+      closed_at: c.closed_at || new Date().toISOString(),
+      summary: { totalAnalistas: 0, qaMedia: 0, iepcMedia: 0, totalNCs: 0, totalElogios: 0 },
+    }));
+
+  // Also remove from localStorage if Supabase says it's reopened
+  const reopenedPeriodos = new Set(supabaseCycles.filter((c) => !c.is_closed).map((c) => c.periodo));
+  const filtered = existing.filter((c) => !reopenedPeriodos.has(c.periodo));
+
+  if (toAdd.length > 0 || reopenedPeriodos.size > 0) {
+    lsSet(LS_CLOSED_CYCLES, [...filtered, ...toAdd]);
+  }
 }
 
 // ─── Build Analyst objects from real score data ───────────────────────────────

@@ -9,6 +9,7 @@ import {
   parseNCsCSV,
   parseElogiosCSV,
   importCycleData,
+  isCycleClosed,
   type CycleScoreRow,
   type NCRow,
   type ElogioRow,
@@ -185,6 +186,13 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
   const [importError, setImportError] = useState<string | null>(null);
   const [validationSummary, setValidationSummary] = useState<ValidationSummary | null>(null);
   const [andamentoCount, setAndamentoCount] = useState(0);
+  const [cycleClosedWarning, setCycleClosedWarning] = useState(false);
+
+  // Check if the selected period is closed whenever it changes
+  const handlePeriodoChange = (value: string) => {
+    setPeriodo(value);
+    setCycleClosedWarning(isCycleClosed(value));
+  };
 
   const selectedTypeInfo = FILE_TYPE_OPTIONS.find((o) => o.type === selectedType);
 
@@ -345,8 +353,19 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3 block">
                   Período do Ciclo
                 </label>
-                <input type="text" value={periodo} onChange={(e) => setPeriodo(e.target.value)} placeholder="Ex: 04/2026" className="input-field" />
+                <input type="text" value={periodo} onChange={(e) => handlePeriodoChange(e.target.value)} placeholder="Ex: 04/2026" className="input-field" />
               </div>
+
+              {/* Closed cycle warning */}
+              {cycleClosedWarning && (
+                <div className="flex items-start gap-2 p-3 rounded-xl" style={{ backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
+                  <AlertCircle size={14} className="flex-shrink-0 mt-0.5" style={{ color: '#EF4444' }} />
+                  <div>
+                    <p className="text-xs font-semibold" style={{ color: '#EF4444' }}>Ciclo Fechado — Importação Bloqueada</p>
+                    <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>O ciclo <strong>{periodo}</strong> está fechado. Somente um ADM pode reabri-lo na aba Ciclos.</p>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3 block">
@@ -415,8 +434,8 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
               )}
 
               <button
-                onClick={() => importMode && setStep('choose-type')}
-                disabled={!importMode}
+                onClick={() => importMode && !cycleClosedWarning && setStep('choose-type')}
+                disabled={!importMode || cycleClosedWarning}
                 className="w-full btn-primary justify-center py-3 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Continuar <ChevronRight size={15} />
@@ -487,7 +506,7 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
 
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5 block">Período do Ciclo</label>
-                <input type="text" value={periodo} onChange={(e) => setPeriodo(e.target.value)} placeholder="Ex: 04/2026" className="input-field" />
+                <input type="text" value={periodo} onChange={handlePeriodoChange} placeholder="Ex: 04/2026" className="input-field" />
               </div>
 
               {selectedType && (

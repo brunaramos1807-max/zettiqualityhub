@@ -234,19 +234,35 @@ function EditUserModal({ user, cargos, onClose, onSave, actorEmail }: EditUserMo
     try {
       const supabase = createClient();
       if (!supabase) throw new Error('Supabase indisponível');
-      const { error: err } = await supabase.from('user_profiles').upsert({
-        id: user.id, email: user.email, full_name: user.full_name,
+
+      const payload = {
         role, cargo_id: cargoId || null,
         squad: squad || null, squads: squads.length > 0 ? squads : (squad ? [squad] : []),
         is_active: isActive, status_usuario: statusUsuario, nivel,
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'id' });
-      if (err) throw err;
+      };
+
+      // Try user_profiles first (for real Supabase Auth users)
+      const { error: err } = await supabase.from('user_profiles').update(payload).eq('id', user.id);
+
+      if (err) {
+        // Fallback: try pre_registered_users (for pre-registered users without auth)
+        const { error: err2 } = await supabase.from('pre_registered_users').update(payload).eq('id', user.id);
+        if (err2) {
+          // Last resort: upsert by email
+          const { error: err3 } = await supabase.from('pre_registered_users').upsert({
+            id: user.id, email: user.email, full_name: user.full_name, ...payload,
+          }, { onConflict: 'email' });
+          if (err3) throw new Error(`Erro ao salvar: ${err3.message}`);
+        }
+      }
+
       await supabase.from('permission_logs').insert({
         actor_email: actorEmail, target_email: user.email,
         action: 'usuario_editado', entity_type: 'usuario', entity_id: user.id,
         details: `Usuário "${user.full_name}" editado — cargo: ${role}, status: ${statusUsuario}`,
-      });
+      }).then(() => {}).catch(() => {});
+
       onSave();
     } catch (e: any) { setError(e?.message || 'Erro ao salvar'); }
     setLoading(false);
@@ -508,15 +524,46 @@ function AddUserModal({ cargos, onClose, onSave, actorEmail }: AddUserModalProps
     try {
       const supabase = createClient();
       if (!supabase) throw new Error('Supabase indisponível');
-      const { error: err } = await supabase.from('user_profiles').insert({
-        email: email.trim().toLowerCase(), full_name: fullName.trim(),
-        role: role || 'Visualizador', cargo_id: cargoId || null,
-        squad: squad || null, squads: squad ? [squad] : [],
-        is_active: true, status_usuario: 'ativo', nivel,
-        created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-      });
-      if (err) throw err;
-      await supabase.from('permission_logs').insert({ actor_email: actorEmail, target_email: email, action: 'usuario_criado', entity_type: 'usuario', details: `Usuário "${fullName}" pré-cadastrado` });
+
+      // Use pre_registered_users table — no FK constraint to auth.users
+      // When the user logs in via Google, the handle_new_user trigger will
+      // check this table and apply the profile automatically.
+      const { error: err } = await supabase.from('pre_registered_users').upsert({
+        email: email.trim().toLowerCase(),
+        full_name: fullName.trim(),
+        role: role || 'Visualizador',
+        cargo_id: cargoId || null,
+        squad: squad || null,
+        squads: squad ? [squad] : [],
+        is_active: true,
+        status_usuario: 'ativo',
+        nivel,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'email' });
+
+      if (err) {
+        // Fallback: try user_profiles directly (may work if Supabase Auth session exists)
+        const { error: err2 } = await supabase.from('user_profiles').upsert({
+          email: email.trim().toLowerCase(),
+          full_name: fullName.trim(),
+          role: role || 'Visualizador',
+          cargo_id: cargoId || null,
+          squad: squad || null,
+          squads: squad ? [squad] : [],
+          is_active: true,
+          status_usuario: 'ativo',
+          nivel,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'email' });
+        if (err2) throw new Error(`Erro ao cadastrar: ${err2.message}`);
+      }
+
+      await supabase.from('permission_logs').insert({
+        actor_email: actorEmail, target_email: email,
+        action: 'usuario_pre_cadastrado', entity_type: 'usuario',
+        details: `Usuário "${fullName}" pré-cadastrado com role "${role || 'Visualizador'}"`,
+      }).then(() => {}).catch(() => {});
+
       onSave();
     } catch (e: any) { setError(e?.message || 'Erro ao criar usuário'); }
     setLoading(false);
@@ -856,18 +903,36 @@ function ConfiguracoesContent() {
     try {
       const supabase = createClient();
       if (!supabase) return;
-      const [usersRes, cargosRes, modulesRes, permsRes, logsRes] = await Promise.all([
+      const [usersRes, preRegRes, cargosRes, modulesRes, permsRes, logsRes] = await Promise.all([
         supabase.from('user_profiles').select('*').order('created_at', { ascending: false }),
+        supabase.from('pre_registered_users').select('*').order('created_at', { ascending: false }),
         supabase.from('cargos').select('*').order('nome'),
         supabase.from('permission_modules').select('*').order('sort_order'),
         supabase.from('user_permissions').select('*'),
         supabase.from('permission_logs').select('*').order('created_at', { ascending: false }).limit(100),
       ]);
-      if (usersRes.data) setUsers(usersRes.data as UserProfile[]);
+
+      // Merge user_profiles + pre_registered_users (deduplicate by email)
+      const profileUsers: UserProfile[] = (usersRes.data || []) as UserProfile[];
+      const preRegUsers: UserProfile[] = ((preRegRes.data || []) as any[]).map((u: any) => ({
+        ...u,
+        full_name: u.full_name || '',
+        status_usuario: u.status_usuario || 'ativo',
+        squads: u.squads || [],
+        equipes: u.equipes || [],
+        is_active: u.is_active !== false,
+        _source: 'pre_registered',
+      }));
+      // Only add pre-registered users that don't already have a real profile
+      const profileEmails = new Set(profileUsers.map((u) => u.email?.toLowerCase()));
+      const uniquePreReg = preRegUsers.filter((u) => !profileEmails.has(u.email?.toLowerCase()));
+      const allUsers = [...profileUsers, ...uniquePreReg];
+
+      setUsers(allUsers);
       if (cargosRes.data) {
         const cargosWithCount = (cargosRes.data as Cargo[]).map((c) => ({
           ...c,
-          _userCount: usersRes.data?.filter((u: any) => u.cargo_id === c.id).length || 0,
+          _userCount: allUsers.filter((u: any) => u.cargo_id === c.id).length || 0,
         }));
         setCargos(cargosWithCount);
       }
@@ -887,7 +952,9 @@ function ConfiguracoesContent() {
       const supabase = createClient();
       if (!supabase) return;
       if (deleteConfirm.type === 'user') {
-        await supabase.from('user_profiles').delete().eq('id', deleteConfirm.id);
+        // Try both tables (user may be in either)
+        await supabase.from('user_profiles').delete().eq('id', deleteConfirm.id).then(() => {}).catch(() => {});
+        await supabase.from('pre_registered_users').delete().eq('id', deleteConfirm.id).then(() => {}).catch(() => {});
       } else {
         await supabase.from('cargos').delete().eq('id', deleteConfirm.id);
       }

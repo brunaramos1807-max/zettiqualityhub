@@ -113,6 +113,18 @@ function getHeatBg(val: number): string {
   return 'rgba(239,68,68,0.18)';
 }
 
+// ─── Official pillar max weights ──────────────────────────────────────────────
+// QA: P1=22, P2=34 (only 2 pillars defined in official spec; P3/P4/P5 use 100 as max)
+const QA_PILLAR_MAX: Record<string, number> = { p1: 22, p2: 34, p3: 100, p4: 100, p5: 100 };
+// IEPC: E1=30, E2=20, E3=20, E4=15, E5=15
+const IEPC_PILLAR_MAX: Record<string, number> = { e1: 30, e2: 20, e3: 20, e4: 15, e5: 15 };
+
+/** Convert raw pillar points to 0-100 percentage using official max weights */
+function toPercent(raw: number, max: number): number {
+  if (max <= 0) return 0;
+  return Math.round(Math.min((raw / max) * 100, 100));
+}
+
 // ─── Sparkline ────────────────────────────────────────────────────────────────
 function Sparkline({ data, color }: { data: number[]; color: string }) {
   if (data.length < 2) return null;
@@ -712,7 +724,17 @@ export default function HomeExecutiveView() {
 
   const rawLastPeriod = filteredHistory[filteredHistory.length - 1];
   const lastPeriod = getFilteredPeriod(rawLastPeriod);
-  const prevPeriod = filteredHistory[filteredHistory.length - 2];
+
+  // Auto-compare: when a specific cycle is selected, find the previous cycle in the FULL history
+  const prevPeriod = (() => {
+    if (filterCiclo === 'todos') {
+      return filteredHistory[filteredHistory.length - 2];
+    }
+    // Find the selected cycle's index in the full (unfiltered) history
+    const selectedIdx = history.findIndex((h) => h.periodo === filterCiclo);
+    if (selectedIdx > 0) return history[selectedIdx - 1];
+    return undefined;
+  })();
 
   // Collect all available squads and gestores from all history
   const allSquads = Array.from(new Set(history.flatMap(h => Object.keys(h.squads)))).sort();
@@ -795,16 +817,17 @@ export default function HomeExecutiveView() {
       ).filter((s: any) => s.periodo === lastPeriod.periodo)
     );
     if (pScores.length === 0) return QA_PILLARS_DATA;
-    const avg = (key: string) => {
-      const vals = pScores.map((s: any) => s[key] || 0).filter((v: number) => v > 0);
-      return vals.length > 0 ? Math.round(vals.reduce((a: number, b: number) => a + b, 0) / vals.length) : 0;
+    const avgPct = (key: string, max: number) => {
+      const vals = pScores.map((s: any) => s[key] || 0);
+      const rawAvg = vals.length > 0 ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : 0;
+      return toPercent(rawAvg, max);
     };
     return [
-      { pilar: 'P1 Fluxo', fullName: 'P1 — Gestão do Fluxo e Rastreabilidade', value: avg('p1'), fullMark: 100 },
-      { pilar: 'P2 Tratativa', fullName: 'P2 — Gestão da Tratativa da Demanda', value: avg('p2'), fullMark: 100 },
-      { pilar: 'P3 Análise', fullName: 'P3 — Análise e Assertividade Técnica', value: avg('p3'), fullMark: 100 },
-      { pilar: 'P4 Comunicação', fullName: 'P4 — Qualidade da Comunicação', value: avg('p4'), fullMark: 100 },
-      { pilar: 'P5 Conduta', fullName: 'P5 — Conduta Relacional', value: avg('p5'), fullMark: 100 },
+      { pilar: 'P1 Fluxo', fullName: 'P1 — Gestão do Fluxo e Rastreabilidade', value: avgPct('p1', QA_PILLAR_MAX.p1), fullMark: 100 },
+      { pilar: 'P2 Tratativa', fullName: 'P2 — Gestão da Tratativa da Demanda', value: avgPct('p2', QA_PILLAR_MAX.p2), fullMark: 100 },
+      { pilar: 'P3 Análise', fullName: 'P3 — Análise e Assertividade Técnica', value: avgPct('p3', QA_PILLAR_MAX.p3), fullMark: 100 },
+      { pilar: 'P4 Comunicação', fullName: 'P4 — Qualidade da Comunicação', value: avgPct('p4', QA_PILLAR_MAX.p4), fullMark: 100 },
+      { pilar: 'P5 Conduta', fullName: 'P5 — Conduta Relacional', value: avgPct('p5', QA_PILLAR_MAX.p5), fullMark: 100 },
     ];
   }, [lastPeriod, filterByRole]);
 
@@ -817,16 +840,17 @@ export default function HomeExecutiveView() {
       ).filter((s: any) => s.periodo === lastPeriod.periodo)
     );
     if (pScores.length === 0) return IEPC_PILLARS_DATA;
-    const avg = (key: string) => {
-      const vals = pScores.map((s: any) => s[key] || 0).filter((v: number) => v > 0);
-      return vals.length > 0 ? Math.round(vals.reduce((a: number, b: number) => a + b, 0) / vals.length) : 0;
+    const avgPct = (key: string, max: number) => {
+      const vals = pScores.map((s: any) => s[key] || 0);
+      const rawAvg = vals.length > 0 ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : 0;
+      return toPercent(rawAvg, max);
     };
     return [
-      { pilar: 'E1 Resolução', fullName: 'E1 — Resolução Percebida', value: avg('e1'), fullMark: 100 },
-      { pilar: 'E2 Compreensão', fullName: 'E2 — Compreensão e Segurança Percebida', value: avg('e2'), fullMark: 100 },
-      { pilar: 'E3 Esforço', fullName: 'E3 — Esforço Percebido pelo Cliente', value: avg('e3'), fullMark: 100 },
-      { pilar: 'E4 Tempo', fullName: 'E4 — Tempo e Fluidez', value: avg('e4'), fullMark: 100 },
-      { pilar: 'E5 Relacional', fullName: 'E5 — Experiência Relacional', value: avg('e5'), fullMark: 100 },
+      { pilar: 'E1 Resolução', fullName: 'E1 — Resolução Percebida', value: avgPct('e1', IEPC_PILLAR_MAX.e1), fullMark: 100 },
+      { pilar: 'E2 Compreensão', fullName: 'E2 — Compreensão e Segurança Percebida', value: avgPct('e2', IEPC_PILLAR_MAX.e2), fullMark: 100 },
+      { pilar: 'E3 Esforço', fullName: 'E3 — Esforço Percebido pelo Cliente', value: avgPct('e3', IEPC_PILLAR_MAX.e3), fullMark: 100 },
+      { pilar: 'E4 Tempo', fullName: 'E4 — Tempo e Fluidez', value: avgPct('e4', IEPC_PILLAR_MAX.e4), fullMark: 100 },
+      { pilar: 'E5 Relacional', fullName: 'E5 — Experiência Relacional', value: avgPct('e5', IEPC_PILLAR_MAX.e5), fullMark: 100 },
     ];
   }, [lastPeriod, filterByRole]);
 
