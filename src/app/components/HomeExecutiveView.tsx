@@ -702,8 +702,14 @@ export default function HomeExecutiveView() {
   const canCloseCycle = userRole === 'Admin' || userRole === 'Auditor' || userRole === 'Coordenador Geral' || session?.cargo === 'Administrador';
 
   const filterByRole = useCallback((scores: any[]) => {
-    if (userRole === 'Coordenador' && userSquad) return scores.filter((s: any) => s.squad === userSquad);
-    if (userRole === 'Coordenador' && userSquads.length > 0) return scores.filter((s: any) => userSquads.includes(s.squad));
+    // Admin / Auditor / Gestor / Coordenador Geral → see everything
+    if (!userRole || userRole === 'Admin' || userRole === 'Auditor' || userRole === 'Gestor' || userRole === 'Coordenador Geral') return scores;
+    // Coordenador → filter by their assigned squads; if none assigned, show all
+    if (userRole === 'Coordenador') {
+      const assignedSquads = userSquads.length > 0 ? userSquads : (userSquad ? [userSquad] : []);
+      if (assignedSquads.length === 0) return scores; // no squad restriction → show all
+      return scores.filter((s: any) => assignedSquads.includes(s.squad));
+    }
     return scores;
   }, [userRole, userSquad, userSquads]);
 
@@ -941,6 +947,7 @@ export default function HomeExecutiveView() {
   const lastPeriod = getFilteredPeriod(rawLastPeriod);
 
   // Auto-compare: when a specific cycle is selected, find the previous cycle in the FULL history
+  // Also considers manually registered cycles that may not have imported scores
   const prevPeriod = (() => {
     if (filterCiclo === 'todos') {
       return filteredHistory[filteredHistory.length - 2];
@@ -948,6 +955,32 @@ export default function HomeExecutiveView() {
     // Find the selected cycle's index in the full (unfiltered) history
     const selectedIdx = history.findIndex((h) => h.periodo === filterCiclo);
     if (selectedIdx > 0) return history[selectedIdx - 1];
+
+    // Fallback: look in allPeriodos (sorted) to find the period immediately before filterCiclo
+    // This handles cases where the previous cycle exists in allPeriodos but was filtered from history
+    const sortedPeriodos = [...allPeriodos].sort();
+    const periodIdx = sortedPeriodos.indexOf(filterCiclo);
+    if (periodIdx > 0) {
+      const prevPeriodoKey = sortedPeriodos[periodIdx - 1];
+      // Try to find it in history (may have been filtered out)
+      const found = history.find((h) => h.periodo === prevPeriodoKey);
+      if (found) return found;
+      // Build a minimal summary from manual cycles
+      const manualCycles = fetchManualCycles();
+      const manualEntry = manualCycles.find((mc) => mc.periodo === prevPeriodoKey);
+      if (manualEntry) {
+        return {
+          periodo: prevPeriodoKey,
+          qa: manualEntry.qa_media,
+          iepc: manualEntry.iepc_media,
+          ncs: manualEntry.total_ncs,
+          elogios: 0,
+          analistas: manualEntry.total_analistas ?? 0,
+          squads: {},
+          coordenadores: {},
+        } as PeriodSummary;
+      }
+    }
     return undefined;
   })();
 

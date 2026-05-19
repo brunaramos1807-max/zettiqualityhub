@@ -140,6 +140,33 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
         setSession(localSession);
         setLoading(false);
         startInactivityTimer();
+        // Derive userRole from local session cargo
+        const cargoToRole: Record<string, UserRole> = {
+          'Administrador': 'Admin',
+          'Coordenador': 'Coordenador',
+          'Coordenador Geral': 'Coordenador Geral',
+          'Gestor': 'Gestor',
+          'Auditor': 'Auditor',
+          'Analista': 'Analista',
+        };
+        const derivedRole = cargoToRole[localSession.cargo] || null;
+        setUserRole(derivedRole as UserRole | null);
+        // Also try to load squad info from Supabase for local session users
+        const supabase = createClient();
+        if (supabase) {
+          try {
+            const { data } = await supabase
+              .from('pre_registered_users')
+              .select('role, squad, squads')
+              .eq('email', localSession.email)
+              .maybeSingle();
+            if (data) {
+              if (data.role) setUserRole(data.role as UserRole);
+              setUserSquad(data.squad || null);
+              setUserSquads(Array.isArray(data.squads) ? data.squads : (data.squad ? [data.squad] : []));
+            }
+          } catch { /* ignore */ }
+        }
         return;
       }
 

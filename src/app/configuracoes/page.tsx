@@ -242,13 +242,26 @@ function EditUserModal({ user, cargos, onClose, onSave, actorEmail }: EditUserMo
         updated_at: new Date().toISOString(),
       };
 
-      // Try user_profiles first (for real Supabase Auth users)
-      const { error: err } = await supabase.from('user_profiles').update(payload).eq('id', user.id);
+      // Try user_profiles first — check if any row was actually updated
+      const { error: err, count } = await supabase
+        .from('user_profiles')
+        .update(payload)
+        .eq('id', user.id)
+        .select('id', { count: 'exact', head: true });
 
-      if (err) {
-        // Fallback: try pre_registered_users (for pre-registered users without auth)
-        const { error: err2 } = await supabase.from('pre_registered_users').update(payload).eq('id', user.id);
-        if (err2) {
+      const updatedInProfiles = !err && (count ?? 0) > 0;
+
+      if (!updatedInProfiles) {
+        // Fallback: try pre_registered_users
+        const { error: err2, count: count2 } = await supabase
+          .from('pre_registered_users')
+          .update(payload)
+          .eq('id', user.id)
+          .select('id', { count: 'exact', head: true });
+
+        if (!err2 && (count2 ?? 0) > 0) {
+          // updated successfully in pre_registered_users
+        } else {
           // Last resort: upsert by email
           const { error: err3 } = await supabase.from('pre_registered_users').upsert({
             id: user.id, email: user.email, full_name: user.full_name, ...payload,
@@ -410,7 +423,24 @@ function PermissionsMatrixModal({ user, modules, existingPermissions, onClose, o
       if (!supabase) throw new Error('Supabase indisponível');
       const upserts = Object.values(perms).map((p) => ({ ...p, updated_at: new Date().toISOString() }));
       const { error: err } = await supabase.from('user_permissions').upsert(upserts, { onConflict: 'user_profile_id,module_name' });
-      if (err) throw err;
+      if (err) {
+        // If FK constraint fails (user not in user_profiles), ensure user exists there first
+        const { error: ensureErr } = await supabase.from('user_profiles').upsert({
+          id: user.id,
+          email: user.email,
+          full_name: user.full_name,
+          role: user.role || 'Visualizador',
+          is_active: user.is_active !== false,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+        if (!ensureErr) {
+          // Retry upsert after ensuring user exists
+          const { error: retryErr } = await supabase.from('user_permissions').upsert(upserts, { onConflict: 'user_profile_id,module_name' });
+          if (retryErr) throw retryErr;
+        } else {
+          throw err;
+        }
+      }
       await supabase.from('permission_logs').insert({
         actor_email: actorEmail, target_email: user.email,
         action: 'permissoes_atualizadas', entity_type: 'permissao', entity_id: user.id,
