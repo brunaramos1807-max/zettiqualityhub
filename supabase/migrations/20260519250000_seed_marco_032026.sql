@@ -29,7 +29,9 @@ BEGIN
   DELETE FROM public.nc_records    WHERE periodo = '03/2026';
   DELETE FROM public.elogios       WHERE periodo = '03/2026';
 
-  -- ── 3. Insert cycle_scores (25 rows) ────────────────────────────────────
+  -- ── 3. Insert cycle_scores (25 rows) — upsert on (periodo,analista,squad)
+  -- NOTE: Frederico Couto appears in Financeiro Fiscal twice (03-10 and 03-20)
+  -- and in Compras e Estoque once. The upsert keeps the last value per unique key.
   INSERT INTO public.cycle_scores
     (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
      nota_final_qa, iepc_total, total_ncs, pontos_deduzidos_nc,
@@ -59,7 +61,22 @@ BEGIN
     (v_cycle_id,'03/2026','2026-03-24','Milena Santos','Compras e Estoque','Jonatas Jesus','Bruna Silva',67.40,60.00,0,0,10.80,17.00,10.80,6.80,10.80,'seed'),
     (v_cycle_id,'03/2026','2026-03-25','Rafael Andrade','PDV','Ayron Silva','Bruna Silva',90.80,86.00,0,0,16.00,34.00,20.00,10.00,17.75,'seed'),
     (v_cycle_id,'03/2026','2026-03-24','Thallison Silva','Compras e Estoque','Jonatas Jesus','Bruna Silva',80.40,77.00,1,-20,10.00,18.00,12.00,7.00,12.00,'seed'),
-    (v_cycle_id,'03/2026','2026-03-25','Thiago Maroja','PDV','Ayron Silva','Bruna Silva',82.80,82.00,0,0,12.00,27.00,16.80,8.40,18.80,'seed');
+    (v_cycle_id,'03/2026','2026-03-25','Thiago Maroja','PDV','Ayron Silva','Bruna Silva',82.80,82.00,0,0,12.00,27.00,16.80,8.40,18.80,'seed')
+  ON CONFLICT (periodo, analista, squad) DO UPDATE SET
+    cycle_id             = EXCLUDED.cycle_id,
+    data_registro        = EXCLUDED.data_registro,
+    coordenador          = EXCLUDED.coordenador,
+    auditor              = EXCLUDED.auditor,
+    nota_final_qa        = EXCLUDED.nota_final_qa,
+    iepc_total           = EXCLUDED.iepc_total,
+    total_ncs            = EXCLUDED.total_ncs,
+    pontos_deduzidos_nc  = EXCLUDED.pontos_deduzidos_nc,
+    p1                   = EXCLUDED.p1,
+    p2                   = EXCLUDED.p2,
+    p3                   = EXCLUDED.p3,
+    p4                   = EXCLUDED.p4,
+    p5                   = EXCLUDED.p5,
+    source               = EXCLUDED.source;
 
   -- ── 4. Insert nc_records (17 rows) ──────────────────────────────────────
   INSERT INTO public.nc_records
