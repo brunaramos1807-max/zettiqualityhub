@@ -17,11 +17,7 @@ import {
   fetchElogiosFromSupabase,
   fetchAllPeriodosFromSupabase,
 } from '@/lib/services/supabaseDataService';
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
-  LabelList,
-} from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,  } from 'recharts';
 import {
   TrendingUp, TrendingDown, AlertTriangle, Star, Users, BarChart2, Activity,
   RefreshCw, ChevronRight, Sparkles, Lock, CheckCircle, X, Filter, Calendar,
@@ -31,6 +27,26 @@ import Link from 'next/link';
 import { useChat } from '@/lib/hooks/useChat';
 import { createClient } from '@/lib/supabase/client';
 import { DrilldownPanel } from '@/components/DrilldownNavigation';
+
+// ─── Official pillar weights ──────────────────────────────────────────────────
+const QA_PILLAR_WEIGHTS = { p1: 22, p2: 34, p3: 18, p4: 14, p5: 12 };
+const IEPC_PILLAR_WEIGHTS = { e1: 30, e2: 20, e3: 20, e4: 15, e5: 15 };
+
+// Fixed colors per category (consistent across all charts)
+const PILLAR_COLORS = {
+  p1: '#3B82F6', // blue - Fluxo
+  p2: '#06B6D4', // cyan - Tratativa
+  p3: '#10B981', // green - Análise
+  p4: '#F59E0B', // yellow - Comunicação
+  p5: '#8B5CF6', // purple - Conduta
+  e1: '#3B82F6', // blue - Resolução
+  e2: '#06B6D4', // cyan - Compreensão
+  e3: '#10B981', // green - Esforço
+  e4: '#F59E0B', // yellow - Tempo
+  e5: '#8B5CF6', // purple - Relacional
+};
+
+const NC_COLORS = ['#3B82F6', '#06B6D4', '#F59E0B', '#EF4444', '#8B5CF6'];
 
 // ─── Performance Classification ──────────────────────────────────────────────
 function getPerformanceClass(score: number): { label: string; color: string; bg: string; border: string } {
@@ -51,34 +67,6 @@ function PerformanceBadge({ score, size = 'sm' }: { score: number; size?: 'xs' |
   );
 }
 
-// ─── Embedded ABR/2026 data ───────────────────────────────────────────────────
-const ABR2026_ANALYSTS: { name: string; squad: string; coordenador: string; qaScore: number; iepcScore: number; ncs: number }[] = [];
-
-const ABR2026_NC_TYPES: { name: string; value: number; pct: number; color: string }[] = [];
-
-const HISTORY_DATA: { periodo: string; qa: number; iepc: number }[] = [];
-
-// QA Pillars radar data
-const QA_PILLARS_DATA = [
-  { pilar: 'P1 Fluxo', fullName: 'P1 — Gestão do Fluxo e Rastreabilidade', value: 0, fullMark: 100 },
-  { pilar: 'P2 Tratativa', fullName: 'P2 — Gestão da Tratativa da Demanda', value: 0, fullMark: 100 },
-  { pilar: 'P3 Análise', fullName: 'P3 — Análise e Assertividade Técnica', value: 0, fullMark: 100 },
-  { pilar: 'P4 Comunicação', fullName: 'P4 — Qualidade da Comunicação', value: 0, fullMark: 100 },
-  { pilar: 'P5 Conduta', fullName: 'P5 — Conduta Relacional', value: 0, fullMark: 100 },
-];
-
-// IEPC Pillars radar data
-const IEPC_PILLARS_DATA = [
-  { pilar: 'E1 Resolução', fullName: 'E1 — Resolução Percebida', value: 0, fullMark: 100 },
-  { pilar: 'E2 Compreensão', fullName: 'E2 — Compreensão e Segurança Percebida', value: 0, fullMark: 100 },
-  { pilar: 'E3 Esforço', fullName: 'E3 — Esforço Percebido pelo Cliente', value: 0, fullMark: 100 },
-  { pilar: 'E4 Tempo', fullName: 'E4 — Tempo e Fluidez', value: 0, fullMark: 100 },
-  { pilar: 'E5 Relacional', fullName: 'E5 — Experiência Relacional', value: 0, fullMark: 100 },
-];
-
-// Heatmap using only QA pillars
-const HEATMAP_QA_PILLARS: { squad: string; p1: number; p2: number; p3: number; p4: number; p5: number }[] = [];
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface PeriodSummary {
   periodo: string;
@@ -89,6 +77,10 @@ interface PeriodSummary {
   analistas: number;
   squads: Record<string, { qa: number; iepc: number; count: number }>;
   coordenadores: Record<string, { qa: number; count: number }>;
+  // pillar averages (raw points)
+  p1?: number; p2?: number; p3?: number; p4?: number; p5?: number;
+  e1?: number; e2?: number; e3?: number; e4?: number; e5?: number;
+  ncByType?: { name: string; value: number; color: string; pct: number }[];
 }
 
 function calcTrend(values: number[]): 'up' | 'down' | 'stable' {
@@ -112,12 +104,6 @@ function getHeatBg(val: number): string {
   if (val >= 70) return 'rgba(245,158,11,0.18)';
   return 'rgba(239,68,68,0.18)';
 }
-
-// ─── Official pillar max weights ──────────────────────────────────────────────
-// QA: P1=22, P2=34 (only 2 pillars defined in official spec; P3/P4/P5 use 100 as max)
-const QA_PILLAR_MAX: Record<string, number> = { p1: 22, p2: 34, p3: 100, p4: 100, p5: 100 };
-// IEPC: E1=30, E2=20, E3=20, E4=15, E5=15
-const IEPC_PILLAR_MAX: Record<string, number> = { e1: 30, e2: 20, e3: 20, e4: 15, e5: 15 };
 
 /** Convert raw pillar points to 0-100 percentage using official max weights */
 function toPercent(raw: number, max: number): number {
@@ -144,121 +130,251 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
   );
 }
 
-// ─── Pilar Modal ──────────────────────────────────────────────────────────────
+// ─── Strategic Radar Chart ────────────────────────────────────────────────────
+interface StrategicRadarProps {
+  data: { subject: string; weight: number; pct: number; color: string; fullName: string }[];
+  type: 'QA' | 'IEPC';
+  maxScale: number;
+}
+
+function StrategicRadarChart({ data, type, maxScale }: StrategicRadarProps) {
+  const radarData = data.map(d => ({ subject: d.subject, value: d.weight, fullName: d.fullName, pct: d.pct, color: d.color }));
+
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (!active || !payload?.length) return null;
+    const d = payload[0].payload;
+    return (
+      <div className="rounded-xl p-3 text-xs shadow-xl" style={{ backgroundColor: '#1C2333', border: '1px solid rgba(255,255,255,0.12)' }}>
+        <p className="font-bold text-white mb-1">{d.fullName}</p>
+        <p style={{ color: '#94A3B8' }}>Peso: <span className="font-bold text-white">{d.value} pts</span></p>
+        <p style={{ color: '#94A3B8' }}>% do total: <span className="font-bold" style={{ color: type === 'QA' ? '#38BDF8' : '#06B6D4' }}>{d.value}%</span></p>
+      </div>
+    );
+  };
+
+  // Custom label outside radar
+  const CustomLabel = (props: any) => {
+    const { x, y, payload } = props;
+    const item = data.find(d => d.subject === payload?.value);
+    if (!item) return null;
+    return (
+      <text x={x} y={y} textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight={600} fill="#94A3B8">
+        {item.subject}
+      </text>
+    );
+  };
+
+  return (
+    <ResponsiveContainer width="100%" height={200}>
+      <RadarChart data={radarData} margin={{ top: 15, right: 25, bottom: 15, left: 25 }}>
+        <PolarGrid stroke="rgba(255,255,255,0.07)" gridType="polygon" />
+        <PolarAngleAxis dataKey="subject" tick={<CustomLabel />} />
+        <PolarRadiusAxis angle={90} domain={[0, maxScale]} tick={false} axisLine={false} />
+        <Tooltip content={<CustomTooltip />} />
+        <Radar
+          name={type === 'QA' ? 'Peso QA' : 'Peso IEPC'}
+          dataKey="value"
+          stroke={type === 'QA' ? '#38BDF8' : '#06B6D4'}
+          fill={type === 'QA' ? '#38BDF8' : '#06B6D4'}
+          fillOpacity={0.12}
+          strokeWidth={2.5}
+          dot={{ fill: type === 'QA' ? '#38BDF8' : '#06B6D4', r: 4, strokeWidth: 0 }}
+        />
+      </RadarChart>
+    </ResponsiveContainer>
+  );
+}
+
+// ─── NC Donut Chart ───────────────────────────────────────────────────────────
+interface NCDonutProps {
+  ncData: { name: string; value: number; color: string; pct: number }[];
+  total: number;
+}
+
+function NCDonutChart({ ncData, total }: NCDonutProps) {
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div className="rounded-xl p-3 text-xs shadow-xl" style={{ backgroundColor: '#1C2333', border: '1px solid rgba(255,255,255,0.12)' }}>
+        <p className="font-bold text-white">{payload[0].name}</p>
+        <p style={{ color: payload[0].payload.color }}>{payload[0].value} NCs ({payload[0].payload.pct}%)</p>
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex items-center gap-5">
+      {/* Donut */}
+      <div style={{ position: 'relative', width: 130, height: 130, flexShrink: 0 }}>
+        <PieChart width={130} height={130}>
+          <Pie
+            data={ncData.length > 0 ? ncData : [{ name: 'Sem NCs', value: 1, color: 'rgba(255,255,255,0.08)', pct: 0 }]}
+            cx={60} cy={60}
+            innerRadius={40} outerRadius={58}
+            dataKey="value"
+            paddingAngle={ncData.length > 0 ? 3 : 0}
+            startAngle={90}
+            endAngle={-270}
+          >
+            {(ncData.length > 0 ? ncData : [{ name: 'Sem NCs', value: 1, color: 'rgba(255,255,255,0.08)', pct: 0 }]).map((entry, index) => (
+              <Cell key={index} fill={entry.color} stroke="transparent" />
+            ))}
+          </Pie>
+          <Tooltip content={<CustomTooltip />} />
+        </PieChart>
+        {/* Center text */}
+        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', pointerEvents: 'none' }}>
+          <p className="text-xl font-bold text-white leading-none">{total}</p>
+          <p className="text-[9px] mt-0.5" style={{ color: '#64748B' }}>Total NCs</p>
+        </div>
+      </div>
+
+      {/* Lateral list — always visible */}
+      <div className="flex-1 space-y-2">
+        {ncData.length > 0 ? ncData.map((item) => (
+          <div key={item.name} className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
+              <span className="text-xs truncate" style={{ color: '#94A3B8' }}>{item.name.replace('NC-', 'NC').split(' ').slice(0, 3).join(' ')}</span>
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <span className="text-xs font-bold text-white">{item.value}</span>
+              <span className="text-xs font-medium px-1.5 py-0.5 rounded-full" style={{ backgroundColor: `${item.color}20`, color: item.color }}>
+                {item.pct}%
+              </span>
+            </div>
+          </div>
+        )) : (
+          <p className="text-xs py-4 text-center" style={{ color: '#64748B' }}>Sem NCs registradas no ciclo</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Pilar Modal (with real cycle data) ──────────────────────────────────────
 interface PilarModalProps {
   type: 'QA' | 'IEPC' | 'NC';
   onClose: () => void;
+  qaPillars?: { subject: string; weight: number; pct: number; color: string; fullName: string }[];
+  iepcPillars?: { subject: string; weight: number; pct: number; color: string; fullName: string }[];
+  ncData?: { name: string; value: number; color: string; pct: number }[];
+  totalNCs?: number;
+  periodo?: string;
 }
 
 const QA_PILAR_DETAILS = [
   {
     code: 'P1', name: 'Gestão do Fluxo e Rastreabilidade',
+    peso: 22,
     descricao: 'Avalia a capacidade do analista de seguir e documentar o fluxo operacional corretamente.',
     objetivo: 'Garantir rastreabilidade total das demandas e conformidade com os processos estabelecidos.',
-    subpilares: ['Registro de atendimento', 'Documentação de fluxo', 'Rastreabilidade de demanda', 'Conformidade de processo'],
+    subpilares: ['6.1 Identificação e Boas-vindas (5pts)', '6.2 Formalização e Comunicação do Protocolo SUP (9pts)', '6.3 Encerramento Conforme Etapa da Tratativa (8pts)'],
     impacto: 'Diretamente ligado à auditabilidade e governança operacional.',
-    calculo: 'Média ponderada dos critérios de fluxo avaliados na auditoria.',
-    exemplos: ['Registro correto no sistema', 'Seguimento do protocolo de atendimento', 'Documentação completa da tratativa'],
   },
   {
     code: 'P2', name: 'Gestão da Tratativa da Demanda',
+    peso: 34,
     descricao: 'Mede a qualidade e efetividade na resolução das demandas dos clientes.',
     objetivo: 'Assegurar que cada demanda seja tratada com a devida atenção, agilidade e resolução efetiva.',
-    subpilares: ['Tempo de resposta', 'Resolução na primeira interação', 'Encaminhamento correto', 'Follow-up'],
+    subpilares: ['6.4 Resolução ou Próximo Passo (10pts)', '6.5 Documentação Técnica do Atendimento (8pts)', '6.6 Orientação Técnica e Acompanhamento (10pts)', '6.7 Assertividade no Direcionamento da Demanda (6pts)'],
     impacto: 'Impacta diretamente a satisfação do cliente e os indicadores de IEPC.',
-    calculo: 'Avaliação dos critérios de tratativa com peso maior para resolução efetiva.',
-    exemplos: ['Resolução no primeiro contato', 'Encaminhamento adequado', 'Retorno ao cliente dentro do prazo'],
   },
   {
     code: 'P3', name: 'Análise e Assertividade Técnica',
+    peso: 18,
     descricao: 'Avalia a precisão técnica e capacidade analítica do profissional.',
     objetivo: 'Garantir que as análises sejam corretas, fundamentadas e orientadas à solução.',
     subpilares: ['Diagnóstico correto', 'Solução técnica adequada', 'Conhecimento do produto', 'Precisão da informação'],
     impacto: 'Reduz retrabalho, NCs e aumenta a confiança do cliente.',
-    calculo: 'Pontuação baseada na assertividade das análises e soluções propostas.',
-    exemplos: ['Diagnóstico preciso do problema', 'Solução técnica correta', 'Informação validada antes de repassar'],
   },
   {
     code: 'P4', name: 'Qualidade da Comunicação',
+    peso: 14,
     descricao: 'Avalia clareza, objetividade e profissionalismo na comunicação.',
     objetivo: 'Garantir que a comunicação seja clara, profissional e orientada ao entendimento do cliente.',
     subpilares: ['Clareza da mensagem', 'Tom profissional', 'Objetividade', 'Gramática e ortografia'],
     impacto: 'Influencia diretamente a percepção do cliente e o IEPC.',
-    calculo: 'Análise qualitativa dos registros de comunicação com critérios objetivos.',
-    exemplos: ['Mensagem clara e sem ambiguidade', 'Tom respeitoso e profissional', 'Resposta objetiva e completa'],
   },
   {
     code: 'P5', name: 'Conduta Relacional',
+    peso: 12,
     descricao: 'Avalia o comportamento ético, empático e relacional do analista.',
     objetivo: 'Promover uma cultura de excelência relacional e ética operacional.',
     subpilares: ['Empatia', 'Ética profissional', 'Postura', 'Relacionamento com cliente'],
     impacto: 'Base da experiência do cliente e da reputação da operação.',
-    calculo: 'Avaliação comportamental baseada em critérios de conduta definidos.',
-    exemplos: ['Tratamento respeitoso', 'Postura ética em situações difíceis', 'Empatia demonstrada'],
   },
 ];
 
 const IEPC_PILAR_DETAILS = [
   {
     code: 'E1', name: 'Resolução Percebida',
+    peso: 30,
     experiencia: 'O cliente percebe que seu problema foi resolvido de forma efetiva.',
     comportamento: 'Confirmar a resolução com o cliente e garantir satisfação antes de encerrar.',
     impactoCliente: 'Principal driver de satisfação e fidelização.',
-    subpilares: ['Confirmação de resolução', 'Satisfação declarada', 'Recontato evitado'],
+    subpilares: ['1.1 Clareza do Status Final (10pts)', '1.2 Percepção de Avanço (10pts)', '1.3 Alinhamento dos Próximos Passos (10pts)'],
   },
   {
     code: 'E2', name: 'Compreensão e Segurança Percebida',
+    peso: 20,
     experiencia: 'O cliente sente que foi compreendido e que está em boas mãos.',
     comportamento: 'Demonstrar entendimento do problema e transmitir confiança na solução.',
     impactoCliente: 'Reduz ansiedade e aumenta confiança na operação.',
-    subpilares: ['Demonstração de entendimento', 'Transmissão de confiança', 'Clareza nas explicações'],
+    subpilares: ['2.1 Clareza da Comunicação (7pts)', '2.2 Segurança Transmitida (7pts)', '2.3 Validação do Entendimento (6pts)'],
   },
   {
     code: 'E3', name: 'Esforço Percebido pelo Cliente',
+    peso: 20,
     experiencia: 'O cliente percebe que não precisou se esforçar muito para resolver seu problema.',
     comportamento: 'Simplificar processos, antecipar necessidades e reduzir fricções.',
     impactoCliente: 'Diretamente ligado ao CES (Customer Effort Score).',
-    subpilares: ['Simplicidade do processo', 'Antecipação de necessidades', 'Redução de repetições'],
+    subpilares: ['3.1 Facilidade de Execução (7pts)', '3.2 Evitar Repetição (7pts)', '3.3 Condução Guiada (6pts)'],
   },
   {
     code: 'E4', name: 'Tempo e Fluidez',
+    peso: 15,
     experiencia: 'O cliente percebe agilidade e fluidez no atendimento.',
     comportamento: 'Atender com agilidade sem comprometer a qualidade da solução.',
     impactoCliente: 'Impacta diretamente o NPS e a percepção de eficiência.',
-    subpilares: ['Tempo de resposta', 'Fluidez do atendimento', 'Ausência de esperas desnecessárias'],
+    subpilares: ['4.1 Agilidade (5pts)', '4.2 Gestão de Expectativa (5pts)', '4.3 Continuidade (5pts)'],
   },
   {
     code: 'E5', name: 'Experiência Relacional',
+    peso: 15,
     experiencia: 'O cliente percebe um atendimento humanizado, empático e personalizado.',
     comportamento: 'Tratar cada cliente de forma única, com empatia e personalização.',
     impactoCliente: 'Gera lealdade emocional e elogios espontâneos.',
-    subpilares: ['Personalização', 'Empatia percebida', 'Humanização do atendimento'],
+    subpilares: ['5.1 Cordialidade (5pts)', '5.2 Empatia (5pts)', '5.3 Encerramento Positivo (5pts)'],
   },
 ];
 
 const NC_DETAILS = [
-  { code: 'NC-1', name: 'Postura e Ética', definicao: 'Comportamento inadequado, falta de ética ou postura profissional comprometida.', severidade: 'Alta', penalidade: '-5 pontos QA', impacto: 'Risco reputacional e cultural', exemplos: ['Linguagem inapropriada', 'Descaso com o cliente', 'Comportamento antiético'], reincidencia: 'Dobra a penalidade na 2ª ocorrência' },
-  { code: 'NC-2', name: 'Acuracidade Técnica', definicao: 'Informação técnica incorreta ou solução inadequada fornecida ao cliente.', severidade: 'Alta', penalidade: '-4 pontos QA', impacto: 'Retrabalho e insatisfação do cliente', exemplos: ['Diagnóstico errado', 'Solução incorreta', 'Informação desatualizada'], reincidencia: 'Gera PDI obrigatório na 3ª ocorrência' },
-  { code: 'NC-3', name: 'Registro e Rastreabilidade', definicao: 'Falha no registro, documentação ou rastreabilidade da demanda.', severidade: 'Média', penalidade: '-3 pontos QA', impacto: 'Comprometimento da auditoria e governança', exemplos: ['Atendimento não registrado', 'Documentação incompleta', 'Protocolo não gerado'], reincidencia: 'Revisão de processo obrigatória' },
-  { code: 'NC-4', name: 'Fluxo Operacional', definicao: 'Desvio do fluxo operacional estabelecido ou não seguimento de protocolo.', severidade: 'Média', penalidade: '-3 pontos QA', impacto: 'Inconsistência operacional e risco de SLA', exemplos: ['Pular etapa do processo', 'Encaminhamento incorreto', 'Protocolo não seguido'], reincidencia: 'Treinamento obrigatório' },
-  { code: 'NC-5', name: 'Segurança da Informação', definicao: 'Exposição ou manuseio inadequado de dados sensíveis do cliente.', severidade: 'Crítica', penalidade: '-8 pontos QA', impacto: 'Risco legal, LGPD e reputacional', exemplos: ['Compartilhamento de dados indevido', 'Acesso não autorizado', 'Exposição de informações confidenciais'], reincidencia: 'Processo disciplinar imediato' },
+  { code: 'NC-1', name: 'Postura e Ética', definicao: 'Comportamento inadequado, falta de ética ou postura profissional comprometida.', severidade: 'Alta', penalidade: '-20 pontos QA', impacto: 'Risco reputacional e cultural', exemplos: ['Linguagem inapropriada', 'Descaso com o cliente', 'Comportamento antiético'], reincidencia: 'Dobra a penalidade na 2ª ocorrência' },
+  { code: 'NC-2', name: 'Acuracidade Técnica', definicao: 'Informação técnica incorreta ou solução inadequada fornecida ao cliente.', severidade: 'Alta', penalidade: '-20 pontos QA', impacto: 'Retrabalho e insatisfação do cliente', exemplos: ['Diagnóstico errado', 'Solução incorreta', 'Informação desatualizada'], reincidencia: 'Gera PDI obrigatório na 3ª ocorrência' },
+  { code: 'NC-3', name: 'Registro e Rastreabilidade', definicao: 'Falha no registro, documentação ou rastreabilidade da demanda.', severidade: 'Média', penalidade: '-20 pontos QA', impacto: 'Comprometimento da auditoria e governança', exemplos: ['Atendimento não registrado', 'Documentação incompleta', 'Protocolo não gerado'], reincidencia: 'Revisão de processo obrigatória' },
+  { code: 'NC-4', name: 'Fluxo Operacional', definicao: 'Desvio do fluxo operacional estabelecido ou não seguimento de protocolo.', severidade: 'Média', penalidade: '-20 pontos QA', impacto: 'Inconsistência operacional e risco de SLA', exemplos: ['Pular etapa do processo', 'Encaminhamento incorreto', 'Protocolo não seguido'], reincidencia: 'Treinamento obrigatório' },
+  { code: 'NC-5', name: 'Segurança da Informação', definicao: 'Exposição ou manuseio inadequado de dados sensíveis do cliente.', severidade: 'Crítica', penalidade: '-20 pontos QA', impacto: 'Risco legal, LGPD e reputacional', exemplos: ['Compartilhamento de dados indevido', 'Acesso não autorizado', 'Exposição de informações confidenciais'], reincidencia: 'Processo disciplinar imediato' },
 ];
 
-function PilarModal({ type, onClose }: PilarModalProps) {
+function PilarModal({ type, onClose, qaPillars, iepcPillars, ncData, totalNCs, periodo }: PilarModalProps) {
+  const qaColor = '#38BDF8';
+  const iepcColor = '#06B6D4';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.8)' }}>
       <div className="w-full max-w-3xl rounded-2xl overflow-hidden max-h-[90vh] flex flex-col" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.1)' }}>
         <div className="flex items-center justify-between p-5 flex-shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: type === 'QA' ? 'rgba(56,189,248,0.15)' : type === 'IEPC' ? 'rgba(6,182,212,0.15)' : 'rgba(239,68,68,0.15)' }}>
-              {type === 'QA' ? <Target size={16} style={{ color: '#38BDF8' }} /> : type === 'IEPC' ? <Star size={16} style={{ color: '#06B6D4' }} /> : <AlertTriangle size={16} style={{ color: '#EF4444' }} />}
+              {type === 'QA' ? <Target size={16} style={{ color: qaColor }} /> : type === 'IEPC' ? <Star size={16} style={{ color: iepcColor }} /> : <AlertTriangle size={16} style={{ color: '#EF4444' }} />}
             </div>
             <div>
               <h3 className="text-sm font-bold text-white">
-                {type === 'QA' ? 'Radar QA — Pilares Estratégicos' : type === 'IEPC' ? 'Radar IEPC — Experiência do Cliente' : 'Não Conformidades — Guia Oficial'}
+                {type === 'QA' ? 'Mapa Estratégico QA — Pilares e Dados do Ciclo' : type === 'IEPC' ? 'Mapa Estratégico IEPC — Pilares e Dados do Ciclo' : 'Não Conformidades — Guia Oficial'}
               </h3>
               <p className="text-xs" style={{ color: '#94A3B8' }}>
-                {type === 'QA' ? '5 pilares de qualidade operacional' : type === 'IEPC' ? '5 pilares de experiência percebida' : 'Definições, severidades e penalidades'}
+                {type === 'QA' ? `Ciclo: ${periodo || '—'} · 5 pilares de qualidade operacional` : type === 'IEPC' ? `Ciclo: ${periodo || '—'} · 5 pilares de experiência percebida` : 'Definições, severidades e penalidades'}
               </p>
             </div>
           </div>
@@ -266,89 +382,141 @@ function PilarModal({ type, onClose }: PilarModalProps) {
             <X size={14} style={{ color: '#94A3B8' }} />
           </button>
         </div>
-        <div className="p-5 overflow-y-auto space-y-3">
+
+        <div className="p-5 overflow-y-auto space-y-4">
+          {/* Radar visual at top of modal */}
+          {type === 'QA' && qaPillars && (
+            <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.15)' }}>
+              <p className="text-xs font-semibold mb-3" style={{ color: qaColor }}>Distribuição Estratégica — Pesos Oficiais QA (Total: 100 pts)</p>
+              <div className="flex items-center gap-4">
+                <div style={{ flex: '0 0 220px' }}>
+                  <StrategicRadarChart data={qaPillars} type="QA" maxScale={40} />
+                </div>
+                <div className="flex-1 space-y-2">
+                  {qaPillars.map((p) => (
+                    <div key={p.subject} className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+                      <span className="text-xs flex-1" style={{ color: '#94A3B8' }}>{p.fullName}</span>
+                      <span className="text-xs font-bold" style={{ color: p.color }}>{p.weight} pts</span>
+                      <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: `${p.color}20`, color: p.color }}>{p.weight}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {type === 'IEPC' && iepcPillars && (
+            <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(6,182,212,0.04)', border: '1px solid rgba(6,182,212,0.15)' }}>
+              <p className="text-xs font-semibold mb-3" style={{ color: iepcColor }}>Distribuição Estratégica — Pesos Oficiais IEPC (Total: 100 pts)</p>
+              <div className="flex items-center gap-4">
+                <div style={{ flex: '0 0 220px' }}>
+                  <StrategicRadarChart data={iepcPillars} type="IEPC" maxScale={35} />
+                </div>
+                <div className="flex-1 space-y-2">
+                  {iepcPillars.map((p) => (
+                    <div key={p.subject} className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+                      <span className="text-xs flex-1" style={{ color: '#94A3B8' }}>{p.fullName}</span>
+                      <span className="text-xs font-bold" style={{ color: p.color }}>{p.weight} pts</span>
+                      <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: `${p.color}20`, color: p.color }}>{p.weight}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Pillar details */}
           {type === 'QA' && QA_PILAR_DETAILS.map((p) => {
-            const cls = getPerformanceClass(QA_PILLARS_DATA.find(d => d.pilar.startsWith(p.code))?.value || 0);
+            const pillarData = qaPillars?.find(d => d.subject.startsWith(p.code));
+            const cls = getPerformanceClass(pillarData?.pct || 0);
             return (
               <div key={p.code} className="rounded-xl p-4" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-lg" style={{ backgroundColor: 'rgba(56,189,248,0.15)', color: '#38BDF8' }}>{p.code}</span>
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-lg" style={{ backgroundColor: 'rgba(56,189,248,0.15)', color: qaColor }}>{p.code}</span>
                     <span className="text-sm font-semibold text-white">{p.name}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: qaColor }}>Peso: {p.peso} pts</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold" style={{ color: cls.color }}>{QA_PILLARS_DATA.find(d => d.pilar.startsWith(p.code))?.value}%</span>
-                    <PerformanceBadge score={QA_PILLARS_DATA.find(d => d.pilar.startsWith(p.code))?.value || 0} size="xs" />
-                  </div>
+                  {pillarData && pillarData.pct > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold" style={{ color: cls.color }}>{pillarData.pct}%</span>
+                      <PerformanceBadge score={pillarData.pct} size="xs" />
+                    </div>
+                  )}
                 </div>
                 <p className="text-xs mb-2" style={{ color: '#94A3B8' }}>{p.descricao}</p>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div><span style={{ color: '#64748B' }}>Objetivo: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{p.objetivo}</span></div>
                   <div><span style={{ color: '#64748B' }}>Impacto: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{p.impacto}</span></div>
-                  <div><span style={{ color: '#64748B' }}>Cálculo: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{p.calculo}</span></div>
-                  <div><span style={{ color: '#64748B' }}>Subpilares: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{p.subpilares.join(', ')}</span></div>
+                  <div className="col-span-2"><span style={{ color: '#64748B' }}>Subpilares: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{p.subpilares.join(' · ')}</span></div>
                 </div>
               </div>
             );
           })}
+
           {type === 'IEPC' && IEPC_PILAR_DETAILS.map((p) => {
-            const cls = getPerformanceClass(IEPC_PILLARS_DATA.find(d => d.pilar.startsWith(p.code))?.value || 0);
+            const pillarData = iepcPillars?.find(d => d.subject.startsWith(p.code));
+            const cls = getPerformanceClass(pillarData?.pct || 0);
             return (
               <div key={p.code} className="rounded-xl p-4" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-lg" style={{ backgroundColor: 'rgba(6,182,212,0.15)', color: '#06B6D4' }}>{p.code}</span>
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-lg" style={{ backgroundColor: 'rgba(6,182,212,0.15)', color: iepcColor }}>{p.code}</span>
                     <span className="text-sm font-semibold text-white">{p.name}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(6,182,212,0.1)', color: iepcColor }}>Peso: {p.peso} pts</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold" style={{ color: cls.color }}>{IEPC_PILLARS_DATA.find(d => d.pilar.startsWith(p.code))?.value}%</span>
-                    <PerformanceBadge score={IEPC_PILLARS_DATA.find(d => d.pilar.startsWith(p.code))?.value || 0} size="xs" />
-                  </div>
+                  {pillarData && pillarData.pct > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold" style={{ color: cls.color }}>{pillarData.pct}%</span>
+                      <PerformanceBadge score={pillarData.pct} size="xs" />
+                    </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div><span style={{ color: '#64748B' }}>Experiência: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{p.experiencia}</span></div>
                   <div><span style={{ color: '#64748B' }}>Comportamento: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{p.comportamento}</span></div>
                   <div><span style={{ color: '#64748B' }}>Impacto: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{p.impactoCliente}</span></div>
-                  <div><span style={{ color: '#64748B' }}>Subpilares: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{p.subpilares.join(', ')}</span></div>
+                  <div className="col-span-2"><span style={{ color: '#64748B' }}>Subpilares: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{p.subpilares.join(' · ')}</span></div>
                 </div>
               </div>
             );
           })}
-          {type === 'NC' && NC_DETAILS.map((nc) => (
-            <div key={nc.code} className="rounded-xl p-4" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-lg" style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#EF4444' }}>{nc.code}</span>
-                  <span className="text-sm font-semibold text-white">{nc.name}</span>
+
+          {type === 'NC' && (
+            <>
+              {ncData && ncData.length > 0 && (
+                <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.15)' }}>
+                  <p className="text-xs font-semibold mb-3" style={{ color: '#EF4444' }}>Distribuição de NCs no Ciclo — Total: {totalNCs}</p>
+                  <NCDonutChart ncData={ncData} total={totalNCs || 0} />
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: nc.severidade === 'Crítica' ? 'rgba(239,68,68,0.2)' : nc.severidade === 'Alta' ? 'rgba(245,158,11,0.2)' : 'rgba(250,204,21,0.2)', color: nc.severidade === 'Crítica' ? '#ef4444' : nc.severidade === 'Alta' ? '#f59e0b' : '#facc15' }}>{nc.severidade}</span>
-                  <span className="text-xs font-bold" style={{ color: '#ef4444' }}>{nc.penalidade}</span>
+              )}
+              {NC_DETAILS.map((nc) => (
+                <div key={nc.code} className="rounded-xl p-4" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-lg" style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#EF4444' }}>{nc.code}</span>
+                      <span className="text-sm font-semibold text-white">{nc.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: nc.severidade === 'Crítica' ? 'rgba(239,68,68,0.2)' : nc.severidade === 'Alta' ? 'rgba(245,158,11,0.2)' : 'rgba(250,204,21,0.2)', color: nc.severidade === 'Crítica' ? '#ef4444' : nc.severidade === 'Alta' ? '#f59e0b' : '#facc15' }}>{nc.severidade}</span>
+                      <span className="text-xs font-bold" style={{ color: '#ef4444' }}>{nc.penalidade}</span>
+                    </div>
+                  </div>
+                  <p className="text-xs mb-2" style={{ color: '#94A3B8' }}>{nc.definicao}</p>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div><span style={{ color: '#64748B' }}>Impacto: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{nc.impacto}</span></div>
+                    <div><span style={{ color: '#64748B' }}>Reincidência: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{nc.reincidencia}</span></div>
+                    <div className="col-span-2"><span style={{ color: '#64748B' }}>Exemplos: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{nc.exemplos.join(' • ')}</span></div>
+                  </div>
                 </div>
-              </div>
-              <p className="text-xs mb-2" style={{ color: '#94A3B8' }}>{nc.definicao}</p>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div><span style={{ color: '#64748B' }}>Impacto: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{nc.impacto}</span></div>
-                <div><span style={{ color: '#64748B' }}>Reincidência: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{nc.reincidencia}</span></div>
-                <div className="col-span-2"><span style={{ color: '#64748B' }}>Exemplos: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{nc.exemplos.join(' • ')}</span></div>
-              </div>
-            </div>
-          ))}
+              ))}
+            </>
+          )}
         </div>
       </div>
     </div>
-  );
-}
-
-// ─── Custom Radar Label ───────────────────────────────────────────────────────
-function RadarValueLabel(props: any) {
-  const { x, y, value, index, data } = props;
-  if (value === undefined || value === null) return null;
-  const cls = getPerformanceClass(value);
-  return (
-    <text x={x} y={y} textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight={700} fill={cls.color}>
-      {value}%
-    </text>
   );
 }
 
@@ -494,7 +662,6 @@ export default function HomeExecutiveView() {
   const [drilldownCiclo, setDrilldownCiclo] = useState<string | null>(null);
   const [pilarModal, setPilarModal] = useState<'QA' | 'IEPC' | 'NC' | null>(null);
 
-  // ── Filter state ──────────────────────────────────────────────────────────
   const [filterCiclo, setFilterCiclo] = useState<string>('todos');
   const [filterSquad, setFilterSquad] = useState<string>('todos');
   const [filterGestor, setFilterGestor] = useState<string>('todos');
@@ -530,7 +697,6 @@ export default function HomeExecutiveView() {
         fetchElogios(),
       ]);
 
-      // Fallback: if localStorage is empty, try Supabase
       if (scores.length === 0) {
         const [sbScores, sbPeriodos, sbNcs, sbElogios] = await Promise.all([
           fetchCycleScoresFromSupabase(),
@@ -546,10 +712,7 @@ export default function HomeExecutiveView() {
         }
       }
 
-      // Load manual cycle entries (from Histórico page)
       const manualCycles = fetchManualCycles();
-
-      // Merge manual cycle periods into the periods list
       const manualPeriodos = manualCycles.map((mc) => mc.periodo).filter(Boolean);
       const allPeriodosSet = new Set([...periodos, ...manualPeriodos]);
       const mergedPeriodos = Array.from(allPeriodosSet).sort();
@@ -557,7 +720,6 @@ export default function HomeExecutiveView() {
       setAllPeriodos(mergedPeriodos);
 
       if (scores.length === 0 && manualCycles.length === 0) {
-        // No data imported yet — show empty state, do NOT use embedded/fake data
         setHistory([]);
         setLoading(false);
         return;
@@ -573,10 +735,30 @@ export default function HomeExecutiveView() {
         const pElogios = filteredElogios.filter((e: any) => e.periodo === periodo);
         const analysts = buildAnalystsFromScores(pScores);
 
-        // If we have real scores for this period, use them
+        // Compute NC distribution by type
+        const ncByType = (() => {
+          const typeCounts: Record<string, number> = {};
+          pNCs.forEach((nc: any) => {
+            const t = nc.tipo || nc.category || 'Outros';
+            typeCounts[t] = (typeCounts[t] || 0) + 1;
+          });
+          const total = pNCs.length;
+          return Object.entries(typeCounts).map(([name, value], idx) => ({
+            name,
+            value,
+            color: NC_COLORS[idx % NC_COLORS.length],
+            pct: total > 0 ? Math.round((value / total) * 100) : 0,
+          }));
+        })();
+
         if (analysts.length > 0) {
           const qaMedia = analysts.reduce((s: number, a: any) => s + a.qaScore, 0) / analysts.length;
           const iepcMedia = analysts.reduce((s: number, a: any) => s + a.iepcScore, 0) / analysts.length;
+          // Compute pillar averages
+          const avgPillar = (key: string) => {
+            const vals = pScores.map((s: any) => s[key] || 0);
+            return vals.length > 0 ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : 0;
+          };
           let squads: Record<string, { qa: number; iepc: number; count: number }> = {};
           let coordenadores: Record<string, { qa: number; count: number }> = {};
           analysts.forEach((a: any) => {
@@ -605,10 +787,12 @@ export default function HomeExecutiveView() {
             analistas: analysts.length,
             squads,
             coordenadores,
+            p1: avgPillar('p1'), p2: avgPillar('p2'), p3: avgPillar('p3'), p4: avgPillar('p4'), p5: avgPillar('p5'),
+            e1: avgPillar('e1'), e2: avgPillar('e2'), e3: avgPillar('e3'), e4: avgPillar('e4'), e5: avgPillar('e5'),
+            ncByType,
           };
         }
 
-        // Fallback: use manual cycle entry for this period
         const manualEntry = manualCycles.find((mc) => mc.periodo === periodo);
         if (manualEntry) {
           return {
@@ -620,10 +804,10 @@ export default function HomeExecutiveView() {
             analistas: manualEntry.total_analistas ?? 0,
             squads: {},
             coordenadores: {},
+            ncByType,
           };
         }
 
-        // Empty period
         return {
           periodo,
           qa: 0,
@@ -633,6 +817,7 @@ export default function HomeExecutiveView() {
           analistas: 0,
           squads: {},
           coordenadores: {},
+          ncByType,
         };
       }).filter((s) => s.qa > 0 || s.iepc > 0 || s.ncs > 0 || s.elogios > 0 || s.analistas > 0);
 
@@ -645,12 +830,10 @@ export default function HomeExecutiveView() {
 
   useEffect(() => {
     loadData();
-    // Listen to both legacy and new unified data-changed events
     const unsubscribe = listenDataChanged(loadData);
     return unsubscribe;
   }, [loadData]);
 
-  // Close filter dropdowns when clicking outside
   useEffect(() => {
     if (!filterOpen) return;
     const handler = () => setFilterOpen(null);
@@ -686,30 +869,22 @@ export default function HomeExecutiveView() {
     }
   };
 
-  // ── Apply filters to history ──────────────────────────────────────────────
   const filteredHistory = history.filter((h) => {
     if (filterCiclo !== 'todos' && h.periodo !== filterCiclo) return false;
     return true;
   });
 
-  // For squad/gestor filter: apply to the last period's data
   const getFilteredPeriod = (period: PeriodSummary | undefined): PeriodSummary | undefined => {
     if (!period) return undefined;
     if (filterSquad === 'todos' && filterGestor === 'todos') return period;
-
-    // Filter squads
     let squads = { ...period.squads };
     if (filterSquad !== 'todos') {
       squads = Object.fromEntries(Object.entries(squads).filter(([sq]) => sq === filterSquad));
     }
-
-    // Filter coordenadores
     let coordenadores = { ...period.coordenadores };
     if (filterGestor !== 'todos') {
       coordenadores = Object.fromEntries(Object.entries(coordenadores).filter(([c]) => c === filterGestor));
     }
-
-    // Recalculate QA/IEPC averages from filtered squads
     const squadEntries = Object.values(squads);
     const qa = squadEntries.length > 0
       ? parseFloat((squadEntries.reduce((s, d) => s + d.qa, 0) / squadEntries.length).toFixed(2))
@@ -718,7 +893,6 @@ export default function HomeExecutiveView() {
       ? parseFloat((squadEntries.reduce((s, d) => s + d.iepc, 0) / squadEntries.length).toFixed(2))
       : 0;
     const analistas = squadEntries.reduce((s, d) => s + d.count, 0);
-
     return { ...period, squads, coordenadores, qa, iepc, analistas };
   };
 
@@ -736,7 +910,6 @@ export default function HomeExecutiveView() {
     return undefined;
   })();
 
-  // Collect all available squads and gestores from all history
   const allSquads = Array.from(new Set(history.flatMap(h => Object.keys(h.squads)))).sort();
   const allGestores = Array.from(new Set(history.flatMap(h => Object.keys(h.coordenadores || {})))).sort();
 
@@ -757,8 +930,6 @@ export default function HomeExecutiveView() {
     ? Object.entries(lastPeriod.coordenadores || {}).map(([coord, d]) => ({ coord, qa: d.qa })).sort((a, b) => b.qa - a.qa)
     : [];
 
-  const ncDistribution: typeof ABR2026_NC_TYPES = [];
-
   const totalNCs = lastPeriod?.ncs ?? 0;
   const totalElogios = lastPeriod?.elogios ?? 0;
   const totalAnalistas = lastPeriod?.analistas ?? 0;
@@ -771,7 +942,31 @@ export default function HomeExecutiveView() {
 
   const hasData = history.length > 0;
 
-  // Custom dot with value label for evolution chart
+  // ── Strategic Radar Data — uses official WEIGHTS (not scores) ──────────────
+  // QA: shows weight distribution of each pillar (P1=22, P2=34, P3=18, P4=14, P5=12)
+  // The "value" in radar = the official weight (strategic importance)
+  // pct = percentage of total (same as weight since total=100)
+  const qaStrategicPillars = useMemo(() => [
+    { subject: 'P1 Fluxo', weight: QA_PILLAR_WEIGHTS.p1, pct: QA_PILLAR_WEIGHTS.p1, color: PILLAR_COLORS.p1, fullName: 'P1 — Gestão do Fluxo e Rastreabilidade' },
+    { subject: 'P2 Tratativa', weight: QA_PILLAR_WEIGHTS.p2, pct: QA_PILLAR_WEIGHTS.p2, color: PILLAR_COLORS.p2, fullName: 'P2 — Gestão da Tratativa da Demanda' },
+    { subject: 'P3 Análise', weight: QA_PILLAR_WEIGHTS.p3, pct: QA_PILLAR_WEIGHTS.p3, color: PILLAR_COLORS.p3, fullName: 'P3 — Análise e Assertividade Técnica' },
+    { subject: 'P4 Comunicação', weight: QA_PILLAR_WEIGHTS.p4, pct: QA_PILLAR_WEIGHTS.p4, color: PILLAR_COLORS.p4, fullName: 'P4 — Qualidade da Comunicação' },
+    { subject: 'P5 Conduta', weight: QA_PILLAR_WEIGHTS.p5, pct: QA_PILLAR_WEIGHTS.p5, color: PILLAR_COLORS.p5, fullName: 'P5 — Conduta Relacional' },
+  ], []);
+
+  const iepcStrategicPillars = useMemo(() => [
+    { subject: 'E1 Resolução', weight: IEPC_PILLAR_WEIGHTS.e1, pct: IEPC_PILLAR_WEIGHTS.e1, color: PILLAR_COLORS.e1, fullName: 'E1 — Resolução Percebida' },
+    { subject: 'E2 Compreensão', weight: IEPC_PILLAR_WEIGHTS.e2, pct: IEPC_PILLAR_WEIGHTS.e2, color: PILLAR_COLORS.e2, fullName: 'E2 — Compreensão e Segurança Percebida' },
+    { subject: 'E3 Esforço', weight: IEPC_PILLAR_WEIGHTS.e3, pct: IEPC_PILLAR_WEIGHTS.e3, color: PILLAR_COLORS.e3, fullName: 'E3 — Esforço Percebido pelo Cliente' },
+    { subject: 'E4 Tempo', weight: IEPC_PILLAR_WEIGHTS.e4, pct: IEPC_PILLAR_WEIGHTS.e4, color: PILLAR_COLORS.e4, fullName: 'E4 — Tempo e Fluidez' },
+    { subject: 'E5 Relacional', weight: IEPC_PILLAR_WEIGHTS.e5, pct: IEPC_PILLAR_WEIGHTS.e5, color: PILLAR_COLORS.e5, fullName: 'E5 — Experiência Relacional' },
+  ], []);
+
+  // NC distribution from real data
+  const ncDistribution = useMemo(() => {
+    return lastPeriod?.ncByType || [];
+  }, [lastPeriod]);
+
   const CustomDot = (props: any) => {
     const { cx, cy, value, stroke } = props;
     if (!cx || !cy) return null;
@@ -795,67 +990,6 @@ export default function HomeExecutiveView() {
       </div>
     );
   };
-
-  const PieTooltip = ({ active, payload }: any) => {
-    if (!active || !payload?.length) return null;
-    return (
-      <div className="rounded-xl p-3 text-xs shadow-xl" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.1)' }}>
-        <p className="font-semibold text-white">{payload[0].name}</p>
-        <p style={{ color: payload[0].payload.color }}>{payload[0].value} ({payload[0].payload.pct}%)</p>
-      </div>
-    );
-  };
-
-  // ── Compute dynamic radar/pillar data from real scores ──────────────────────
-  const computedQAPillars = React.useMemo(() => {
-    if (!lastPeriod || lastPeriod.analistas === 0) return QA_PILLARS_DATA;
-    // Get scores for the last period
-    const pScores = filterByRole(
-      (typeof window !== 'undefined'
-        ? (() => { try { return JSON.parse(localStorage.getItem('zetti_cycle_scores') || '[]'); } catch { return []; } })()
-        : []
-      ).filter((s: any) => s.periodo === lastPeriod.periodo)
-    );
-    if (pScores.length === 0) return QA_PILLARS_DATA;
-    const avgPct = (key: string, max: number) => {
-      const vals = pScores.map((s: any) => s[key] || 0);
-      const rawAvg = vals.length > 0 ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : 0;
-      return toPercent(rawAvg, max);
-    };
-    return [
-      { pilar: 'P1 Fluxo', fullName: 'P1 — Gestão do Fluxo e Rastreabilidade', value: avgPct('p1', QA_PILLAR_MAX.p1), fullMark: 100 },
-      { pilar: 'P2 Tratativa', fullName: 'P2 — Gestão da Tratativa da Demanda', value: avgPct('p2', QA_PILLAR_MAX.p2), fullMark: 100 },
-      { pilar: 'P3 Análise', fullName: 'P3 — Análise e Assertividade Técnica', value: avgPct('p3', QA_PILLAR_MAX.p3), fullMark: 100 },
-      { pilar: 'P4 Comunicação', fullName: 'P4 — Qualidade da Comunicação', value: avgPct('p4', QA_PILLAR_MAX.p4), fullMark: 100 },
-      { pilar: 'P5 Conduta', fullName: 'P5 — Conduta Relacional', value: avgPct('p5', QA_PILLAR_MAX.p5), fullMark: 100 },
-    ];
-  }, [lastPeriod, filterByRole]);
-
-  const computedIEPCPillars = React.useMemo(() => {
-    if (!lastPeriod || lastPeriod.analistas === 0) return IEPC_PILLARS_DATA;
-    const pScores = filterByRole(
-      (typeof window !== 'undefined'
-        ? (() => { try { return JSON.parse(localStorage.getItem('zetti_cycle_scores') || '[]'); } catch { return []; } })()
-        : []
-      ).filter((s: any) => s.periodo === lastPeriod.periodo)
-    );
-    if (pScores.length === 0) return IEPC_PILLARS_DATA;
-    const avgPct = (key: string, max: number) => {
-      const vals = pScores.map((s: any) => s[key] || 0);
-      const rawAvg = vals.length > 0 ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : 0;
-      return toPercent(rawAvg, max);
-    };
-    return [
-      { pilar: 'E1 Resolução', fullName: 'E1 — Resolução Percebida', value: avgPct('e1', IEPC_PILLAR_MAX.e1), fullMark: 100 },
-      { pilar: 'E2 Compreensão', fullName: 'E2 — Compreensão e Segurança Percebida', value: avgPct('e2', IEPC_PILLAR_MAX.e2), fullMark: 100 },
-      { pilar: 'E3 Esforço', fullName: 'E3 — Esforço Percebido pelo Cliente', value: avgPct('e3', IEPC_PILLAR_MAX.e3), fullMark: 100 },
-      { pilar: 'E4 Tempo', fullName: 'E4 — Tempo e Fluidez', value: avgPct('e4', IEPC_PILLAR_MAX.e4), fullMark: 100 },
-      { pilar: 'E5 Relacional', fullName: 'E5 — Experiência Relacional', value: avgPct('e5', IEPC_PILLAR_MAX.e5), fullMark: 100 },
-    ];
-  }, [lastPeriod, filterByRole]);
-
-  const activePillarsQA = computedQAPillars;
-  const activePillarsIEPC = computedIEPCPillars;
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#0A1628' }}>
@@ -950,7 +1084,6 @@ export default function HomeExecutiveView() {
               </div>
             </div>
 
-            {/* Active filters badge + clear */}
             {(filterCiclo !== 'todos' || filterSquad !== 'todos' || filterGestor !== 'todos') && (
               <button
                 onClick={() => { setFilterCiclo('todos'); setFilterSquad('todos'); setFilterGestor('todos'); }}
@@ -994,7 +1127,6 @@ export default function HomeExecutiveView() {
             </div>
           </div>
         ) : !hasData ? (
-          /* ── Empty State ── */
           <div className="flex flex-col items-center justify-center py-32 text-center">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)' }}>
               <BarChart2 size={28} style={{ color: '#38BDF8' }} />
@@ -1025,9 +1157,9 @@ export default function HomeExecutiveView() {
                 <p className="text-3xl font-bold mb-1" style={{ color: qaClass.color }}>{qaMedia.toFixed(1)}</p>
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-1">
-                    <TrendingUp size={11} style={{ color: '#22C55E' }} />
-                    <span className="text-xs" style={{ color: '#22C55E' }}>
-                      {qaDelta !== null ? `${qaDelta > 0 ? '+' : ''}${qaDelta.toFixed(1)} vs Ciclo Anterior` : 'Sem ciclo anterior'}
+                    {qaDelta !== null && qaDelta >= 0 ? <TrendingUp size={11} style={{ color: '#22C55E' }} /> : <TrendingDown size={11} style={{ color: '#EF4444' }} />}
+                    <span className="text-xs" style={{ color: qaDelta !== null && qaDelta >= 0 ? '#22C55E' : '#EF4444' }}>
+                      {qaDelta !== null ? `${qaDelta > 0 ? '+' : ''}${qaDelta.toFixed(1)} vs ${prevPeriod?.periodo || 'Ciclo Anterior'}` : 'Sem ciclo anterior'}
                     </span>
                   </div>
                   {qaSparkline.length > 1 && <Sparkline data={qaSparkline} color="#38BDF8" />}
@@ -1046,9 +1178,9 @@ export default function HomeExecutiveView() {
                 <p className="text-3xl font-bold mb-1" style={{ color: iepcClass.color }}>{iepcMedia.toFixed(1)}</p>
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-1">
-                    <TrendingUp size={11} style={{ color: '#22C55E' }} />
-                    <span className="text-xs" style={{ color: '#22C55E' }}>
-                      {iepcDelta !== null ? `${iepcDelta > 0 ? '+' : ''}${iepcDelta.toFixed(1)} vs Ciclo Anterior` : 'Sem ciclo anterior'}
+                    {iepcDelta !== null && iepcDelta >= 0 ? <TrendingUp size={11} style={{ color: '#22C55E' }} /> : <TrendingDown size={11} style={{ color: '#EF4444' }} />}
+                    <span className="text-xs" style={{ color: iepcDelta !== null && iepcDelta >= 0 ? '#22C55E' : '#EF4444' }}>
+                      {iepcDelta !== null ? `${iepcDelta > 0 ? '+' : ''}${iepcDelta.toFixed(1)} vs ${prevPeriod?.periodo || 'Ciclo Anterior'}` : 'Sem ciclo anterior'}
                     </span>
                   </div>
                   {iepcSparkline.length > 1 && <Sparkline data={iepcSparkline} color="#06B6D4" />}
@@ -1066,9 +1198,9 @@ export default function HomeExecutiveView() {
                 </div>
                 <p className="text-3xl font-bold text-white mb-1">{totalNCs}</p>
                 <div className="flex items-center gap-1">
-                  <TrendingDown size={11} style={{ color: '#22C55E' }} />
-                  <span className="text-xs" style={{ color: '#22C55E' }}>
-                    {ncDelta !== null ? `${ncDelta > 0 ? '+' : ''}${ncDelta} vs Ciclo Anterior` : 'Sem ciclo anterior'}
+                  {ncDelta !== null && ncDelta <= 0 ? <TrendingDown size={11} style={{ color: '#22C55E' }} /> : <TrendingUp size={11} style={{ color: '#EF4444' }} />}
+                  <span className="text-xs" style={{ color: ncDelta !== null && ncDelta <= 0 ? '#22C55E' : '#EF4444' }}>
+                    {ncDelta !== null ? `${ncDelta > 0 ? '+' : ''}${ncDelta} vs ${prevPeriod?.periodo || 'Ciclo Anterior'}` : 'Sem ciclo anterior'}
                   </span>
                 </div>
               </div>
@@ -1083,9 +1215,9 @@ export default function HomeExecutiveView() {
                 </div>
                 <p className="text-3xl font-bold text-white mb-1">{totalElogios}</p>
                 <div className="flex items-center gap-1">
-                  <TrendingUp size={11} style={{ color: '#22C55E' }} />
-                  <span className="text-xs" style={{ color: '#22C55E' }}>
-                    {elogioDelta !== null ? `${elogioDelta > 0 ? '+' : ''}${elogioDelta} vs Ciclo Anterior` : 'Sem ciclo anterior'}
+                  {elogioDelta !== null && elogioDelta >= 0 ? <TrendingUp size={11} style={{ color: '#22C55E' }} /> : <TrendingDown size={11} style={{ color: '#EF4444' }} />}
+                  <span className="text-xs" style={{ color: elogioDelta !== null && elogioDelta >= 0 ? '#22C55E' : '#EF4444' }}>
+                    {elogioDelta !== null ? `${elogioDelta > 0 ? '+' : ''}${elogioDelta} vs ${prevPeriod?.periodo || 'Ciclo Anterior'}` : 'Sem ciclo anterior'}
                   </span>
                 </div>
               </div>
@@ -1106,18 +1238,22 @@ export default function HomeExecutiveView() {
               </div>
             </div>
 
-            {/* ── Row 2: Radar Charts QA + IEPC ── */}
+            {/* ── Row 2: Mapa Estratégico QA + IEPC ── */}
             <div className="grid grid-cols-2 gap-4">
-              {/* Radar QA */}
-              <div className="rounded-xl p-5 cursor-pointer transition-all hover:border-sky-500/40" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(56,189,248,0.2)', boxShadow: '0 0 20px rgba(56,189,248,0.05)' }} onClick={() => setPilarModal('QA')}>
+              {/* Mapa Estratégico QA */}
+              <div
+                className="rounded-xl p-5 cursor-pointer transition-all hover:border-sky-500/40"
+                style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(56,189,248,0.2)', boxShadow: '0 0 20px rgba(56,189,248,0.05)' }}
+                onClick={() => setPilarModal('QA')}
+              >
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <div className="flex items-center gap-2">
                       <Target size={14} style={{ color: '#38BDF8' }} />
-                      <h3 className="text-sm font-bold text-white">Radar Chart QA</h3>
-                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8' }}>Pilares Estratégicos</span>
+                      <h3 className="text-sm font-bold text-white">Mapa Estratégico QA</h3>
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8' }}>Distribuição Estratégica</span>
                     </div>
-                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>P1 Fluxo · P2 Tratativa · P3 Análise · P4 Comunicação · P5 Conduta</p>
+                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Peso oficial dos pilares · Total: 100 pts</p>
                   </div>
                   <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: '#94A3B8' }}>
                     <Info size={10} />
@@ -1125,43 +1261,35 @@ export default function HomeExecutiveView() {
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <ResponsiveContainer width="60%" height={200}>
-                    <RadarChart data={activePillarsQA} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
-                      <PolarGrid stroke="rgba(255,255,255,0.08)" />
-                      <PolarAngleAxis dataKey="pilar" tick={{ fill: '#94A3B8', fontSize: 9 }} />
-                      <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
-                      <Radar name="QA" dataKey="value" stroke="#38BDF8" fill="#38BDF8" fillOpacity={0.15} strokeWidth={2} dot={{ fill: '#38BDF8', r: 3 }}>
-                        <LabelList dataKey="value" content={<RadarValueLabel />} />
-                      </Radar>
-                    </RadarChart>
-                  </ResponsiveContainer>
+                  <div style={{ flex: '0 0 55%' }}>
+                    <StrategicRadarChart data={qaStrategicPillars} type="QA" maxScale={40} />
+                  </div>
                   <div className="flex-1 space-y-2">
-                    {activePillarsQA.map((p) => {
-                      const cls = getPerformanceClass(p.value);
-                      return (
-                        <div key={p.pilar} className="flex items-center gap-2">
-                          <span className="text-xs w-16 font-medium" style={{ color: '#94A3B8' }}>{p.pilar}</span>
-                          <div className="flex-1 rounded-full h-1.5" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
-                            <div className="h-1.5 rounded-full transition-all" style={{ width: `${p.value}%`, backgroundColor: cls.color }} />
-                          </div>
-                          <span className="text-xs font-bold w-8 text-right" style={{ color: cls.color }}>{p.value}%</span>
-                        </div>
-                      );
-                    })}
+                    {qaStrategicPillars.map((p) => (
+                      <div key={p.subject} className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+                        <span className="text-xs flex-1 truncate" style={{ color: '#94A3B8' }}>{p.subject}</span>
+                        <span className="text-xs font-bold" style={{ color: p.color }}>{p.weight}%</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
 
-              {/* Radar IEPC */}
-              <div className="rounded-xl p-5 cursor-pointer transition-all hover:border-cyan-500/40" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(6,182,212,0.2)', boxShadow: '0 0 20px rgba(6,182,212,0.05)' }} onClick={() => setPilarModal('IEPC')}>
+              {/* Mapa Estratégico IEPC */}
+              <div
+                className="rounded-xl p-5 cursor-pointer transition-all hover:border-cyan-500/40"
+                style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(6,182,212,0.2)', boxShadow: '0 0 20px rgba(6,182,212,0.05)' }}
+                onClick={() => setPilarModal('IEPC')}
+              >
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <div className="flex items-center gap-2">
                       <Zap size={14} style={{ color: '#06B6D4' }} />
-                      <h3 className="text-sm font-bold text-white">Radar Chart IEPC</h3>
-                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(6,182,212,0.1)', color: '#06B6D4' }}>Experiência do Cliente</span>
+                      <h3 className="text-sm font-bold text-white">Mapa Estratégico IEPC</h3>
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(6,182,212,0.1)', color: '#06B6D4' }}>Distribuição Estratégica</span>
                     </div>
-                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>E1 Resolução · E2 Compreensão · E3 Esforço · E4 Tempo · E5 Relacional</p>
+                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Peso oficial dos pilares · Total: 100 pts</p>
                   </div>
                   <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: '#94A3B8' }}>
                     <Info size={10} />
@@ -1169,35 +1297,23 @@ export default function HomeExecutiveView() {
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <ResponsiveContainer width="60%" height={200}>
-                    <RadarChart data={activePillarsIEPC} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
-                      <PolarGrid stroke="rgba(255,255,255,0.08)" />
-                      <PolarAngleAxis dataKey="pilar" tick={{ fill: '#94A3B8', fontSize: 9 }} />
-                      <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
-                      <Radar name="IEPC" dataKey="value" stroke="#06B6D4" fill="#06B6D4" fillOpacity={0.15} strokeWidth={2} dot={{ fill: '#06B6D4', r: 3 }}>
-                        <LabelList dataKey="value" content={<RadarValueLabel />} />
-                      </Radar>
-                    </RadarChart>
-                  </ResponsiveContainer>
+                  <div style={{ flex: '0 0 55%' }}>
+                    <StrategicRadarChart data={iepcStrategicPillars} type="IEPC" maxScale={35} />
+                  </div>
                   <div className="flex-1 space-y-2">
-                    {activePillarsIEPC.map((p) => {
-                      const cls = getPerformanceClass(p.value);
-                      return (
-                        <div key={p.pilar} className="flex items-center gap-2">
-                          <span className="text-xs w-16 font-medium" style={{ color: '#94A3B8' }}>{p.pilar}</span>
-                          <div className="flex-1 rounded-full h-1.5" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
-                            <div className="h-1.5 rounded-full transition-all" style={{ width: `${p.value}%`, backgroundColor: cls.color }} />
-                          </div>
-                          <span className="text-xs font-bold w-8 text-right" style={{ color: cls.color }}>{p.value}%</span>
-                        </div>
-                      );
-                    })}
+                    {iepcStrategicPillars.map((p) => (
+                      <div key={p.subject} className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+                        <span className="text-xs flex-1 truncate" style={{ color: '#94A3B8' }}>{p.subject}</span>
+                        <span className="text-xs font-bold" style={{ color: p.color }}>{p.weight}%</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* ── Row 3: Evolution Chart (enlarged, main strategic) + Cycle Summary ── */}
+            {/* ── Row 3: Evolution Chart + Cycle Summary ── */}
             <div className="grid grid-cols-12 gap-4">
               <div className="col-span-9 rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(56,189,248,0.15)', boxShadow: '0 0 30px rgba(56,189,248,0.04)' }}>
                 <div className="flex items-center justify-between mb-4">
@@ -1207,7 +1323,9 @@ export default function HomeExecutiveView() {
                       <h3 className="text-sm font-bold text-white">Evolução QA × IEPC</h3>
                       <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8' }}>Gráfico Estratégico Principal</span>
                     </div>
-                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Últimos 6 ciclos — Tendência e comparativo</p>
+                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>
+                      {prevPeriod ? `Comparando ${lastPeriod?.periodo} vs ${prevPeriod.periodo}` : 'Tendência histórica'}
+                    </p>
                   </div>
                   <Link href="/evolucao-geral" className="text-xs flex items-center gap-1" style={{ color: '#38BDF8' }}>
                     Ver mais <ChevronRight size={11} />
@@ -1236,9 +1354,14 @@ export default function HomeExecutiveView() {
                     <span className="text-sm font-bold" style={{ color: iepcClass.color }}>{iepcMedia.toFixed(1)}</span>
                     <PerformanceBadge score={iepcMedia} size="xs" />
                   </div>
-                  <div className="ml-auto flex items-center gap-3 text-xs" style={{ color: '#64748B' }}>
-                    <span>Ciclo {lastPeriod?.periodo ?? '—'}</span>
-                  </div>
+                  {prevPeriod && (
+                    <div className="ml-auto flex items-center gap-2 text-xs px-3 py-1 rounded-lg" style={{ backgroundColor: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.15)' }}>
+                      <span style={{ color: '#64748B' }}>Comparando:</span>
+                      <span className="font-semibold" style={{ color: '#38BDF8' }}>{lastPeriod?.periodo}</span>
+                      <span style={{ color: '#64748B' }}>vs</span>
+                      <span className="font-semibold" style={{ color: '#94A3B8' }}>{prevPeriod.periodo}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1248,6 +1371,7 @@ export default function HomeExecutiveView() {
                 <div className="space-y-2.5">
                   {[
                     { label: 'Período', value: lastPeriod ? lastPeriod.periodo : '—' },
+                    { label: 'Ciclo anterior', value: prevPeriod ? prevPeriod.periodo : 'N/A' },
                     { label: 'Avaliações realizadas', value: String(totalAvaliacoes) },
                     { label: 'Analistas avaliados', value: String(totalAnalistas) },
                     { label: 'Squads', value: String(squadRanking.length) },
@@ -1261,7 +1385,6 @@ export default function HomeExecutiveView() {
                     </div>
                   ))}
                 </div>
-                {/* Performance Legend */}
                 <div className="mt-4 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                   <p className="text-xs font-semibold mb-2" style={{ color: '#64748B' }}>Classificação de Performance</p>
                   {[
@@ -1282,9 +1405,8 @@ export default function HomeExecutiveView() {
               </div>
             </div>
 
-            {/* ── Row 4: Squad Ranking + Coordinator Ranking + Heatmap QA Pillars ── */}
+            {/* ── Row 4: Squad Ranking + Coordinator Ranking + Heatmap ── */}
             <div className="grid grid-cols-12 gap-4">
-              {/* Squad Ranking */}
               <div className="col-span-4 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
                 <div className="flex items-center justify-between mb-4">
                   <div>
@@ -1314,7 +1436,6 @@ export default function HomeExecutiveView() {
                 </div>
               </div>
 
-              {/* Coordinator Ranking */}
               <div className="col-span-4 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
                 <div className="flex items-center justify-between mb-4">
                   <div>
@@ -1344,7 +1465,6 @@ export default function HomeExecutiveView() {
                 </div>
               </div>
 
-              {/* Heatmap QA Pillars Only */}
               <div className="col-span-4 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
                 <div className="mb-3">
                   <h3 className="text-sm font-semibold text-white">Heatmap QA Médio</h3>
@@ -1387,55 +1507,27 @@ export default function HomeExecutiveView() {
               </div>
             </div>
 
-            {/* ── Row 5: NC Section (lower prominence) ── */}
+            {/* ── Row 5: NC Donut + Risk Alerts ── */}
             <div className="grid grid-cols-12 gap-4">
-              {/* NC Donut */}
-              <div className="col-span-5 rounded-xl p-4 cursor-pointer transition-all hover:border-red-500/30" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }} onClick={() => setPilarModal('NC')}>
+              {/* NC Donut — Distribuição de Não Conformidades */}
+              <div
+                className="col-span-5 rounded-xl p-4 cursor-pointer transition-all hover:border-red-500/30"
+                style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+                onClick={() => setPilarModal('NC')}
+              >
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <div className="flex items-center gap-2">
                       <AlertTriangle size={13} style={{ color: '#EF4444' }} />
-                      <h3 className="text-sm font-semibold text-white">Distribuição de NCs por Tipo</h3>
-                      <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444' }}>Monitoramento Corretivo</span>
+                      <h3 className="text-sm font-semibold text-white">Distribuição de Não Conformidades</h3>
                     </div>
-                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Total no ciclo: {totalNCs} — Clique para ver guia de NCs</p>
+                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>NCs por Categoria · Total no ciclo: {totalNCs}</p>
                   </div>
                   <Link href="/nao-conformidades" className="text-xs flex items-center gap-1" style={{ color: '#38BDF8' }} onClick={e => e.stopPropagation()}>
                     Ver mais <ChevronRight size={11} />
                   </Link>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div style={{ position: 'relative', width: 130, height: 130, flexShrink: 0 }}>
-                    <PieChart width={130} height={130}>
-                      <Pie data={ncDistribution} cx={60} cy={60} innerRadius={38} outerRadius={58} dataKey="value" paddingAngle={2}>
-                        {ncDistribution.map((entry, index) => (
-                          <Cell key={index} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip content={<PieTooltip />} />
-                    </PieChart>
-                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
-                      <p className="text-lg font-bold text-white">{totalNCs}</p>
-                      <p className="text-xs" style={{ color: '#64748B' }}>Total</p>
-                    </div>
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    {ncDistribution.length > 0 ? ncDistribution.map((item) => (
-                      <div key={item.name} className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
-                          <span className="text-xs" style={{ color: '#94A3B8' }}>{item.name.split(' ').slice(0, 2).join(' ')}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-medium text-white">{item.value}</span>
-                          <span className="text-xs" style={{ color: '#64748B' }}>({item.pct}%)</span>
-                        </div>
-                      </div>
-                    )) : (
-                      <p className="text-xs py-4 text-center" style={{ color: '#64748B' }}>Sem NCs registradas</p>
-                    )}
-                  </div>
-                </div>
+                <NCDonutChart ncData={ncDistribution} total={totalNCs} />
               </div>
 
               {/* Risk Alerts */}
@@ -1461,17 +1553,17 @@ export default function HomeExecutiveView() {
                       <RefreshCw size={14} style={{ color: '#F59E0B' }} />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-white">{totalNCs > 0 ? `${totalNCs} NCs no ciclo` : 'Sem reincidências'}</p>
-                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Requerem atenção</p>
+                      <p className="text-sm font-bold text-white">{ncDelta !== null ? `${ncDelta > 0 ? '+' : ''}${ncDelta} vs ${prevPeriod?.periodo}` : 'Sem comparativo'}</p>
+                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Variação de NCs no ciclo</p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3 p-3 rounded-xl" style={{ backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(239,68,68,0.15)' }}>
-                      <Activity size={14} style={{ color: '#EF4444' }} />
+                  <div className="flex items-start gap-3 p-3 rounded-xl" style={{ backgroundColor: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.2)' }}>
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(56,189,248,0.15)' }}>
+                      <Target size={14} style={{ color: '#38BDF8' }} />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-white">Monitoramento de NCs</p>
-                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Acompanhe os tipos e tendências</p>
+                      <p className="text-sm font-bold text-white">QA: {qaMedia.toFixed(1)} {qaDelta !== null ? (qaDelta >= 0 ? '↑' : '↓') + Math.abs(qaDelta).toFixed(1) : ''}</p>
+                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>vs {prevPeriod?.periodo || 'ciclo anterior'}</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3 p-3 rounded-xl" style={{ backgroundColor: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
@@ -1479,8 +1571,8 @@ export default function HomeExecutiveView() {
                       <TrendingUp size={14} style={{ color: '#22C55E' }} />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-white">Evolução positiva</p>
-                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>QA {qaDelta !== null ? (qaDelta >= 0 ? '↑' : '↓') + Math.abs(qaDelta).toFixed(1) : '—'}, IEPC {iepcDelta !== null ? (iepcDelta >= 0 ? '↑' : '↓') + Math.abs(iepcDelta).toFixed(1) : '—'}</p>
+                      <p className="text-sm font-bold text-white">IEPC: {iepcMedia.toFixed(1)} {iepcDelta !== null ? (iepcDelta >= 0 ? '↑' : '↓') + Math.abs(iepcDelta).toFixed(1) : ''}</p>
+                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>vs {prevPeriod?.periodo || 'ciclo anterior'}</p>
                     </div>
                   </div>
                 </div>
@@ -1502,7 +1594,15 @@ export default function HomeExecutiveView() {
       )}
 
       {pilarModal && (
-        <PilarModal type={pilarModal} onClose={() => setPilarModal(null)} />
+        <PilarModal
+          type={pilarModal}
+          onClose={() => setPilarModal(null)}
+          qaPillars={qaStrategicPillars}
+          iepcPillars={iepcStrategicPillars}
+          ncData={ncDistribution}
+          totalNCs={totalNCs}
+          periodo={lastPeriod?.periodo}
+        />
       )}
 
       {drilldownCiclo && (
