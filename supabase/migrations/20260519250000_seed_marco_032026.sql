@@ -1,6 +1,6 @@
 -- ============================================================
 -- Migration: Seed March 2026 (03/2026) cycle data
--- QA/IEPC: 25 records | NCs: 17 records | Elogios: 13 records
+-- QA/IEPC: 25 records | NCs: 17 records | Elogios: 12 records
 -- ============================================================
 
 DO $$
@@ -29,9 +29,14 @@ BEGIN
   DELETE FROM public.nc_records    WHERE periodo = '03/2026';
   DELETE FROM public.elogios       WHERE periodo = '03/2026';
 
-  -- ── 3. Insert cycle_scores (25 rows) — upsert on (periodo,analista,squad)
-  -- NOTE: Frederico Couto appears in Financeiro Fiscal twice (03-10 and 03-20)
-  -- and in Compras e Estoque once. The upsert keeps the last value per unique key.
+  -- ── 3. Insert cycle_scores (25 rows) ────────────────────────────────────
+  -- NOTE: Frederico Couto appears in Financeiro Fiscal twice (03-10 and 03-20).
+  -- Since we deleted all 03/2026 rows above, we do a plain INSERT for the
+  -- first 24 unique (periodo, analista, squad) combinations, then insert the
+  -- second Frederico/Financeiro Fiscal row separately to avoid the
+  -- "ON CONFLICT DO UPDATE command cannot affect row a second time" error.
+
+  -- Batch 1: all rows except the second Frederico Couto / Financeiro Fiscal entry
   INSERT INTO public.cycle_scores
     (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
      nota_final_qa, iepc_total, total_ncs, pontos_deduzidos_nc,
@@ -46,7 +51,6 @@ BEGIN
     (v_cycle_id,'03/2026','2026-03-24','Artur Carvalho','PDV N1','Ayron Silva','Bruna Silva',72.00,66.50,1,-20,6.60,20.40,11.70,8.20,13.00,'seed'),
     (v_cycle_id,'03/2026','2026-03-10','Frederico Couto','Compras e Estoque','Amanda Cristina','Bruna Silva',66.25,73.44,2,-40,9.33,21.67,17.50,6.00,10.50,'seed'),
     (v_cycle_id,'03/2026','2026-03-24','Dara Nunes','Compras e Estoque','Jonatas Jesus','Bruna Silva',85.20,83.00,0,0,15.00,32.00,19.00,10.00,19.00,'seed'),
-    (v_cycle_id,'03/2026','2026-03-20','Frederico Couto','Financeiro Fiscal','Amanda Cristina','Bruna Silva',63.20,42.80,2,-40,6.40,18.70,17.20,8.20,8.00,'seed'),
     (v_cycle_id,'03/2026','2026-03-23','Michelly Pereira','Financeiro Fiscal','Amanda Cristina','Bruna Silva',89.40,81.00,0,0,14.50,26.40,19.00,10.00,18.00,'seed'),
     (v_cycle_id,'03/2026','2026-03-20','Wyamar Milhomem','Financeiro Fiscal','Amanda Cristina','Bruna Silva',90.80,92.00,0,0,13.00,33.00,18.00,9.00,17.60,'seed'),
     (v_cycle_id,'03/2026','2026-03-23','Bruno Reis','Compras e Estoque','Jonatas Jesus','Bruna Silva',80.00,78.00,0,0,11.75,22.25,15.00,9.25,14.25,'seed'),
@@ -61,7 +65,16 @@ BEGIN
     (v_cycle_id,'03/2026','2026-03-24','Milena Santos','Compras e Estoque','Jonatas Jesus','Bruna Silva',67.40,60.00,0,0,10.80,17.00,10.80,6.80,10.80,'seed'),
     (v_cycle_id,'03/2026','2026-03-25','Rafael Andrade','PDV','Ayron Silva','Bruna Silva',90.80,86.00,0,0,16.00,34.00,20.00,10.00,17.75,'seed'),
     (v_cycle_id,'03/2026','2026-03-24','Thallison Silva','Compras e Estoque','Jonatas Jesus','Bruna Silva',80.40,77.00,1,-20,10.00,18.00,12.00,7.00,12.00,'seed'),
-    (v_cycle_id,'03/2026','2026-03-25','Thiago Maroja','PDV','Ayron Silva','Bruna Silva',82.80,82.00,0,0,12.00,27.00,16.80,8.40,18.80,'seed')
+    (v_cycle_id,'03/2026','2026-03-25','Thiago Maroja','PDV','Ayron Silva','Bruna Silva',82.80,82.00,0,0,12.00,27.00,16.80,8.40,18.80,'seed');
+
+  -- Batch 2: second evaluation for Frederico Couto / Financeiro Fiscal (03-20)
+  -- Inserted separately to avoid duplicate constrained values within a single INSERT
+  INSERT INTO public.cycle_scores
+    (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
+     nota_final_qa, iepc_total, total_ncs, pontos_deduzidos_nc,
+     p1, p2, p3, p4, p5, source)
+  VALUES
+    (v_cycle_id,'03/2026','2026-03-20','Frederico Couto','Financeiro Fiscal','Amanda Cristina','Bruna Silva',63.20,42.80,2,-40,6.40,18.70,17.20,8.20,8.00,'seed')
   ON CONFLICT (periodo, analista, squad) DO UPDATE SET
     cycle_id             = EXCLUDED.cycle_id,
     data_registro        = EXCLUDED.data_registro,
@@ -101,7 +114,7 @@ BEGIN
     (v_cycle_id,'03/2026','2026-03-25','Gustavo Moreira','PDV','Ayron Silva','Bruna Silva','Integridade do Fluxo Operacional','Negligência no fluxo operacional do atendimento',-20),
     (v_cycle_id,'03/2026','2026-03-25','José Neto','PDV N1','Ayron Silva','Bruna Silva','Integridade do Fluxo Operacional','Negligência no fluxo operacional do atendimento',-20);
 
-  -- ── 5. Insert elogios (12 unique rows — 1 duplicate excluded) ───────────
+  -- ── 5. Insert elogios (12 rows) ─────────────────────────────────────────
   INSERT INTO public.elogios
     (cycle_id, periodo, colaborador, squad, cliente, protocolo, elogio, destaque)
   VALUES
