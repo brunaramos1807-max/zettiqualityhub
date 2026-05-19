@@ -92,27 +92,131 @@ BEGIN
     source               = EXCLUDED.source;
 
   -- ── 4. Insert nc_records (17 rows) ──────────────────────────────────────
+  -- The constraint uq_nc_records_key is on (periodo, analista, tipo_nc,
+  -- COALESCE(protocolo_referencia,''), COALESCE(avaliacao_id,'')).
+  -- Frederico Couto has multiple NCs of tipo 'Integridade do Fluxo Operacional'
+  -- in the same period with no protocolo/avaliacao_id, causing intra-batch
+  -- conflicts. We insert each row individually with ON CONFLICT DO NOTHING
+  -- so all unique rows are inserted and duplicates within the batch are skipped.
+
   INSERT INTO public.nc_records
     (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
      tipo_nc, descricao, pontos_deduzidos)
   VALUES
-    (v_cycle_id,'03/2026','2026-03-10','Frederico Couto','Financeiro Fiscal','Amanda Cristina','Bruna Silva','Integridade do Fluxo Operacional','Chamado encerrado por inatividade, alegando falta de dados essenciais, mesmo após o cliente Thals França já ter fornecido as informações e expressado insatisfação',-20),
-    (v_cycle_id,'03/2026','2026-03-10','Frederico Couto','Financeiro Fiscal','Amanda Cristina','Bruna Silva','Acuracidade e Rigor Técnico','Encaminhamento ao time de desenvolvimento quando na realidade tratava-se de ajuste de configuração. A ausência de diagnóstico investigativo resultou em retrabalho',-20),
-    (v_cycle_id,'03/2026','2026-03-10','Frederico Couto','Financeiro Fiscal','Amanda Cristina','Bruna Silva','Integridade do Fluxo Operacional','Chamado encerrado com demanda pendente, sendo necessária a abertura de um novo chamado para continuidade',-20),
-    (v_cycle_id,'03/2026','2026-03-10','Frederico Couto','Compras e Estoque','Amanda Cristina','Bruna Silva','Integridade do Fluxo Operacional','Chamado encerrado por inatividade, alegando falta de dados essenciais, mesmo após o cliente Thals França já ter fornecido as informações e expressado insatisfação',-20),
-    (v_cycle_id,'03/2026','2026-03-10','Frederico Couto','Compras e Estoque','Amanda Cristina','Bruna Silva','Acuracidade e Rigor Técnico','Não forneceu detalhes ao cliente Thals França e, após o cliente fornecer as informações, não retomou o atendimento adequadamente',-20),
-    (v_cycle_id,'03/2026','2026-03-20','Frederico Couto','Financeiro Fiscal','Amanda Cristina','Bruna Silva','Integridade do Fluxo Operacional','Ausência de condução adequada no recebimento do material por outros meios',-20),
-    (v_cycle_id,'03/2026','2026-03-20','Frederico Couto','Financeiro Fiscal','Amanda Cristina','Bruna Silva','Integridade do Fluxo Operacional','Demanda de urgência com impacto fiscal no mesmo dia. O analista realizou encaminhamento sem transparência, sem considerar a criticidade e sem alinhar prazos',-20),
-    (v_cycle_id,'03/2026','2026-03-23','Larissa Marques','Financeiro Fiscal','Amanda Cristina','Bruna Silva','Acuracidade e Rigor Técnico','A orientação inicial de reprocessar o arquivo de retorno não era a solução correta para o problema apresentado',-20),
-    (v_cycle_id,'03/2026','2026-03-23','Larissa Marques','Financeiro Fiscal','Amanda Cristina','Bruna Silva','Acuracidade e Rigor Técnico','Forneceu orientação referente a outro chamado, não correspondendo à demanda do cliente, gerando confusão e necessidade de correção',-20),
-    (v_cycle_id,'03/2026','2026-03-23','Larissa Marques','Financeiro Fiscal','Amanda Cristina','Bruna Silva','Acuracidade e Rigor Técnico','Indicou um parâmetro que não atende à necessidade do cliente (retirar comissão de produtos em promoção), tratando-se de funcionalidade distinta',-20),
-    (v_cycle_id,'03/2026','2026-03-23','Peterson Silva','Financeiro Fiscal','Amanda Cristina','Bruna Silva','Integridade do Fluxo Operacional','Informou ao cliente que retornaria após finalizar outra demanda, porém não retornou dentro do prazo adequado',-20),
-    (v_cycle_id,'03/2026','2026-03-24','Artur Carvalho','PDV N1','Ayron Silva','Bruna Silva','Integridade do Fluxo Operacional','Aplicação incorreta da regra de inatividade (15 minutos), mesmo após cliente fornecer dados e descrever a demanda, caracterizando falha de processo',-20),
-    (v_cycle_id,'03/2026','2026-03-24','Fernando Carvalho','Compras e Estoque','Jonatas Jesus','Bruna Silva','Integridade do Fluxo Operacional','O responsável pela demanda (cliente principal) não estava disponível no momento e o analista não adotou procedimento adequado de continuidade',-20),
-    (v_cycle_id,'03/2026','2026-03-24','Igor Cerqueira','PDV N1','Ayron Silva','Bruna Silva','Conformidade de Registro e Rastreabilidade','O analista não realizou a abertura do chamado (SUP) e não registrou a tratativa adequadamente no sistema',-20),
-    (v_cycle_id,'03/2026','2026-03-24','Thallison Silva','Compras e Estoque','Jonatas Jesus','Bruna Silva','Postura e Ética Profissional','Postura inadequada diante de manifestação de insatisfação do cliente, encerrando o atendimento sem resolução',-20),
-    (v_cycle_id,'03/2026','2026-03-25','Gustavo Moreira','PDV','Ayron Silva','Bruna Silva','Integridade do Fluxo Operacional','Negligência no fluxo operacional do atendimento',-20),
-    (v_cycle_id,'03/2026','2026-03-25','José Neto','PDV N1','Ayron Silva','Bruna Silva','Integridade do Fluxo Operacional','Negligência no fluxo operacional do atendimento',-20);
+    (v_cycle_id,'03/2026','2026-03-10','Frederico Couto','Financeiro Fiscal','Amanda Cristina','Bruna Silva','Integridade do Fluxo Operacional','Chamado encerrado por inatividade, alegando falta de dados essenciais, mesmo após o cliente Thals França já ter fornecido as informações e expressado insatisfação',-20)
+  ON CONFLICT ON CONSTRAINT uq_nc_records_key DO NOTHING;
+
+  INSERT INTO public.nc_records
+    (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
+     tipo_nc, descricao, pontos_deduzidos)
+  VALUES
+    (v_cycle_id,'03/2026','2026-03-10','Frederico Couto','Financeiro Fiscal','Amanda Cristina','Bruna Silva','Acuracidade e Rigor Técnico','Encaminhamento ao time de desenvolvimento quando na realidade tratava-se de ajuste de configuração. A ausência de diagnóstico investigativo resultou em retrabalho',-20)
+  ON CONFLICT ON CONSTRAINT uq_nc_records_key DO NOTHING;
+
+  INSERT INTO public.nc_records
+    (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
+     tipo_nc, descricao, pontos_deduzidos)
+  VALUES
+    (v_cycle_id,'03/2026','2026-03-10','Frederico Couto','Financeiro Fiscal','Amanda Cristina','Bruna Silva','Integridade do Fluxo Operacional','Chamado encerrado com demanda pendente, sendo necessária a abertura de um novo chamado para continuidade',-20)
+  ON CONFLICT ON CONSTRAINT uq_nc_records_key DO NOTHING;
+
+  INSERT INTO public.nc_records
+    (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
+     tipo_nc, descricao, pontos_deduzidos)
+  VALUES
+    (v_cycle_id,'03/2026','2026-03-10','Frederico Couto','Compras e Estoque','Amanda Cristina','Bruna Silva','Integridade do Fluxo Operacional','Chamado encerrado por inatividade, alegando falta de dados essenciais, mesmo após o cliente Thals França já ter fornecido as informações e expressado insatisfação',-20)
+  ON CONFLICT ON CONSTRAINT uq_nc_records_key DO NOTHING;
+
+  INSERT INTO public.nc_records
+    (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
+     tipo_nc, descricao, pontos_deduzidos)
+  VALUES
+    (v_cycle_id,'03/2026','2026-03-10','Frederico Couto','Compras e Estoque','Amanda Cristina','Bruna Silva','Acuracidade e Rigor Técnico','Não forneceu detalhes ao cliente Thals França e, após o cliente fornecer as informações, não retomou o atendimento adequadamente',-20)
+  ON CONFLICT ON CONSTRAINT uq_nc_records_key DO NOTHING;
+
+  INSERT INTO public.nc_records
+    (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
+     tipo_nc, descricao, pontos_deduzidos)
+  VALUES
+    (v_cycle_id,'03/2026','2026-03-20','Frederico Couto','Financeiro Fiscal','Amanda Cristina','Bruna Silva','Integridade do Fluxo Operacional','Ausência de condução adequada no recebimento do material por outros meios',-20)
+  ON CONFLICT ON CONSTRAINT uq_nc_records_key DO NOTHING;
+
+  INSERT INTO public.nc_records
+    (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
+     tipo_nc, descricao, pontos_deduzidos)
+  VALUES
+    (v_cycle_id,'03/2026','2026-03-20','Frederico Couto','Financeiro Fiscal','Amanda Cristina','Bruna Silva','Integridade do Fluxo Operacional','Demanda de urgência com impacto fiscal no mesmo dia. O analista realizou encaminhamento sem transparência, sem considerar a criticidade e sem alinhar prazos',-20)
+  ON CONFLICT ON CONSTRAINT uq_nc_records_key DO NOTHING;
+
+  INSERT INTO public.nc_records
+    (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
+     tipo_nc, descricao, pontos_deduzidos)
+  VALUES
+    (v_cycle_id,'03/2026','2026-03-23','Larissa Marques','Financeiro Fiscal','Amanda Cristina','Bruna Silva','Acuracidade e Rigor Técnico','A orientação inicial de reprocessar o arquivo de retorno não era a solução correta para o problema apresentado',-20)
+  ON CONFLICT ON CONSTRAINT uq_nc_records_key DO NOTHING;
+
+  INSERT INTO public.nc_records
+    (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
+     tipo_nc, descricao, pontos_deduzidos)
+  VALUES
+    (v_cycle_id,'03/2026','2026-03-23','Larissa Marques','Financeiro Fiscal','Amanda Cristina','Bruna Silva','Acuracidade e Rigor Técnico','Forneceu orientação referente a outro chamado, não correspondendo à demanda do cliente, gerando confusão e necessidade de correção',-20)
+  ON CONFLICT ON CONSTRAINT uq_nc_records_key DO NOTHING;
+
+  INSERT INTO public.nc_records
+    (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
+     tipo_nc, descricao, pontos_deduzidos)
+  VALUES
+    (v_cycle_id,'03/2026','2026-03-23','Larissa Marques','Financeiro Fiscal','Amanda Cristina','Bruna Silva','Acuracidade e Rigor Técnico','Indicou um parâmetro que não atende à necessidade do cliente (retirar comissão de produtos em promoção), tratando-se de funcionalidade distinta',-20)
+  ON CONFLICT ON CONSTRAINT uq_nc_records_key DO NOTHING;
+
+  INSERT INTO public.nc_records
+    (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
+     tipo_nc, descricao, pontos_deduzidos)
+  VALUES
+    (v_cycle_id,'03/2026','2026-03-23','Peterson Silva','Financeiro Fiscal','Amanda Cristina','Bruna Silva','Integridade do Fluxo Operacional','Informou ao cliente que retornaria após finalizar outra demanda, porém não retornou dentro do prazo adequado',-20)
+  ON CONFLICT ON CONSTRAINT uq_nc_records_key DO NOTHING;
+
+  INSERT INTO public.nc_records
+    (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
+     tipo_nc, descricao, pontos_deduzidos)
+  VALUES
+    (v_cycle_id,'03/2026','2026-03-24','Artur Carvalho','PDV N1','Ayron Silva','Bruna Silva','Integridade do Fluxo Operacional','Aplicação incorreta da regra de inatividade (15 minutos), mesmo após cliente fornecer dados e descrever a demanda, caracterizando falha de processo',-20)
+  ON CONFLICT ON CONSTRAINT uq_nc_records_key DO NOTHING;
+
+  INSERT INTO public.nc_records
+    (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
+     tipo_nc, descricao, pontos_deduzidos)
+  VALUES
+    (v_cycle_id,'03/2026','2026-03-24','Fernando Carvalho','Compras e Estoque','Jonatas Jesus','Bruna Silva','Integridade do Fluxo Operacional','O responsável pela demanda (cliente principal) não estava disponível no momento e o analista não adotou procedimento adequado de continuidade',-20)
+  ON CONFLICT ON CONSTRAINT uq_nc_records_key DO NOTHING;
+
+  INSERT INTO public.nc_records
+    (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
+     tipo_nc, descricao, pontos_deduzidos)
+  VALUES
+    (v_cycle_id,'03/2026','2026-03-24','Igor Cerqueira','PDV N1','Ayron Silva','Bruna Silva','Conformidade de Registro e Rastreabilidade','O analista não realizou a abertura do chamado (SUP) e não registrou a tratativa adequadamente no sistema',-20)
+  ON CONFLICT ON CONSTRAINT uq_nc_records_key DO NOTHING;
+
+  INSERT INTO public.nc_records
+    (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
+     tipo_nc, descricao, pontos_deduzidos)
+  VALUES
+    (v_cycle_id,'03/2026','2026-03-24','Thallison Silva','Compras e Estoque','Jonatas Jesus','Bruna Silva','Postura e Ética Profissional','Postura inadequada diante de manifestação de insatisfação do cliente, encerrando o atendimento sem resolução',-20)
+  ON CONFLICT ON CONSTRAINT uq_nc_records_key DO NOTHING;
+
+  INSERT INTO public.nc_records
+    (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
+     tipo_nc, descricao, pontos_deduzidos)
+  VALUES
+    (v_cycle_id,'03/2026','2026-03-25','Gustavo Moreira','PDV','Ayron Silva','Bruna Silva','Integridade do Fluxo Operacional','Negligência no fluxo operacional do atendimento',-20)
+  ON CONFLICT ON CONSTRAINT uq_nc_records_key DO NOTHING;
+
+  INSERT INTO public.nc_records
+    (cycle_id, periodo, data_registro, analista, squad, coordenador, auditor,
+     tipo_nc, descricao, pontos_deduzidos)
+  VALUES
+    (v_cycle_id,'03/2026','2026-03-25','José Neto','PDV N1','Ayron Silva','Bruna Silva','Integridade do Fluxo Operacional','Negligência no fluxo operacional do atendimento',-20)
+  ON CONFLICT ON CONSTRAINT uq_nc_records_key DO NOTHING;
 
   -- ── 5. Insert elogios (12 rows) ─────────────────────────────────────────
   INSERT INTO public.elogios
