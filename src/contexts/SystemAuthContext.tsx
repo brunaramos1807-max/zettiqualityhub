@@ -460,13 +460,16 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
     // Always check pre-registration first (except known admin emails)
     const isAdminEmail = ADMIN_EMAILS.includes(email.toLowerCase());
     if (!isAdminEmail && supabase) {
-      const { data: preReg } = await supabase
+      const { data: preReg, error: preRegErr } = await supabase
         .from('pre_registered_users')
         .select('id, is_active')
         .eq('email', email.toLowerCase())
         .maybeSingle();
-      if (!preReg || preReg.is_active === false) {
-        return { success: false, error: 'Acesso negado. Usuário não cadastrado no sistema.' };
+      if (preRegErr) {
+        console.warn('[AUTH] pre_registered_users check error:', preRegErr.message);
+        // On DB error, fall through to credential check
+      } else if (!preReg || preReg.is_active === false) {
+        return { success: false, error: 'Acesso negado. Usuário não cadastrado no sistema. Entre em contato com o administrador.' };
       }
     }
 

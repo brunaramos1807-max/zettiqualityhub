@@ -13,20 +13,49 @@ export const useAuth = () => {
   return context;
 };
 
+// Known admin emails — always allowed regardless of pre_registered_users table
+const ADMIN_EMAILS = ['brunaramos1807@gmail.com', 'bruna.silva@zetti.tech', 'admin@zetti.com.br'];
+
+// Check if an email is in the pre_registered_users whitelist
+async function isEmailWhitelisted(supabase: any, email: string): Promise<boolean> {
+  if (!email) return false;
+  const normalizedEmail = email.toLowerCase().trim();
+
+  // Admin emails are always allowed
+  if (ADMIN_EMAILS.includes(normalizedEmail)) return true;
+
+  try {
+    const { data, error } = await supabase
+      .from('pre_registered_users')
+      .select('id, is_active')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[AUTH] Whitelist check error:', error.message);
+      // On DB error, allow admin emails only (already handled above)
+      return false;
+    }
+
+    return !!(data && data.is_active !== false);
+  } catch (err) {
+    console.error('[AUTH] Whitelist check exception:', err);
+    return false;
+  }
+}
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<any>(null);
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<{ full_name: string; role: string; avatar?: string } | null>(null);
 
-  // Derive profile from auth user — no DB call needed
+  // Derive profile from auth user — no DB call needed for basic display
   const deriveProfile = (authUser: any) => {
     if (!authUser) { setUserProfile(null); return; }
     const email: string = authUser.email || '';
     const metaName: string = authUser.user_metadata?.full_name || '';
-    // Check known admins
-    const adminEmails = ['brunaramos1807@gmail.com', 'bruna.silva@zetti.tech'];
-    const role = adminEmails.includes(email.toLowerCase()) ? 'Admin' : 'Usuário';
+    const role = ADMIN_EMAILS.includes(email.toLowerCase()) ? 'Admin' : 'Usuário';
     const displayName = metaName || email.split('@')[0] || 'Usuário';
     setUserProfile({ full_name: displayName, role });
   };
@@ -49,7 +78,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // Listen for auth changes
     const {
       data: { subscription }
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      // On sign-in, verify whitelist
+      if (_event === 'SIGNED_IN' && session?.user) {
+        const allowed = await isEmailWhitelisted(supabase, session.user.email || '');
+        if (!allowed) {
+          console.warn('[AUTH] Email not whitelisted, signing out:', session.user.email);
+          await supabase.auth.signOut();
+          setSession(null);
+          setUser(null);
+          setLoading(false);
+          setUserProfile(null);
+          return;
+        }
+      }
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
