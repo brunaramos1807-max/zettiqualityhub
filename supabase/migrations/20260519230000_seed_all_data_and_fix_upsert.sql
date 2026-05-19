@@ -105,44 +105,43 @@ ON CONFLICT (periodo) DO UPDATE SET
 
 -- ─── 6. Seed 26 Analysts ─────────────────────────────────────────────────────
 
-INSERT INTO public.analistas (nome, email, cargo, nivel, equipe, data_admissao, aniversario, ultima_promocao, ativo, tipo_usuario)
+INSERT INTO public.analistas (nome, email, cargo_operacional, nivel, equipe, data_admissao, aniversario, ultima_promocao, status)
 VALUES
-  ('Adriel de Almeida Sanches',        'adriel.sanches@zetti.tech',    'Analista de Suporte 12x36', 'Junior 2',  'PDV',              '2023-06-19', '2002-08-01', '2025-01-03', true, 'analista'),
-  ('Alair de Paula Filho',             'alair.filho@zetti.tech',       'Analista de Suporte',       'Junior 1',  'PDV',              '2025-06-09', '1997-03-18', '2025-09-08', true, 'analista'),
-  ('André Marcos Santos de Moura',     'andre.moura@zetti.tech',       'Analista de Suporte',       'Junior 2',  'Compras e Estoque','2025-06-09', '1997-10-29', '2025-09-06', true, 'analista'),
-  ('Artur Leobas de Franca Carvalho',  'artur.carvalho@zetti.tech',    'Analista de Suporte',       'Trainee 1', 'PDV N1',           '2025-05-20', '2005-03-11', '2026-01-02', true, 'analista'),
-  ('Bruno de Souza Reis',              'bruno.reis@zetti.tech',        'Analista de Suporte',       'Junior 2',  'Compras e Estoque','2025-08-04', '1997-03-09', '2025-04-08', true, 'analista'),
-  ('Bruno da Silva Ribeiro',           'bruno.ribeiro@zetti.tech',     'Analista de Suporte 12/36', 'Pleno 1',   'PDV',              '2023-05-06', '1996-08-21', NULL,          true, 'analista'),
-  ('Fernando Nunes Carvalho',          'fernando.carvalho@zetti.tech', 'Analista de Suporte',       'Pleno 1',   'Compras e Estoque','2024-04-01', '2002-12-30', '2025-01-08', true, 'analista'),
-  ('Francisco Neto Alves Pereira',     'francisco.pereira@zetti.tech', 'Analista de Suporte 12/36', 'Junior 1',  'PDV',              '2025-02-19', '1987-10-04', NULL,          true, 'analista'),
-  ('Frederico Faria do Couto',         'frederico.couto@zetti.tech',   'Analista de Suporte',       'Junior 2',  'Financeiro Fiscal','2025-03-18', '1987-09-12', NULL,          true, 'analista'),
-  ('Gabriel Vieira Santos Teles',      'gabriel.vieira@zetti.tech',    'Analista de Suporte',       'Pleno 1',   'Compras e Estoque','2023-11-20', '1997-05-11', '2025-01-11', true, 'analista'),
-  ('Giovanna Crystina Rufino Gonçalves','giovanna.oliveira@zetti.tech', 'Analista de Suporte',      'Junior 3',  'Compras e Estoque','2023-06-19', '2003-01-23', '2026-01-01', true, 'analista'),
-  ('Gustavo Vinicius Moreira Marques', 'gustavo.moreira@zetti.tech',   'Analista de Suporte 12x36', 'Trainee 1', 'PDV',              '2025-10-01', '2001-12-13', '2025-01-09', true, 'analista'),
-  ('Igor Felzemburg Cerqueira',        'igor.cerqueira@zetti.tech',    'Analista de Suporte',       'Junior 2',  'PDV N1',           '2022-09-26', '1998-10-08', NULL,          true, 'analista'),
-  ('Isaac Nunes Carvalho',             'isaac.carvalho@zetti.tech',    'Analista de Suporte',       'Trainee 2', 'PDV',              '2025-04-01', '2007-02-05', '2026-01-02', true, 'analista'),
-  ('Jherik De Jesus Calado',           'jherik.jesus@zetti.tech',      'Analista de Suporte 12x36', 'Junior 1',  'PDV',              '2025-09-01', '1999-08-14', '2025-01-09', true, 'analista'),
-  ('José Bueno de Brito Neto',         'jose.neto@zetti.tech',         'Analista de Suporte',       'Trainee 1', 'PDV N1',           '2025-05-20', '2007-03-31', NULL,          true, 'analista'),
-  ('Larissa Miranda Marques',          'larissa.marques@zetti.tech',   'Analista de Suporte',       'Junior 2',  'Financeiro Fiscal','2025-10-06', '2000-09-26', '2025-06-10', true, 'analista'),
-  ('Michelly Vitória Cunha Pereira',   'michelly.pereira@zetti.tech',  'Analista de Suporte',       'Junior 1',  'Financeiro Fiscal', NULL,         '2005-07-16', '2025-01-09', true, 'analista'),
-  ('Milena de Almeida Santos',         'milena.santos@zetti.tech',     'Analista de Suporte',       'Trainee 1', 'Compras e Estoque','2025-06-03', '2003-05-19', '2026-01-02', true, 'analista'),
-  ('Peterson Sulivan da Silva',        'peterson.silva@zetti.tech',    'Analista de Suporte',       'Junior 2',  'Financeiro Fiscal','2026-02-18', NULL,          NULL,          true, 'analista'),
-  ('Rafael de Sousa Andrade',          'rafael.andrade@zetti.tech',    'Analista de Suporte 12x36', 'Junior 2',  'PDV',              '2025-01-14', '1993-12-02', '2025-01-08', true, 'analista'),
-  ('Thallison P Silva',                'thalisson.silva@zetti.tech',   'Analista de Suporte',       'Junior 2',  'Compras e Estoque', NULL,         NULL,          '2026-05-01', true, 'analista'),
-  ('Thiago Borges Fonseca',            'thiago.fonseca@zetti.tech',    'Analista de Suporte',       'Trainee 2', 'PDV',              '2025-01-06', '2002-04-15', '2025-01-11', true, 'analista'),
-  ('Thiago Ribeiro Maroja',            'thiago.maroja@zetti.tech',     'Analista de Suporte',       'Pleno 1',   'PDV',              '2024-04-22', NULL,          '2026-01-02', true, 'analista'),
-  ('Wya Mar Barros Milhomem Junior',   'wya.junior@zetti.tech',        'Analista de Suporte',       'Pleno 1',   'Financeiro Fiscal','2024-04-01', '1997-03-09', '2024-01-04', true, 'analista'),
-  ('Flávio Araújo',                    'flavio.araujo@zetti.tech',     'CEO',                       'Senior',    'Gestão',            NULL,         NULL,          NULL,          true, 'ceo')
+  ('Adriel de Almeida Sanches',        'adriel.sanches@zetti.tech',    'Analista de Suporte 12x36', 'Junior 2',  'PDV',              '2023-06-19', '2002-08-01', '2025-01-03', 'ativo'),
+  ('Alair de Paula Filho',             'alair.filho@zetti.tech',       'Analista de Suporte',       'Junior 1',  'PDV',              '2025-06-09', '1997-03-18', '2025-09-08', 'ativo'),
+  ('André Marcos Santos de Moura',     'andre.moura@zetti.tech',       'Analista de Suporte',       'Junior 2',  'Compras e Estoque','2025-06-09', '1997-10-29', '2025-09-06', 'ativo'),
+  ('Artur Leobas de Franca Carvalho',  'artur.carvalho@zetti.tech',    'Analista de Suporte',       'Trainee 1', 'PDV N1',           '2025-05-20', '2005-03-11', '2026-01-02', 'ativo'),
+  ('Bruno de Souza Reis',              'bruno.reis@zetti.tech',        'Analista de Suporte',       'Junior 2',  'Compras e Estoque','2025-08-04', '1997-03-09', '2025-04-08', 'ativo'),
+  ('Bruno da Silva Ribeiro',           'bruno.ribeiro@zetti.tech',     'Analista de Suporte 12/36', 'Pleno 1',   'PDV',              '2023-05-06', '1996-08-21', NULL,          'ativo'),
+  ('Fernando Nunes Carvalho',          'fernando.carvalho@zetti.tech', 'Analista de Suporte',       'Pleno 1',   'Compras e Estoque','2024-04-01', '2002-12-30', '2025-01-08', 'ativo'),
+  ('Francisco Neto Alves Pereira',     'francisco.pereira@zetti.tech', 'Analista de Suporte 12/36', 'Junior 1',  'PDV',              '2025-02-19', '1987-10-04', NULL,          'ativo'),
+  ('Frederico Faria do Couto',         'frederico.couto@zetti.tech',   'Analista de Suporte',       'Junior 2',  'Financeiro Fiscal','2025-03-18', '1987-09-12', NULL,          'ativo'),
+  ('Gabriel Vieira Santos Teles',      'gabriel.vieira@zetti.tech',    'Analista de Suporte',       'Pleno 1',   'Compras e Estoque','2023-11-20', '1997-05-11', '2025-01-11', 'ativo'),
+  ('Giovanna Crystina Rufino Gonçalves','giovanna.oliveira@zetti.tech', 'Analista de Suporte',      'Junior 3',  'Compras e Estoque','2023-06-19', '2003-01-23', '2026-01-01', 'ativo'),
+  ('Gustavo Vinicius Moreira Marques', 'gustavo.moreira@zetti.tech',   'Analista de Suporte 12x36', 'Trainee 1', 'PDV',              '2025-10-01', '2001-12-13', '2025-01-09', 'ativo'),
+  ('Igor Felzemburg Cerqueira',        'igor.cerqueira@zetti.tech',    'Analista de Suporte',       'Junior 2',  'PDV N1',           '2022-09-26', '1998-10-08', NULL,          'ativo'),
+  ('Isaac Nunes Carvalho',             'isaac.carvalho@zetti.tech',    'Analista de Suporte',       'Trainee 2', 'PDV',              '2025-04-01', '2007-02-05', '2026-01-02', 'ativo'),
+  ('Jherik De Jesus Calado',           'jherik.jesus@zetti.tech',      'Analista de Suporte 12x36', 'Junior 1',  'PDV',              '2025-09-01', '1999-08-14', '2025-01-09', 'ativo'),
+  ('José Bueno de Brito Neto',         'jose.neto@zetti.tech',         'Analista de Suporte',       'Trainee 1', 'PDV N1',           '2025-05-20', '2007-03-31', NULL,          'ativo'),
+  ('Larissa Miranda Marques',          'larissa.marques@zetti.tech',   'Analista de Suporte',       'Junior 2',  'Financeiro Fiscal','2025-10-06', '2000-09-26', '2025-06-10', 'ativo'),
+  ('Michelly Vitória Cunha Pereira',   'michelly.pereira@zetti.tech',  'Analista de Suporte',       'Junior 1',  'Financeiro Fiscal', NULL,         '2005-07-16', '2025-01-09', 'ativo'),
+  ('Milena de Almeida Santos',         'milena.santos@zetti.tech',     'Analista de Suporte',       'Trainee 1', 'Compras e Estoque','2025-06-03', '2003-05-19', '2026-01-02', 'ativo'),
+  ('Peterson Sulivan da Silva',        'peterson.silva@zetti.tech',    'Analista de Suporte',       'Junior 2',  'Financeiro Fiscal','2026-02-18', NULL,          NULL,          'ativo'),
+  ('Rafael de Sousa Andrade',          'rafael.andrade@zetti.tech',    'Analista de Suporte 12x36', 'Junior 2',  'PDV',              '2025-01-14', '1993-12-02', '2025-01-08', 'ativo'),
+  ('Thallison P Silva',                'thalisson.silva@zetti.tech',   'Analista de Suporte',       'Junior 2',  'Compras e Estoque', NULL,         NULL,          '2026-05-01', 'ativo'),
+  ('Thiago Borges Fonseca',            'thiago.fonseca@zetti.tech',    'Analista de Suporte',       'Trainee 2', 'PDV',              '2025-01-06', '2002-04-15', '2025-01-11', 'ativo'),
+  ('Thiago Ribeiro Maroja',            'thiago.maroja@zetti.tech',     'Analista de Suporte',       'Pleno 1',   'PDV',              '2024-04-22', NULL,          '2026-01-02', 'ativo'),
+  ('Wya Mar Barros Milhomem Junior',   'wya.junior@zetti.tech',        'Analista de Suporte',       'Pleno 1',   'Financeiro Fiscal','2024-04-01', '1997-03-09', '2024-01-04', 'ativo'),
+  ('Flávio Araújo',                    'flavio.araujo@zetti.tech',     'CEO',                       'Senior',    'Gestão',            NULL,         NULL,          NULL,          'ativo')
 ON CONFLICT (email) DO UPDATE SET
   nome             = EXCLUDED.nome,
-  cargo            = EXCLUDED.cargo,
+  cargo_operacional = EXCLUDED.cargo_operacional,
   nivel            = EXCLUDED.nivel,
   equipe           = EXCLUDED.equipe,
   data_admissao    = EXCLUDED.data_admissao,
   aniversario      = EXCLUDED.aniversario,
   ultima_promocao  = EXCLUDED.ultima_promocao,
-  ativo            = EXCLUDED.ativo,
-  tipo_usuario     = EXCLUDED.tipo_usuario;
+  status           = EXCLUDED.status;
 
 -- ─── 7. Seed QA/IEPC Scores — Ciclo 03/2026 ─────────────────────────────────
 
