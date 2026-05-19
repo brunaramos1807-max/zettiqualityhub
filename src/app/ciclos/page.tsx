@@ -367,11 +367,20 @@ function CiclosContent() {
       const supabase = createClient();
       if (supabase) {
         const now = new Date().toISOString();
-        await supabase.from('import_cycles').update({
-          is_closed: true, status: 'fechado',
-          closed_at: now, closed_by_email: actorEmail,
-          closure_notes: notes,
-        }).eq('periodo', periodo);
+        // Use upsert so it works even if no import_cycles row exists yet for this period
+        await supabase.from('import_cycles').upsert(
+          {
+            periodo,
+            is_closed: true,
+            status: 'fechado',
+            closed_at: now,
+            closed_by_email: actorEmail,
+            closure_notes: notes,
+            file_name: 'Ciclo',
+            record_count: 0,
+          },
+          { onConflict: 'periodo' }
+        );
 
         // Log to closure history
         const cycle = cycles.find((c) => c.periodo === periodo);
@@ -401,10 +410,19 @@ function CiclosContent() {
       const supabase = createClient();
       if (supabase) {
         const now = new Date().toISOString();
-        await supabase.from('import_cycles').update({
-          is_closed: false, status: 'reaberto',
-          reopened_at: now, reopened_by_email: actorEmail,
-        }).eq('periodo', periodo);
+        // Use upsert so it works even if no import_cycles row exists yet for this period
+        await supabase.from('import_cycles').upsert(
+          {
+            periodo,
+            is_closed: false,
+            status: 'reaberto',
+            reopened_at: now,
+            reopened_by_email: actorEmail,
+            file_name: 'Ciclo',
+            record_count: 0,
+          },
+          { onConflict: 'periodo' }
+        );
 
         await supabase.from('cycle_closure_history').insert({
           periodo, action: 'reaberto',

@@ -5,6 +5,7 @@ import ImportModal from '@/components/ImportModal';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
 import { fetchCycleScores, fetchAllPeriodos, type RealAnalyst, exportCycleToCSV, deletePeriodData, dispatchDataChanged } from '@/lib/services/dataService';
+import { createClient } from '@/lib/supabase/client';
 import { BarChart2, Activity, Plus, Save, X, Loader2, Trash2, Download, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -78,6 +79,39 @@ function ImportacoesContent() {
     session?.cargo === 'Coordenador' ||
     session?.cargo === 'Coordenador Geral';
 
+  // Load import records from Supabase first, then merge with localStorage
+  const loadImports = useCallback(async () => {
+    const supabase = createClient();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('import_cycles')
+          .select('id, periodo, file_name, record_count, imported_at')
+          .order('imported_at', { ascending: false });
+        if (!error && data && data.length > 0) {
+          const supabaseRecords: ImportRecord[] = data.map((d: any) => ({
+            id: d.id,
+            fileName: d.file_name || 'Importação',
+            tipo: 'Qualidade',
+            modo: 'Ciclo Completo',
+            periodo: d.periodo,
+            data: d.imported_at || new Date().toISOString(),
+            rows: d.record_count || 0,
+          }));
+          // Merge with localStorage records (for manual entries not yet in Supabase)
+          const lsRecords = loadImportRecords();
+          const lsOnly = lsRecords.filter(
+            (lr) => !supabaseRecords.some((sr) => sr.periodo === lr.periodo)
+          );
+          setImports([...supabaseRecords, ...lsOnly]);
+          return;
+        }
+      } catch { /* fall through to localStorage */ }
+    }
+    // Fallback: localStorage only
+    setImports(loadImportRecords());
+  }, []);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     const [scores, allPeriodos] = await Promise.all([
@@ -89,10 +123,9 @@ function ImportacoesContent() {
       setSelectedPeriodo(allPeriodos[allPeriodos.length - 1]);
     }
 
-    // Load import records from localStorage
-    setImports(loadImportRecords());
+    await loadImports();
     setLoading(false);
-  }, [selectedPeriodo]);
+  }, [selectedPeriodo, loadImports]);
 
   useEffect(() => {
     loadData();
@@ -208,7 +241,7 @@ function ImportacoesContent() {
       deletePeriodData(record.periodo);
     }
     setDeleteConfirm(null);
-    setImports(loadImportRecords());
+    loadImports();
     toast.success(`Importação "${record.fileName}" excluída`);
     dispatchDataChanged({ tipo: 'delete_import', periodo: record.periodo });
   };
