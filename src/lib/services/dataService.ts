@@ -442,7 +442,10 @@ export function reopenCycle(periodo: string): void {
 }
 
 export function isCycleClosed(periodo: string): boolean {
-  return lsGet<ClosedCycle>(LS_CLOSED_CYCLES).some((c) => c.periodo === periodo);
+  // Fallback: check localStorage only (cannot use await in sync function)
+  const cycles = lsGet<any>(LS_CYCLES);
+  const cycle = cycles.find((c: any) => c.periodo === periodo);
+  return !!cycle?.closed_at;
 }
 
 /**
@@ -582,31 +585,107 @@ function downloadCSV(filename: string, headers: string[], rows: any[][]): void {
   URL.revokeObjectURL(url);
 }
 
-// ─── Fetch functions (localStorage only) ─────────────────────────────────────
+// ─── Fetch functions (Supabase-first, localStorage fallback) ──────────────────
 
-export async function fetchCycleScores(periodo?: string) {
+export async function fetchCycleScores(periodo?: string): Promise<any[]> {
+  // Try Supabase first
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      let query = supabase.from('cycle_scores').select('*');
+      if (periodo) query = query.eq('periodo', periodo);
+      const { data, error } = await query.order('nota_final_qa', { ascending: false });
+      if (!error && data && data.length > 0) {
+        // Cache in localStorage for offline use
+        if (!periodo) {
+          lsSet(LS_SCORES, data);
+        }
+        return data;
+      }
+    }
+  } catch { /* fall through to localStorage */ }
+
+  // Fallback: localStorage
   const data = lsGet<any>(LS_SCORES);
   if (periodo) return data.filter((r) => r.periodo === periodo);
   return data.sort((a: any, b: any) => b.nota_final_qa - a.nota_final_qa);
 }
 
-export async function fetchNCRecords(periodo?: string) {
+export async function fetchNCRecords(periodo?: string): Promise<any[]> {
+  // Try Supabase first
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      let query = supabase.from('nc_records').select('*');
+      if (periodo) query = query.eq('periodo', periodo);
+      const { data, error } = await query;
+      if (!error && data && data.length > 0) {
+        if (!periodo) lsSet(LS_NCS, data);
+        return data;
+      }
+    }
+  } catch { /* fall through to localStorage */ }
+
+  // Fallback: localStorage
   const data = lsGet<any>(LS_NCS);
   if (periodo) return data.filter((r) => r.periodo === periodo);
   return data;
 }
 
-export async function fetchElogios(periodo?: string) {
+export async function fetchElogios(periodo?: string): Promise<any[]> {
+  // Try Supabase first
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      let query = supabase.from('elogios').select('*');
+      if (periodo) query = query.eq('periodo', periodo);
+      const { data, error } = await query;
+      if (!error && data && data.length > 0) {
+        if (!periodo) lsSet(LS_ELOGIOS, data);
+        return data;
+      }
+    }
+  } catch { /* fall through to localStorage */ }
+
+  // Fallback: localStorage
   const data = lsGet<any>(LS_ELOGIOS);
   if (periodo) return data.filter((r) => r.periodo === periodo);
   return data;
 }
 
 export async function fetchAllPeriodos(): Promise<string[]> {
+  // Try Supabase first — derive from actual data tables + import_cycles
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const [cyclesRes, scoresRes, ncsRes, elogiosRes] = await Promise.all([
+        supabase.from('import_cycles').select('periodo'),
+        supabase.from('cycle_scores').select('periodo'),
+        supabase.from('nc_records').select('periodo'),
+        supabase.from('elogios').select('periodo'),
+      ]);
+      const all = [
+        ...(cyclesRes.data || []).map((r: any) => r.periodo),
+        ...(scoresRes.data || []).map((r: any) => r.periodo),
+        ...(ncsRes.data || []).map((r: any) => r.periodo),
+        ...(elogiosRes.data || []).map((r: any) => r.periodo),
+      ].filter(Boolean);
+      const unique = [...new Set(all)] as string[];
+      if (unique.length > 0) {
+        unique.sort((a, b) => a.localeCompare(b));
+        return unique;
+      }
+    }
+  } catch { /* fall through to localStorage */ }
+
+  // Fallback: localStorage
   const cycles = lsGet<any>(LS_CYCLES);
   let periodos = [...new Set(cycles.map((c: any) => c.periodo as string))].filter(Boolean);
 
-  // Fallback: if no cycles registered but scores exist, derive periods from scores
   if (periodos.length === 0) {
     const scores = lsGet<any>(LS_SCORES);
     const ncs = lsGet<any>(LS_NCS);

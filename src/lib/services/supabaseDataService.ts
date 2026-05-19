@@ -129,16 +129,35 @@ export async function fetchAllPeriodosFromSupabase(): Promise<string[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
 
+  // Fetch from import_cycles AND derive from actual data tables
+  const [cyclesRes, scoresRes] = await Promise.all([
+    supabase.from('import_cycles').select('periodo').order('periodo', { ascending: false }),
+    supabase.from('cycle_scores').select('periodo'),
+  ]);
+
+  const fromCycles = (cyclesRes.data || []).map((r: any) => r.periodo as string);
+  const fromScores = (scoresRes.data || []).map((r: any) => r.periodo as string);
+
+  const all = [...new Set([...fromCycles, ...fromScores])].filter(Boolean);
+  // Sort descending
+  all.sort((a, b) => b.localeCompare(a));
+  return all;
+}
+
+// ─── Check if a cycle is closed in Supabase ──────────────────────────────────
+
+export async function isCycleClosedInSupabase(periodo: string): Promise<boolean> {
+  const supabase = getSupabase();
+  if (!supabase) return false;
+
   const { data, error } = await supabase
     .from('import_cycles')
-    .select('periodo')
-    .order('periodo', { ascending: false });
+    .select('is_closed')
+    .eq('periodo', periodo)
+    .maybeSingle();
 
-  if (error) {
-    console.error('fetchAllPeriodos error:', error.message);
-    return [];
-  }
-  return [...new Set((data || []).map((r: any) => r.periodo as string))];
+  if (error || !data) return false;
+  return !!data.is_closed;
 }
 
 export async function toggleElogioDestaqueInSupabase(id: string, destaque: boolean): Promise<void> {

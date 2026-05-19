@@ -11,12 +11,6 @@ import {
   fetchManualCycles,
   listenDataChanged,
 } from '@/lib/services/dataService';
-import {
-  fetchCycleScoresFromSupabase,
-  fetchNCRecordsFromSupabase,
-  fetchElogiosFromSupabase,
-  fetchAllPeriodosFromSupabase,
-} from '@/lib/services/supabaseDataService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,  } from 'recharts';
 import {
   TrendingUp, TrendingDown, AlertTriangle, Star, Users, BarChart2, Activity,
@@ -716,27 +710,13 @@ export default function HomeExecutiveView() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      let [scores, periodos, ncs, elogios] = await Promise.all([
+      // fetchCycleScores/fetchNCRecords/fetchElogios/fetchAllPeriodos now use Supabase as primary source
+      const [scores, periodos, ncs, elogios] = await Promise.all([
         fetchCycleScores(),
         fetchAllPeriodos(),
         fetchNCRecords(),
         fetchElogios(),
       ]);
-
-      if (scores.length === 0) {
-        const [sbScores, sbPeriodos, sbNcs, sbElogios] = await Promise.all([
-          fetchCycleScoresFromSupabase(),
-          fetchAllPeriodosFromSupabase(),
-          fetchNCRecordsFromSupabase(),
-          fetchElogiosFromSupabase(),
-        ]);
-        if (sbScores.length > 0) {
-          scores = sbScores;
-          periodos = sbPeriodos;
-          ncs = sbNcs;
-          elogios = sbElogios;
-        }
-      }
 
       const manualCycles = fetchManualCycles();
       const manualPeriodos = manualCycles.map((mc) => mc.periodo).filter(Boolean);

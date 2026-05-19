@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { X, Upload, CheckCircle, Loader2, AlertCircle, ChevronRight, Database, Info, ShieldCheck, BarChart2, TrendingUp, Hash, Layers, GitMerge, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import Papa from 'papaparse';
@@ -14,7 +14,7 @@ import {
   type NCRow,
   type ElogioRow,
 } from '@/lib/services/dataService';
-import { importCycleDataToSupabase } from '@/lib/services/supabaseDataService';
+import { importCycleDataToSupabase, isCycleClosedInSupabase } from '@/lib/services/supabaseDataService';
 
 interface ImportModalProps {
   isOpen: boolean;
@@ -188,10 +188,25 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
   const [andamentoCount, setAndamentoCount] = useState(0);
   const [cycleClosedWarning, setCycleClosedWarning] = useState(false);
 
-  // Check if the selected period is closed whenever it changes
-  const handlePeriodoChange = (value: string) => {
+  // Check initial period closed status when modal opens
+  React.useEffect(() => {
+    if (isOpen && periodo) {
+      isCycleClosedInSupabase(periodo)
+        .then((closed) => setCycleClosedWarning(closed || isCycleClosed(periodo)))
+        .catch(() => setCycleClosedWarning(isCycleClosed(periodo)));
+    }
+  }, [isOpen]);
+
+  // Check if the selected period is closed — check Supabase first, then localStorage
+  const handlePeriodoChange = async (value: string) => {
     setPeriodo(value);
-    setCycleClosedWarning(isCycleClosed(value));
+    // Check Supabase first for authoritative closed status
+    try {
+      const closedInSupabase = await isCycleClosedInSupabase(value);
+      setCycleClosedWarning(closedInSupabase || isCycleClosed(value));
+    } catch {
+      setCycleClosedWarning(isCycleClosed(value));
+    }
   };
 
   const selectedTypeInfo = FILE_TYPE_OPTIONS.find((o) => o.type === selectedType);
@@ -260,12 +275,20 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
         setAndamentoCount(parsedScores.length);
       }
 
-      const result = await importCycleData(parsedScores, parsedNCs, parsedElogios, periodo, fileEntry.name);
-      if (!result.success) { setImportError(result.error || 'Erro desconhecido'); setImporting(false); return; }
+      // PRIMARY: Save to Supabase so ALL users see the data
+      const supabaseResult = await importCycleDataToSupabase(parsedScores, parsedNCs, parsedElogios, periodo, fileEntry.name);
+      if (!supabaseResult.success) {
+        // If Supabase fails, still try localStorage as fallback but warn
+        console.warn('Supabase import failed, falling back to localStorage:', supabaseResult.error);
+      }
 
-      importCycleDataToSupabase(parsedScores, parsedNCs, parsedElogios, periodo, fileEntry.name).catch((err) => {
-        console.warn('Supabase sync warning:', err?.message);
-      });
+      // SECONDARY: Also save to localStorage as local cache/fallback
+      const result = await importCycleData(parsedScores, parsedNCs, parsedElogios, periodo, fileEntry.name);
+      if (!result.success && !supabaseResult.success) {
+        setImportError(supabaseResult.error || result.error || 'Erro desconhecido');
+        setImporting(false);
+        return;
+      }
 
       const IMPORT_STORAGE_KEY = 'zetti_import_records';
       const count = parsedScores.length || parsedNCs.length || parsedElogios.length;
