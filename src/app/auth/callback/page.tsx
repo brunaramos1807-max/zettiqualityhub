@@ -18,8 +18,10 @@ export default function AuthCallbackPage() {
     const handleCallback = async () => {
       try {
         // Try to get existing session first
-        const { data: { session } } = await supabase?.auth?.getSession();
+        const { data: { session } } = await supabase.auth.getSession();
         if (session) {
+          // Ensure user profile exists in user_profiles
+          await ensureUserProfile(supabase, session.user);
           router?.replace('/');
           return;
         }
@@ -37,8 +39,9 @@ export default function AuthCallbackPage() {
         }
 
         if (code) {
-          const { data, error: exchangeError } = await supabase?.auth?.exchangeCodeForSession(code);
+          const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
           if (data?.session) {
+            await ensureUserProfile(supabase, data.session.user);
             router?.replace('/');
           } else {
             console.error('Code exchange error:', exchangeError);
@@ -46,8 +49,9 @@ export default function AuthCallbackPage() {
           }
         } else {
           // No code — might be hash-based flow, let onAuthStateChange handle it
-          const { data: { subscription } } = supabase?.auth?.onAuthStateChange((event, session) => {
+          const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             if (event === 'SIGNED_IN' && session) {
+              await ensureUserProfile(supabase, session.user);
               subscription?.unsubscribe();
               router?.replace('/');
             }
@@ -77,4 +81,45 @@ export default function AuthCallbackPage() {
       </div>
     </div>
   );
+}
+
+// Ensure user profile exists — called after every successful login
+async function ensureUserProfile(supabase: any, user: any) {
+  if (!user?.id || !user?.email) return;
+  try {
+    // Check if profile exists
+    const { data: existing } = await supabase
+      .from('user_profiles')
+      .select('id, role, cargo_id')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (!existing) {
+      // Look up pre-registration
+      const { data: preReg } = await supabase
+        .from('pre_registered_users')
+        .select('*')
+        .eq('email', user.email.toLowerCase())
+        .maybeSingle();
+
+      const profileData = {
+        id: user.id,
+        email: user.email,
+        full_name: preReg?.full_name || user.user_metadata?.full_name || user.email.split('@')[0],
+        role: preReg?.role || 'Coordenador',
+        cargo_id: preReg?.cargo_id || null,
+        squad: preReg?.squad || null,
+        squads: preReg?.squads || [],
+        equipes: preReg?.squads || [],
+        is_active: preReg?.is_active !== false,
+        status_usuario: preReg?.status_usuario || 'ativo',
+        nivel: preReg?.nivel || 'Junior',
+        updated_at: new Date().toISOString(),
+      };
+
+      await supabase.from('user_profiles').upsert(profileData, { onConflict: 'id' });
+    }
+  } catch (e) {
+    console.error('ensureUserProfile error:', e);
+  }
 }

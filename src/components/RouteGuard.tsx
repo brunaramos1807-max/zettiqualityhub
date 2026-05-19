@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
 import SystemLoginScreen from '@/components/SystemLoginScreen';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle } from 'lucide-react';
 
 interface RouteGuardProps {
   children: React.ReactNode;
@@ -19,14 +19,12 @@ function isPreviewMode(): boolean {
     const bypassFlag = process.env.NEXT_PUBLIC_BYPASS_AUTH === 'true';
     return inIframe || bypassFlag;
   } catch {
-    // Cross-origin iframe — definitely in preview
     return true;
   }
 }
 
 export default function RouteGuard({ children, requireAdmin = false }: RouteGuardProps) {
-  const { session, loading, isAdmin } = useSystemAuth();
-  const router = useRouter();
+  const { session, loading, isAdmin, isAdminMaster } = useSystemAuth();
   const [preview, setPreview] = useState(false);
 
   useEffect(() => {
@@ -53,12 +51,15 @@ export default function RouteGuard({ children, requireAdmin = false }: RouteGuar
     return <SystemLoginScreen />;
   }
 
-  if (requireAdmin && !isAdmin) {
+  // requireAdmin: only block if explicitly not admin
+  if (requireAdmin && !isAdmin && !isAdminMaster) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#071426' }}>
         <div className="text-center p-8 rounded-2xl" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-          <p className="text-lg font-semibold text-white mb-2">Acesso Negado</p>
-          <p className="text-sm" style={{ color: '#94A3B8' }}>Você não tem permissão para acessar esta área.</p>
+          <AlertTriangle size={32} className="mx-auto mb-3" style={{ color: '#F59E0B' }} />
+          <p className="text-lg font-semibold text-white mb-2">Acesso Restrito</p>
+          <p className="text-sm" style={{ color: '#94A3B8' }}>Esta área requer permissões de administrador.</p>
+          <p className="text-xs mt-2" style={{ color: 'rgba(255,255,255,0.3)' }}>Entre em contato com o administrador do sistema.</p>
         </div>
       </div>
     );

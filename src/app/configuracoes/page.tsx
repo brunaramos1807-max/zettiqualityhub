@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
-import { Shield, Users, Briefcase, Lock, Plus, Edit2, Trash2, X, Save, CheckCircle, Loader2, UserCheck, Clock, AlertTriangle, RefreshCw, Key, Database, Copy, ToggleLeft, ToggleRight, Search, Upload, Star, History } from 'lucide-react';
+import { Shield, Users, Briefcase, Lock, Plus, Edit2, Trash2, X, Save, CheckCircle, Loader2, UserCheck, Clock, AlertTriangle, RefreshCw, Key, Database, Copy, ToggleLeft, ToggleRight, Search, Upload, Star, History, Trash } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -32,6 +32,7 @@ interface UserProfile {
   nivel: string;
   cargo_id: string | null;
   created_at: string;
+  _source?: string;
 }
 
 interface PermissionModule {
@@ -70,9 +71,9 @@ type Tab = 'usuarios' | 'cargos' | 'permissoes' | 'analistas' | 'logs';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SQUAD_OPTIONS = ['PDV', 'PDV N1', 'Compras e Estoque', 'Financeiro Fiscal', 'Todas'];
+const SQUAD_OPTIONS = ['PDV', 'PDV N1', 'Compras e Estoque', 'Financeiro Fiscal', 'Treinamento', 'Qualidade', 'Todas'];
 const STATUS_OPTIONS = ['ativo', 'ferias', 'afastado', 'inativo'];
-const NIVEL_OPTIONS = ['Junior', 'Pleno', 'Senior', 'Especialista', 'Lider'];
+const NIVEL_OPTIONS = ['Trainee', 'Junior', 'Pleno', 'Senior', 'Especialista', 'Lider'];
 
 const PERMISSION_ACTIONS = [
   { key: 'can_view', label: 'Visualizar', short: 'Ver' },
@@ -237,37 +238,31 @@ function EditUserModal({ user, cargos, onClose, onSave, actorEmail }: EditUserMo
 
       const payload = {
         role, cargo_id: cargoId || null,
-        squad: squad || null, squads: squads.length > 0 ? squads : (squad ? [squad] : []),
+        squad: squad || null,
+        squads: squads.length > 0 ? squads : (squad ? [squad] : []),
+        equipes: squads.length > 0 ? squads : (squad ? [squad] : []),
         is_active: isActive, status_usuario: statusUsuario, nivel,
         updated_at: new Date().toISOString(),
       };
 
-      // Try user_profiles first — check if any row was actually updated
-      const { error: err, count } = await supabase
+      // Try user_profiles first
+      const { error: profileErr } = await supabase
         .from('user_profiles')
         .update(payload)
-        .eq('id', user.id)
-        .select('id', { count: 'exact', head: true });
+        .eq('id', user.id);
 
-      const updatedInProfiles = !err && (count ?? 0) > 0;
+      // Also update pre_registered_users
+      const { error: preRegErr } = await supabase
+        .from('pre_registered_users')
+        .update({ role, cargo_id: cargoId || null, squad: squad || null, squads: payload.squads, is_active: isActive, status_usuario: statusUsuario, nivel, updated_at: new Date().toISOString() })
+        .eq('email', user.email.toLowerCase());
 
-      if (!updatedInProfiles) {
-        // Fallback: try pre_registered_users
-        const { error: err2, count: count2 } = await supabase
-          .from('pre_registered_users')
-          .update(payload)
-          .eq('id', user.id)
-          .select('id', { count: 'exact', head: true });
-
-        if (!err2 && (count2 ?? 0) > 0) {
-          // updated successfully in pre_registered_users
-        } else {
-          // Last resort: upsert by email
-          const { error: err3 } = await supabase.from('pre_registered_users').upsert({
-            id: user.id, email: user.email, full_name: user.full_name, ...payload,
-          }, { onConflict: 'email' });
-          if (err3) throw new Error(`Erro ao salvar: ${err3.message}`);
-        }
+      if (profileErr && preRegErr) {
+        // Last resort: upsert pre_registered_users
+        const { error: upsertErr } = await supabase.from('pre_registered_users').upsert({
+          id: user.id, email: user.email, full_name: user.full_name, ...payload,
+        }, { onConflict: 'email' });
+        if (upsertErr) throw new Error(`Erro ao salvar: ${upsertErr.message}`);
       }
 
       await supabase.from('permission_logs').insert({
@@ -304,7 +299,18 @@ function EditUserModal({ user, cargos, onClose, onSave, actorEmail }: EditUserMo
             </div>
             <div>
               <label className="block text-xs font-semibold text-white mb-2">Role (Sistema)</label>
-              <input value={role} onChange={(e) => setRole(e.target.value)} placeholder="Ex: Admin, Coordenador..." style={inputStyle} />
+              <select value={role} onChange={(e) => setRole(e.target.value)} style={selectStyle}>
+                <option value="">Selecionar...</option>
+                <option value="Admin">Admin</option>
+                <option value="Coordenador">Coordenador</option>
+                <option value="Coordenador Geral">Coordenador Geral</option>
+                <option value="Gestor">Gestor</option>
+                <option value="Gerente">Gerente</option>
+                <option value="Auditor">Auditor</option>
+                <option value="QA">QA</option>
+                <option value="Analista">Analista</option>
+                <option value="Visualizador">Visualizador</option>
+              </select>
             </div>
           </div>
           {selectedCargo && (
@@ -335,7 +341,7 @@ function EditUserModal({ user, cargos, onClose, onSave, actorEmail }: EditUserMo
             </select>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-white mb-2">Squads Visíveis</label>
+            <label className="block text-xs font-semibold text-white mb-2">Squads Visíveis (múltiplas)</label>
             <div className="flex flex-wrap gap-2">
               {SQUAD_OPTIONS.map((sq) => (
                 <button key={sq} type="button" onClick={() => toggleSquad(sq)} className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
@@ -394,6 +400,7 @@ function PermissionsMatrixModal({ user, modules, existingPermissions, onClose, o
     return map;
   });
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const togglePerm = (moduleName: string, action: string) => {
     setPerms((prev) => ({
@@ -416,39 +423,39 @@ function PermissionsMatrixModal({ user, modules, existingPermissions, onClose, o
     }));
   };
 
+  const grantAllModules = () => {
+    let updated: Record<string, UserPermission> = {};
+    Object.keys(perms).forEach((k) => {
+      updated[k] = { ...perms[k], can_view: true, can_edit: true, can_delete: true, can_import: true, can_export: true, can_close_cycle: true, can_reopen_cycle: true, can_approve: true, can_admin: true };
+    });
+    setPerms(updated);
+  };
+
   const handleSave = async () => {
-    setLoading(true);
+    setLoading(true); setError('');
     try {
       const supabase = createClient();
       if (!supabase) throw new Error('Supabase indisponível');
+
+      // Ensure user exists in user_profiles
+      await supabase.from('user_profiles').upsert({
+        id: user.id, email: user.email, full_name: user.full_name,
+        role: user.role || 'Coordenador', is_active: user.is_active !== false,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
+
       const upserts = Object.values(perms).map((p) => ({ ...p, updated_at: new Date().toISOString() }));
       const { error: err } = await supabase.from('user_permissions').upsert(upserts, { onConflict: 'user_profile_id,module_name' });
-      if (err) {
-        // If FK constraint fails (user not in user_profiles), ensure user exists there first
-        const { error: ensureErr } = await supabase.from('user_profiles').upsert({
-          id: user.id,
-          email: user.email,
-          full_name: user.full_name,
-          role: user.role || 'Visualizador',
-          is_active: user.is_active !== false,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'id' });
-        if (!ensureErr) {
-          // Retry upsert after ensuring user exists
-          const { error: retryErr } = await supabase.from('user_permissions').upsert(upserts, { onConflict: 'user_profile_id,module_name' });
-          if (retryErr) throw retryErr;
-        } else {
-          throw err;
-        }
-      }
+      if (err) throw err;
+
       await supabase.from('permission_logs').insert({
         actor_email: actorEmail, target_email: user.email,
         action: 'permissoes_atualizadas', entity_type: 'permissao', entity_id: user.id,
         details: `Permissões de "${user.full_name || user.email}" atualizadas manualmente`,
         new_value: perms,
-      });
+      }).then(() => {}).catch(() => {});
       onSave();
-    } catch (e: any) { console.error(e); }
+    } catch (e: any) { setError(e?.message || 'Erro ao salvar permissões'); }
     setLoading(false);
   };
 
@@ -460,7 +467,12 @@ function PermissionsMatrixModal({ user, modules, existingPermissions, onClose, o
             <h3 className="font-bold text-white flex items-center gap-2"><Lock size={16} style={{ color: '#38BDF8' }} /> Permissões Individuais</h3>
             <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{user.full_name || user.email} — configuração manual por módulo</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#94A3B8' }}><X size={16} /></button>
+          <div className="flex items-center gap-2">
+            <button onClick={grantAllModules} className="px-3 py-1.5 rounded-lg text-xs font-medium" style={{ backgroundColor: 'rgba(34,197,94,0.1)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.2)' }}>
+              Conceder Tudo
+            </button>
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#94A3B8' }}><X size={16} /></button>
+          </div>
         </div>
         <div className="overflow-auto flex-1 p-5">
           <div className="overflow-x-auto">
@@ -478,7 +490,6 @@ function PermissionsMatrixModal({ user, modules, existingPermissions, onClose, o
                 {modules.sort((a, b) => a.sort_order - b.sort_order).map((mod, i) => {
                   const p = perms[mod.nome];
                   if (!p) return null;
-                  const hasAny = PERMISSION_ACTIONS.some((a) => p[a.key as keyof UserPermission]);
                   return (
                     <tr key={mod.nome} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}>
                       <td className="py-3 px-3">
@@ -516,6 +527,7 @@ function PermissionsMatrixModal({ user, modules, existingPermissions, onClose, o
               <span key={a.key} className="text-xs" style={{ color: '#94A3B8' }}><strong className="text-white">{a.short}</strong> = {a.label}</span>
             ))}
           </div>
+          {error && <p className="text-xs px-3 py-2 mt-3 rounded-lg" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>{error}</p>}
         </div>
         <div className="flex gap-3 p-5 flex-shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
@@ -541,12 +553,15 @@ interface AddUserModalProps {
 function AddUserModal({ cargos, onClose, onSave, actorEmail }: AddUserModalProps) {
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
-  const [role, setRole] = useState('');
+  const [role, setRole] = useState('Coordenador');
   const [cargoId, setCargoId] = useState('');
   const [squad, setSquad] = useState('');
+  const [squads, setSquads] = useState<string[]>([]);
   const [nivel, setNivel] = useState('Junior');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const toggleSquad = (sq: string) => setSquads((prev) => prev.includes(sq) ? prev.filter((s) => s !== sq) : [...prev, sq]);
 
   const handleSave = async () => {
     if (!email.trim() || !fullName.trim()) { setError('Nome e e-mail são obrigatórios.'); return; }
@@ -555,43 +570,27 @@ function AddUserModal({ cargos, onClose, onSave, actorEmail }: AddUserModalProps
       const supabase = createClient();
       if (!supabase) throw new Error('Supabase indisponível');
 
-      // Use pre_registered_users table — no FK constraint to auth.users
-      // When the user logs in via Google, the handle_new_user trigger will
-      // check this table and apply the profile automatically.
+      const allSquads = squads.length > 0 ? squads : (squad ? [squad] : []);
+
       const { error: err } = await supabase.from('pre_registered_users').upsert({
         email: email.trim().toLowerCase(),
         full_name: fullName.trim(),
-        role: role || 'Visualizador',
+        role: role || 'Coordenador',
         cargo_id: cargoId || null,
         squad: squad || null,
-        squads: squad ? [squad] : [],
+        squads: allSquads,
         is_active: true,
         status_usuario: 'ativo',
         nivel,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'email' });
 
-      if (err) {
-        // Fallback: try user_profiles directly (may work if Supabase Auth session exists)
-        const { error: err2 } = await supabase.from('user_profiles').upsert({
-          email: email.trim().toLowerCase(),
-          full_name: fullName.trim(),
-          role: role || 'Visualizador',
-          cargo_id: cargoId || null,
-          squad: squad || null,
-          squads: squad ? [squad] : [],
-          is_active: true,
-          status_usuario: 'ativo',
-          nivel,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'email' });
-        if (err2) throw new Error(`Erro ao cadastrar: ${err2.message}`);
-      }
+      if (err) throw new Error(`Erro ao cadastrar: ${err.message}`);
 
       await supabase.from('permission_logs').insert({
         actor_email: actorEmail, target_email: email,
         action: 'usuario_pre_cadastrado', entity_type: 'usuario',
-        details: `Usuário "${fullName}" pré-cadastrado com role "${role || 'Visualizador'}"`,
+        details: `Usuário "${fullName}" pré-cadastrado com role "${role}"`,
       }).then(() => {}).catch(() => {});
 
       onSave();
@@ -606,7 +605,7 @@ function AddUserModal({ cargos, onClose, onSave, actorEmail }: AddUserModalProps
           <h3 className="font-bold text-white">Pré-cadastrar Usuário</h3>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#94A3B8' }}><X size={16} /></button>
         </div>
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
           <div className="p-3 rounded-xl text-xs" style={{ backgroundColor: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', color: '#94A3B8' }}>
             O usuário precisa fazer login via Google para criar a conta. Este cadastro define o perfil de acesso aplicado automaticamente.
           </div>
@@ -633,17 +632,36 @@ function AddUserModal({ cargos, onClose, onSave, actorEmail }: AddUserModalProps
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-white mb-2">Role (Sistema)</label>
-              <input value={role} onChange={(e) => setRole(e.target.value)} placeholder="Ex: Coordenador" style={inputStyle} />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-white mb-2">Squad</label>
-              <select value={squad} onChange={(e) => setSquad(e.target.value)} style={selectStyle}>
-                <option value="">Nenhuma</option>
-                {SQUAD_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
+          <div>
+            <label className="block text-xs font-semibold text-white mb-2">Role (Sistema)</label>
+            <select value={role} onChange={(e) => setRole(e.target.value)} style={selectStyle}>
+              <option value="Admin">Admin</option>
+              <option value="Coordenador">Coordenador</option>
+              <option value="Coordenador Geral">Coordenador Geral</option>
+              <option value="Gestor">Gestor</option>
+              <option value="Gerente">Gerente</option>
+              <option value="Auditor">Auditor</option>
+              <option value="QA">QA</option>
+              <option value="Analista">Analista</option>
+              <option value="Visualizador">Visualizador</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-white mb-2">Squad Principal</label>
+            <select value={squad} onChange={(e) => setSquad(e.target.value)} style={selectStyle}>
+              <option value="">Nenhuma</option>
+              {SQUAD_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-white mb-2">Squads Visíveis</label>
+            <div className="flex flex-wrap gap-2">
+              {SQUAD_OPTIONS.map((sq) => (
+                <button key={sq} type="button" onClick={() => toggleSquad(sq)} className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                  style={{ backgroundColor: squads.includes(sq) ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.04)', border: squads.includes(sq) ? '1px solid rgba(56,189,248,0.35)' : '1px solid rgba(255,255,255,0.08)', color: squads.includes(sq) ? '#38BDF8' : '#94A3B8' }}>
+                  {sq}
+                </button>
+              ))}
             </div>
           </div>
           {error && <p className="text-xs px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>{error}</p>}
@@ -691,6 +709,8 @@ function AnalistasTab({ actorEmail }: AnalistasTabProps) {
   const [filterStatus, setFilterStatus] = useState('');
   const [importLoading, setImportLoading] = useState(false);
   const [importMsg, setImportMsg] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
   const [form, setForm] = useState({ nome: '', email: '', squad: '', equipe: '', coordenador: '', nivel: 'Junior', status: 'ativo', aniversario: '', tempo_empresa: '', ultima_promocao: '', observacoes: '' });
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState('');
@@ -734,6 +754,43 @@ function AnalistasTab({ actorEmail }: AnalistasTabProps) {
     loadAnalistas();
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkDeleteLoading(true);
+    try {
+      const supabase = createClient();
+      if (!supabase) return;
+      await supabase.from('analistas').delete().in('id', Array.from(selectedIds));
+      setSelectedIds(new Set());
+      loadAnalistas();
+    } catch { /* ignore */ }
+    setBulkDeleteLoading(false);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const STATUS_ANALISTA = ['ativo', 'ferias', 'afastado', 'desligado'];
+
+  const filtered = analistas.filter((a) => {
+    const matchSearch = !search || a.nome.toLowerCase().includes(search.toLowerCase()) || (a.squad || '').toLowerCase().includes(search.toLowerCase());
+    const matchStatus = !filterStatus || a.status === filterStatus;
+    return matchSearch && matchStatus;
+  });
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map((a) => a.id)));
+    }
+  };
+
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -748,14 +805,15 @@ function AnalistasTab({ actorEmail }: AnalistasTabProps) {
       if (!supabase) throw new Error('Supabase indisponível');
       let imported = 0; let updated = 0;
       for (const row of rows) {
-        const nome = (row['nome'] || row['Nome'] || row['NOME'] || '').toString().trim();
+        const nome = (row['nome'] || row['Nome'] || row['NOME'] || row['nome_completo'] || row['Nome Completo'] || '').toString().trim();
         if (!nome) continue;
         const payload = {
-          nome, email: (row['email'] || row['Email'] || '').toString().trim(),
-          squad: (row['squad'] || row['Squad'] || '').toString().trim(),
-          equipe: (row['equipe'] || row['Equipe'] || '').toString().trim(),
+          nome,
+          email: (row['email'] || row['Email'] || row['E-mail'] || '').toString().trim(),
+          squad: (row['squad'] || row['Squad'] || row['equipe'] || row['Equipe'] || '').toString().trim(),
+          equipe: (row['equipe'] || row['Equipe'] || row['squad'] || row['Squad'] || '').toString().trim(),
           coordenador: (row['coordenador'] || row['Coordenador'] || '').toString().trim(),
-          nivel: (row['nivel'] || row['Nível'] || 'Junior').toString().trim(),
+          nivel: (row['nivel'] || row['Nível'] || row['nivel_cargo'] || 'Junior').toString().trim(),
           status: (row['status'] || row['Status'] || 'ativo').toString().toLowerCase().trim(),
           updated_at: new Date().toISOString(),
         };
@@ -775,17 +833,8 @@ function AnalistasTab({ actorEmail }: AnalistasTabProps) {
     e.target.value = '';
   };
 
-  const filtered = analistas.filter((a) => {
-    const matchSearch = !search || a.nome.toLowerCase().includes(search.toLowerCase()) || a.squad?.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = !filterStatus || a.status === filterStatus;
-    return matchSearch && matchStatus;
-  });
-
-  const STATUS_ANALISTA = ['ativo', 'ferias', 'afastado', 'desligado'];
-
   return (
     <div className="space-y-4">
-      {/* Header actions */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex-1 min-w-48 relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
@@ -795,6 +844,12 @@ function AnalistasTab({ actorEmail }: AnalistasTabProps) {
           <option value="">Todos status</option>
           {STATUS_ANALISTA.map((s) => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
         </select>
+        {selectedIds.size > 0 && (
+          <button onClick={handleBulkDelete} disabled={bulkDeleteLoading} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-60" style={{ backgroundColor: '#DC2626' }}>
+            {bulkDeleteLoading ? <Loader2 size={14} className="animate-spin" /> : <Trash size={14} />}
+            Excluir {selectedIds.size} selecionado{selectedIds.size !== 1 ? 's' : ''}
+          </button>
+        )}
         <label className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all" style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}>
           {importLoading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
           Importar XLSX/CSV
@@ -812,7 +867,6 @@ function AnalistasTab({ actorEmail }: AnalistasTabProps) {
         </div>
       )}
 
-      {/* Form */}
       {showForm && (
         <div className="p-5 rounded-2xl space-y-4" style={cardStyle}>
           <h3 className="text-sm font-bold text-white">{editingAnalista ? 'Editar Analista' : 'Novo Analista'}</h3>
@@ -848,7 +902,6 @@ function AnalistasTab({ actorEmail }: AnalistasTabProps) {
         </div>
       )}
 
-      {/* Table */}
       <div style={cardStyle}>
         <div className="p-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <p className="text-sm font-semibold text-white">{filtered.length} analista{filtered.length !== 1 ? 's' : ''} encontrado{filtered.length !== 1 ? 's' : ''}</p>
@@ -861,6 +914,9 @@ function AnalistasTab({ actorEmail }: AnalistasTabProps) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ backgroundColor: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <th className="py-3 px-4 text-left">
+                    <input type="checkbox" checked={filtered.length > 0 && selectedIds.size === filtered.length} onChange={toggleSelectAll} className="w-4 h-4 rounded" />
+                  </th>
                   {['Nome', 'Squad', 'Coordenador', 'Nível', 'Status', 'Ações'].map((h) => (
                     <th key={h} className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>{h}</th>
                   ))}
@@ -868,9 +924,12 @@ function AnalistasTab({ actorEmail }: AnalistasTabProps) {
               </thead>
               <tbody>
                 {filtered.map((a) => (
-                  <tr key={a.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.02)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}>
+                  <tr key={a.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', backgroundColor: selectedIds.has(a.id) ? 'rgba(56,189,248,0.04)' : 'transparent' }}
+                    onMouseEnter={(e) => { if (!selectedIds.has(a.id)) e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.02)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = selectedIds.has(a.id) ? 'rgba(56,189,248,0.04)' : 'transparent'; }}>
+                    <td className="py-3 px-4">
+                      <input type="checkbox" checked={selectedIds.has(a.id)} onChange={() => toggleSelect(a.id)} className="w-4 h-4 rounded" />
+                    </td>
                     <td className="py-3 px-4">
                       <p className="font-medium text-white">{a.nome}</p>
                       {a.email && <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{a.email}</p>}
@@ -893,7 +952,7 @@ function AnalistasTab({ actorEmail }: AnalistasTabProps) {
                   </tr>
                 ))}
                 {filtered.length === 0 && (
-                  <tr><td colSpan={6} className="py-12 text-center text-sm" style={{ color: '#94A3B8' }}>
+                  <tr><td colSpan={7} className="py-12 text-center text-sm" style={{ color: '#94A3B8' }}>
                     <Users size={28} className="mx-auto mb-2 opacity-30" />
                     Nenhum analista encontrado
                   </td></tr>
@@ -910,7 +969,7 @@ function AnalistasTab({ actorEmail }: AnalistasTabProps) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 function ConfiguracoesContent() {
-  const { session, userRole } = useSystemAuth();
+  const { session, userRole, isAdminMaster } = useSystemAuth();
   const actorEmail = session?.email || 'sistema';
   const [activeTab, setActiveTab] = useState<Tab>('usuarios');
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -923,10 +982,13 @@ function ConfiguracoesContent() {
   const [permissionsUser, setPermissionsUser] = useState<UserProfile | undefined>();
   const [showAddUser, setShowAddUser] = useState(false);
   const [editingCargo, setEditingCargo] = useState<Cargo | null | undefined>(undefined);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'user' | 'cargo'; id: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'user' | 'cargo'; id: string; label?: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState('');
   const [searchUsers, setSearchUsers] = useState('');
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
 
   const loadAll = useCallback(async () => {
     setLoadingUsers(true);
@@ -942,7 +1004,6 @@ function ConfiguracoesContent() {
         supabase.from('permission_logs').select('*').order('created_at', { ascending: false }).limit(100),
       ]);
 
-      // Merge user_profiles + pre_registered_users (deduplicate by email)
       const profileUsers: UserProfile[] = (usersRes.data || []) as UserProfile[];
       const preRegUsers: UserProfile[] = ((preRegRes.data || []) as any[]).map((u: any) => ({
         ...u,
@@ -953,7 +1014,6 @@ function ConfiguracoesContent() {
         is_active: u.is_active !== false,
         _source: 'pre_registered',
       }));
-      // Only add pre-registered users that don't already have a real profile
       const profileEmails = new Set(profileUsers.map((u) => u.email?.toLowerCase()));
       const uniquePreReg = preRegUsers.filter((u) => !profileEmails.has(u.email?.toLowerCase()));
       const allUsers = [...profileUsers, ...uniquePreReg];
@@ -982,9 +1042,14 @@ function ConfiguracoesContent() {
       const supabase = createClient();
       if (!supabase) return;
       if (deleteConfirm.type === 'user') {
-        // Try both tables (user may be in either)
+        await supabase.from('user_permissions').delete().eq('user_profile_id', deleteConfirm.id).then(() => {}).catch(() => {});
         await supabase.from('user_profiles').delete().eq('id', deleteConfirm.id).then(() => {}).catch(() => {});
         await supabase.from('pre_registered_users').delete().eq('id', deleteConfirm.id).then(() => {}).catch(() => {});
+        // Also try by email if we have it
+        const user = users.find((u) => u.id === deleteConfirm.id);
+        if (user?.email) {
+          await supabase.from('pre_registered_users').delete().eq('email', user.email.toLowerCase()).then(() => {}).catch(() => {});
+        }
       } else {
         await supabase.from('cargos').delete().eq('id', deleteConfirm.id);
       }
@@ -992,6 +1057,52 @@ function ConfiguracoesContent() {
       loadAll();
     } catch (e) { console.error(e); }
     setDeleteLoading(false);
+  };
+
+  const handleBulkDeleteUsers = async () => {
+    if (selectedUserIds.size === 0) return;
+    setBulkDeleteLoading(true);
+    try {
+      const supabase = createClient();
+      if (!supabase) return;
+      const ids = Array.from(selectedUserIds);
+      const emails = users.filter((u) => ids.includes(u.id)).map((u) => u.email?.toLowerCase()).filter(Boolean);
+
+      await supabase.from('user_permissions').delete().in('user_profile_id', ids).then(() => {}).catch(() => {});
+      await supabase.from('user_profiles').delete().in('id', ids).then(() => {}).catch(() => {});
+      await supabase.from('pre_registered_users').delete().in('id', ids).then(() => {}).catch(() => {});
+      if (emails.length > 0) {
+        await supabase.from('pre_registered_users').delete().in('email', emails).then(() => {}).catch(() => {});
+      }
+
+      setSelectedUserIds(new Set());
+      setBulkDeleteConfirm(false);
+      loadAll();
+      showSuccessToast(`${ids.length} usuário${ids.length !== 1 ? 's' : ''} excluído${ids.length !== 1 ? 's' : ''}!`);
+    } catch (e) { console.error(e); }
+    setBulkDeleteLoading(false);
+  };
+
+  const toggleSelectUser = (id: string) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const filteredUsers = users.filter((u) => {
+    if (!searchUsers) return true;
+    const q = searchUsers.toLowerCase();
+    return (u.full_name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q) || (u.role || '').toLowerCase().includes(q);
+  });
+
+  const toggleSelectAllUsers = () => {
+    if (selectedUserIds.size === filteredUsers.length) {
+      setSelectedUserIds(new Set());
+    } else {
+      setSelectedUserIds(new Set(filteredUsers.map((u) => u.id)));
+    }
   };
 
   const handleToggleCargo = async (cargo: Cargo) => {
@@ -1014,12 +1125,6 @@ function ConfiguracoesContent() {
     setSaveSuccess(msg);
     setTimeout(() => setSaveSuccess(''), 3000);
   };
-
-  const filteredUsers = users.filter((u) => {
-    if (!searchUsers) return true;
-    const q = searchUsers.toLowerCase();
-    return (u.full_name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q) || (u.role || '').toLowerCase().includes(q);
-  });
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'usuarios', label: 'Usuários', icon: <Users size={14} /> },
@@ -1085,11 +1190,16 @@ function ConfiguracoesContent() {
               <h2 className="text-base font-semibold text-white">Usuários Cadastrados</h2>
               <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{users.length} usuário{users.length !== 1 ? 's' : ''} · {users.filter((u) => u.is_active !== false).length} ativo{users.filter((u) => u.is_active !== false).length !== 1 ? 's' : ''}</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <div className="relative">
                 <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
                 <input value={searchUsers} onChange={(e) => setSearchUsers(e.target.value)} placeholder="Buscar..." style={{ ...inputStyle, paddingLeft: '2rem', width: '180px', height: '36px', fontSize: '0.8rem' }} />
               </div>
+              {selectedUserIds.size > 0 && (
+                <button onClick={() => setBulkDeleteConfirm(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: '#DC2626' }}>
+                  <Trash size={13} /> Excluir {selectedUserIds.size}
+                </button>
+              )}
               <button onClick={loadAll} className="p-2 rounded-lg hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}><RefreshCw size={14} /></button>
               <button onClick={() => setShowAddUser(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: '#1E40AF' }}>
                 <Plus size={14} /> Pré-cadastrar
@@ -1103,6 +1213,9 @@ function ConfiguracoesContent() {
               <table className="w-full text-sm">
                 <thead>
                   <tr style={{ backgroundColor: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <th className="py-3 px-4 text-left">
+                      <input type="checkbox" checked={filteredUsers.length > 0 && selectedUserIds.size === filteredUsers.length} onChange={toggleSelectAllUsers} className="w-4 h-4 rounded" />
+                    </th>
                     {['Usuário', 'E-mail', 'Cargo / Role', 'Squad', 'Status', 'Nível', 'Ações'].map((h) => (
                       <th key={h} className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>{h}</th>
                     ))}
@@ -1114,10 +1227,14 @@ function ConfiguracoesContent() {
                     const roleColor = cargo?.cor || '#94A3B8';
                     const initials = (u.full_name || u.email || 'U').split(' ').slice(0, 2).map((n: string) => n[0]).join('').toUpperCase();
                     const statusColor = STATUS_COLORS[u.status_usuario || 'ativo'] || '#22C55E';
+                    const isSelected = selectedUserIds.has(u.id);
                     return (
-                      <tr key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.02)')}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}>
+                      <tr key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', backgroundColor: isSelected ? 'rgba(56,189,248,0.04)' : 'transparent' }}
+                        onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.02)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = isSelected ? 'rgba(56,189,248,0.04)' : 'transparent'; }}>
+                        <td className="py-3 px-4">
+                          <input type="checkbox" checked={isSelected} onChange={() => toggleSelectUser(u.id)} className="w-4 h-4 rounded" />
+                        </td>
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-2.5">
                             <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ backgroundColor: roleColor, opacity: u.is_active === false ? 0.5 : 1 }}>{initials}</div>
@@ -1131,7 +1248,7 @@ function ConfiguracoesContent() {
                             {u.role && <span className="block text-xs" style={{ color: '#94A3B8' }}>{u.role}</span>}
                           </div>
                         </td>
-                        <td className="py-3 px-4 text-xs" style={{ color: '#94A3B8' }}>{u.squad || '—'}</td>
+                        <td className="py-3 px-4 text-xs" style={{ color: '#94A3B8' }}>{u.squad || (u.squads?.length > 0 ? u.squads.join(', ') : '—')}</td>
                         <td className="py-3 px-4">
                           <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: statusColor }}>
                             <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: statusColor }} />
@@ -1143,14 +1260,14 @@ function ConfiguracoesContent() {
                           <div className="flex items-center gap-1">
                             <button onClick={() => setEditingUser(u)} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#60A5FA' }} title="Editar"><Edit2 size={13} /></button>
                             <button onClick={() => setPermissionsUser(u)} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#A78BFA' }} title="Permissões"><Lock size={13} /></button>
-                            <button onClick={() => setDeleteConfirm({ type: 'user', id: u.id })} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#EF4444' }} title="Remover"><Trash2 size={13} /></button>
+                            <button onClick={() => setDeleteConfirm({ type: 'user', id: u.id, label: u.full_name || u.email })} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#EF4444' }} title="Remover"><Trash2 size={13} /></button>
                           </div>
                         </td>
                       </tr>
                     );
                   })}
                   {filteredUsers.length === 0 && (
-                    <tr><td colSpan={7} className="py-16 text-center text-sm" style={{ color: '#94A3B8' }}>
+                    <tr><td colSpan={8} className="py-16 text-center text-sm" style={{ color: '#94A3B8' }}>
                       <Database size={32} className="mx-auto mb-3 opacity-30" />
                       Nenhum usuário encontrado
                     </td></tr>
@@ -1197,7 +1314,7 @@ function ConfiguracoesContent() {
                     {cargo.is_active ? <ToggleRight size={11} /> : <ToggleLeft size={11} />}
                     {cargo.is_active ? 'Inativar' : 'Ativar'}
                   </button>
-                  <button onClick={() => setDeleteConfirm({ type: 'cargo', id: cargo.id })} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all hover:bg-white/5 ml-auto" style={{ color: '#EF4444' }}><Trash2 size={11} /></button>
+                  <button onClick={() => setDeleteConfirm({ type: 'cargo', id: cargo.id, label: cargo.nome })} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all hover:bg-white/5 ml-auto" style={{ color: '#EF4444' }}><Trash2 size={11} /></button>
                 </div>
               </div>
             ))}
@@ -1326,6 +1443,7 @@ function ConfiguracoesContent() {
           onSave={() => { showSuccessToast(editingCargo ? 'Cargo atualizado!' : 'Cargo criado!'); loadAll(); setEditingCargo(undefined); }} />
       )}
 
+      {/* Single delete confirm */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.8)' }}>
           <div className="w-full max-w-sm rounded-2xl p-6" style={{ backgroundColor: '#0A1628', border: '1px solid rgba(239,68,68,0.2)', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
@@ -1335,7 +1453,7 @@ function ConfiguracoesContent() {
               </div>
               <div>
                 <h3 className="text-base font-semibold text-white">Confirmar Exclusão</h3>
-                <p className="text-xs" style={{ color: '#94A3B8' }}>Esta ação não pode ser desfeita.</p>
+                <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{deleteConfirm.label || 'Este item'} será removido permanentemente.</p>
               </div>
             </div>
             <div className="flex gap-3">
@@ -1343,6 +1461,30 @@ function ConfiguracoesContent() {
               <button onClick={handleDelete} disabled={deleteLoading} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60" style={{ backgroundColor: '#DC2626' }}>
                 {deleteLoading ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                 Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk delete confirm */}
+      {bulkDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.8)' }}>
+          <div className="w-full max-w-sm rounded-2xl p-6" style={{ backgroundColor: '#0A1628', border: '1px solid rgba(239,68,68,0.2)', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(239,68,68,0.1)' }}>
+                <AlertTriangle size={18} style={{ color: '#EF4444' }} />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-white">Excluir em Massa</h3>
+                <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{selectedUserIds.size} usuário{selectedUserIds.size !== 1 ? 's' : ''} serão removidos permanentemente.</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setBulkDeleteConfirm(false)} className="flex-1 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
+              <button onClick={handleBulkDeleteUsers} disabled={bulkDeleteLoading} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60" style={{ backgroundColor: '#DC2626' }}>
+                {bulkDeleteLoading ? <Loader2 size={13} className="animate-spin" /> : <Trash size={13} />}
+                Excluir Todos
               </button>
             </div>
           </div>

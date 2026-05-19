@@ -667,7 +667,7 @@ Seja objetivo, profissional e orientado a ação.`;
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function HomeExecutiveView() {
   const [importOpen, setImportOpen] = useState(false);
-  const { session, userRole, userSquad, userSquads } = useSystemAuth();
+  const { session, userRole, userSquad, userSquads, isAdminMaster, getTeamFilter, canImportModule, canCloseCycle: canCloseCyclePerm } = useSystemAuth();
   const [history, setHistory] = useState<PeriodSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [allPeriodos, setAllPeriodos] = useState<string[]>([]);
@@ -686,26 +686,26 @@ export default function HomeExecutiveView() {
     return `${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
   });
 
-  const canImport = session?.permissoes?.permissao_editar ||
+  const canImport = isAdminMaster ||
+    canImportModule('importacoes') ||
+    session?.permissoes?.permissao_editar ||
     session?.permissoes?.acesso_total ||
     session?.cargo === 'Administrador' ||
     session?.cargo === 'Coordenador' ||
     session?.cargo === 'Coordenador Geral' ||
     userRole === 'Admin' || userRole === 'Auditor' || userRole === 'Coordenador Geral';
 
-  const canCloseCycle = userRole === 'Admin' || userRole === 'Auditor' || userRole === 'Coordenador Geral' || session?.cargo === 'Administrador';
+  const canCloseCycle = isAdminMaster || canCloseCyclePerm() || userRole === 'Admin' || userRole === 'Auditor' || userRole === 'Coordenador Geral' || session?.cargo === 'Administrador';
 
   const filterByRole = useCallback((scores: any[]) => {
-    // Admin / Auditor / Gestor / Coordenador Geral → see everything
-    if (!userRole || userRole === 'Admin' || userRole === 'Auditor' || userRole === 'Gestor' || userRole === 'Coordenador Geral') return scores;
-    // Coordenador → filter by their assigned squads; if none assigned, show all
-    if (userRole === 'Coordenador') {
-      const assignedSquads = userSquads.length > 0 ? userSquads : (userSquad ? [userSquad] : []);
-      if (assignedSquads.length === 0) return scores; // no squad restriction → show all
-      return scores.filter((s: any) => assignedSquads.includes(s.squad));
-    }
-    return scores;
-  }, [userRole, userSquad, userSquads]);
+    // Use the new getTeamFilter from context
+    const teamFilter = getTeamFilter();
+    // null = no filter (see all)
+    if (teamFilter === null) return scores;
+    // Empty array = no squads assigned, show all as fallback
+    if (teamFilter.length === 0) return scores;
+    return scores.filter((s: any) => teamFilter.includes(s.squad));
+  }, [getTeamFilter]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
