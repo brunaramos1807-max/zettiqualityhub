@@ -91,15 +91,7 @@ export async function importCycleDataToSupabase(
 
     console.log(`[IMPORT] cycleId obtido: ${cycleId}`);
 
-    // ── Step 2: Delete existing data for this period ─────────────────────────
-    console.log(`[IMPORT] Limpando dados anteriores do período: ${periodo}`);
-    await Promise.all([
-      supabase.from('cycle_scores').delete().eq('periodo', periodo),
-      supabase.from('nc_records').delete().eq('periodo', periodo),
-      supabase.from('elogios').delete().eq('periodo', periodo),
-    ]);
-
-    // ── Step 3: Insert scores ─────────────────────────────────────────────────
+    // ── Step 2: UPSERT scores (NO DELETE — true upsert on periodo+analista+squad) ─
     let scoresInserted = 0;
     if (scores.length > 0) {
       const BATCH_SIZE = 50;
@@ -107,7 +99,7 @@ export async function importCycleDataToSupabase(
         const batch = scores.slice(i, i + BATCH_SIZE);
         const { error: scoresError, data: scoresData } = await supabase
           .from('cycle_scores')
-          .insert(
+          .upsert(
             batch.map((s) => ({
               cycle_id: cycleId,
               periodo: s.periodo || periodo,
@@ -133,20 +125,21 @@ export async function importCycleDataToSupabase(
               tipo_demanda: s.tipo_demanda || null,
               qtd_atendimentos_avaliados: s.qtd_atendimentos_avaliados ?? 0,
               source: 'import',
-            }))
+            })),
+            { onConflict: 'periodo,analista,squad' }
           )
           .select('id');
 
         if (scoresError) {
-          console.error(`[IMPORT] Erro ao inserir scores (batch ${i}):`, scoresError.message, scoresError.code, scoresError.details);
+          console.error(`[IMPORT] Erro ao upsert scores (batch ${i}):`, scoresError.message, scoresError.code, scoresError.details);
         } else {
           scoresInserted += (scoresData?.length || 0);
         }
       }
-      console.log(`[IMPORT] Scores inseridos: ${scoresInserted}/${scores.length}`);
+      console.log(`[IMPORT] Scores upserted: ${scoresInserted}/${scores.length}`);
     }
 
-    // ── Step 4: Insert NCs ────────────────────────────────────────────────────
+    // ── Step 3: UPSERT NCs (NO DELETE — true upsert on periodo+analista+protocolo+tipo_nc) ─
     let ncsInserted = 0;
     if (ncs.length > 0) {
       const BATCH_SIZE = 50;
@@ -154,7 +147,7 @@ export async function importCycleDataToSupabase(
         const batch = ncs.slice(i, i + BATCH_SIZE);
         const { error: ncsError, data: ncsData } = await supabase
           .from('nc_records')
-          .insert(
+          .upsert(
             batch.map((n) => ({
               cycle_id: cycleId,
               periodo: n.periodo || periodo,
@@ -168,20 +161,40 @@ export async function importCycleDataToSupabase(
               pontos_deduzidos: n.pontos_deduzidos ?? -20,
               protocolo_referencia: n.protocolo_referencia || null,
               avaliacao_id: n.avaliacao_id || null,
-            }))
+            })),
+            { onConflict: 'periodo,analista,protocolo_referencia,tipo_nc' }
           )
           .select('id');
 
         if (ncsError) {
-          console.error(`[IMPORT] Erro ao inserir NCs (batch ${i}):`, ncsError.message, ncsError.code);
+          console.error(`[IMPORT] Erro ao upsert NCs (batch ${i}):`, ncsError.message, ncsError.code);
+          // Fallback: insert ignoring conflicts
+          const { data: insertData } = await supabase
+            .from('nc_records')
+            .insert(batch.map((n) => ({
+              cycle_id: cycleId,
+              periodo: n.periodo || periodo,
+              data_registro: n.data_registro || null,
+              analista: n.analista,
+              squad: n.squad,
+              coordenador: n.coordenador,
+              auditor: n.auditor || null,
+              tipo_nc: n.tipo_nc,
+              descricao: n.descricao || null,
+              pontos_deduzidos: n.pontos_deduzidos ?? -20,
+              protocolo_referencia: n.protocolo_referencia || null,
+              avaliacao_id: n.avaliacao_id || null,
+            })))
+            .select('id');
+          ncsInserted += (insertData?.length || 0);
         } else {
           ncsInserted += (ncsData?.length || 0);
         }
       }
-      console.log(`[IMPORT] NCs inseridas: ${ncsInserted}/${ncs.length}`);
+      console.log(`[IMPORT] NCs upserted: ${ncsInserted}/${ncs.length}`);
     }
 
-    // ── Step 5: Insert elogios ────────────────────────────────────────────────
+    // ── Step 4: UPSERT elogios (NO DELETE — true upsert on periodo+colaborador+protocolo) ─
     let elogiosInserted = 0;
     if (elogios.length > 0) {
       const BATCH_SIZE = 50;
@@ -189,7 +202,7 @@ export async function importCycleDataToSupabase(
         const batch = elogios.slice(i, i + BATCH_SIZE);
         const { error: elogiosError, data: elogiosData } = await supabase
           .from('elogios')
-          .insert(
+          .upsert(
             batch.map((e) => ({
               cycle_id: cycleId,
               periodo: e.periodo || periodo,
@@ -199,20 +212,36 @@ export async function importCycleDataToSupabase(
               protocolo: e.protocolo || null,
               elogio: e.elogio,
               destaque: false,
-            }))
+            })),
+            { onConflict: 'periodo,colaborador,protocolo' }
           )
           .select('id');
 
         if (elogiosError) {
-          console.error(`[IMPORT] Erro ao inserir elogios (batch ${i}):`, elogiosError.message, elogiosError.code);
+          console.error(`[IMPORT] Erro ao upsert elogios (batch ${i}):`, elogiosError.message, elogiosError.code);
+          // Fallback: plain insert
+          const { data: insertData } = await supabase
+            .from('elogios')
+            .insert(batch.map((e) => ({
+              cycle_id: cycleId,
+              periodo: e.periodo || periodo,
+              colaborador: e.colaborador,
+              squad: e.squad || '',
+              cliente: e.cliente || null,
+              protocolo: e.protocolo || null,
+              elogio: e.elogio,
+              destaque: false,
+            })))
+            .select('id');
+          elogiosInserted += (insertData?.length || 0);
         } else {
           elogiosInserted += (elogiosData?.length || 0);
         }
       }
-      console.log(`[IMPORT] Elogios inseridos: ${elogiosInserted}/${elogios.length}`);
+      console.log(`[IMPORT] Elogios upserted: ${elogiosInserted}/${elogios.length}`);
     }
 
-    // ── Step 6: Refresh cycle summary ────────────────────────────────────────
+    // ── Step 5: Refresh cycle summary ────────────────────────────────────────
     try {
       const { error: summaryError } = await supabase.rpc('refresh_cycle_summary', { p_periodo: periodo });
       if (summaryError) {
