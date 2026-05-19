@@ -6,7 +6,6 @@ import { createClient } from '@/lib/supabase/client';
 import { RefreshCw, Lock, Unlock, BarChart2, ChevronRight, Activity, CheckCircle, X, Clock, History, Loader2, Trash2, RotateCcw, Shield } from 'lucide-react';
 import Link from 'next/link';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
-import { useChat } from '@/lib/hooks/useChat';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -285,13 +284,12 @@ function CiclosContent() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [aiSummary, setAiSummary] = useState<Record<string, string>>({});
+  const [aiLoadingPeriodo, setAiLoadingPeriodo] = useState<string | null>(null);
   const [closingCycle, setClosingCycle] = useState<string | null>(null);
   const [reopeningCycle, setReopeningCycle] = useState<string | null>(null);
   const [showCleanup, setShowCleanup] = useState(false);
   const [closureHistory, setClosureHistory] = useState<ClosureHistoryEntry[]>([]);
   const [showHistory, setShowHistory] = useState(false);
-  const { response: aiResponse, isLoading: aiLoading, sendMessage } = useChat('GEMINI', 'gemini/gemini-2.5-flash', false);
-  const [pendingAiPeriodo, setPendingAiPeriodo] = useState<string | null>(null);
 
   const actorEmail = session?.email || 'sistema';
   const actorName = session?.nome || 'Sistema';
@@ -362,12 +360,6 @@ function CiclosContent() {
     return () => window.removeEventListener('zetti_data_changed', handler);
   }, [loadData, loadHistory]);
 
-  useEffect(() => {
-    if (aiResponse && pendingAiPeriodo) {
-      setAiSummary((prev) => ({ ...prev, [pendingAiPeriodo]: aiResponse }));
-    }
-  }, [aiResponse, pendingAiPeriodo]);
-
   const handleCloseCycle = async (periodo: string, notes: string) => {
     if (!canManageCycles) return;
     setActionLoading(periodo);
@@ -430,10 +422,22 @@ function CiclosContent() {
     setActionLoading(null);
   };
 
-  const handleGenerateSummary = (cycle: CycleSummary) => {
-    setPendingAiPeriodo(cycle.periodo);
-    const prompt = `Gere um resumo executivo em 2 frases do ciclo ${cycle.periodo}: QA ${cycle.qa.toFixed(1)}%, IEPC ${cycle.iepc.toFixed(1)}%, ${cycle.ncs} NCs, ${cycle.elogios} elogios, ${cycle.analistas} analistas. Seja objetivo e destaque o ponto mais crítico.`;
-    sendMessage([{ role: 'user', content: prompt }], { temperature: 0.5, max_tokens: 150 });
+  const handleGenerateSummary = async (cycle: CycleSummary) => {
+    if (aiLoadingPeriodo) return;
+    setAiLoadingPeriodo(cycle.periodo);
+    try {
+      const { getChatCompletion } = await import('@/lib/ai/chatCompletion');
+      const prompt = `Gere um resumo executivo em 2 frases do ciclo ${cycle.periodo}: QA ${cycle.qa.toFixed(1)}%, IEPC ${cycle.iepc.toFixed(1)}%, ${cycle.ncs} NCs, ${cycle.elogios} elogios, ${cycle.analistas} analistas. Seja objetivo e destaque o ponto mais crítico.`;
+      const result = await getChatCompletion('GEMINI', 'gemini/gemini-2.5-flash', [{ role: 'user', content: prompt }], { temperature: 0.5, max_tokens: 150 });
+      const content = result?.choices?.[0]?.message?.content;
+      if (content) {
+        setAiSummary((prev) => ({ ...prev, [cycle.periodo]: content }));
+      }
+    } catch {
+      // AI is optional — silently ignore errors
+    } finally {
+      setAiLoadingPeriodo(null);
+    }
   };
 
   const ACTION_LABELS: Record<string, { label: string; color: string }> = {
@@ -581,10 +585,10 @@ function CiclosContent() {
                         Reabrir
                       </button>
                     )}
-                    <button onClick={() => handleGenerateSummary(cycle)} disabled={aiLoading}
+                    <button onClick={() => handleGenerateSummary(cycle)} disabled={aiLoadingPeriodo === cycle.periodo}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
                       style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}>
-                      <Activity size={11} /> IA
+                      {aiLoadingPeriodo === cycle.periodo ? <Loader2 size={11} className="animate-spin" /> : <Activity size={11} />} IA
                     </button>
                     <Link href={`/cycle-dashboard?periodo=${encodeURIComponent(cycle.periodo)}`}
                       className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
