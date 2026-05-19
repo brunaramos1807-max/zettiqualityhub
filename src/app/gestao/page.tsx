@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 
 
 import EnterpriseLayout from '@/components/EnterpriseLayout';
-import { fetchAnalystProfiles, saveAnalystProfile, updateAnalystProfile, deleteAnalystProfile, getAnalystHistory, deleteAnalystFromData, fetchManualCycles, saveManualCycle, deleteManualCycle, exportFullBackup, importFullBackup, fetchCycleScores, deleteAllData, type AnalystProfile, type ManualCycleEntry,  } from '@/lib/services/dataService';
+import { fetchAnalystProfiles, saveAnalystProfile, updateAnalystProfile, deleteAnalystProfile, getAnalystHistory, deleteAnalystFromData, fetchManualCycles, saveManualCycle, deleteManualCycle, exportFullBackup, importFullBackup, fetchCycleScores, deleteAllData, type AnalystProfile, type ManualCycleEntry, upsertAnalista, fetchAnalistas, calcTempoEmpresa, type AnalistaRecord } from '@/lib/services/dataService';
 import { clearAllDataFromSupabase } from '@/lib/services/supabaseDataService';
 import { getScoreColor } from '@/lib/mockData';
 import {
@@ -885,6 +885,7 @@ export default function GestaoPage() {
 function GestaoContent() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('analistas');
   const [profiles, setProfiles] = useState<AnalystProfile[]>([]);
+  const [analistasDB, setAnalistasDB] = useState<AnalistaRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -894,6 +895,9 @@ function GestaoContent() {
   const [filterEquipe, setFilterEquipe] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showDeleteDataModal, setShowDeleteDataModal] = useState(false);
+  const [importingAnalistas, setImportingAnalistas] = useState(false);
+  const [importAnalistasResult, setImportAnalistasResult] = useState<{ success: number; errors: string[] } | null>(null);
+  const importAnalistasRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     try {
@@ -903,6 +907,8 @@ function GestaoContent() {
     } finally {
       setLoading(false);
     }
+    // Also load from Supabase analistas table
+    fetchAnalistas().then(setAnalistasDB).catch(() => {});
   }, []);
 
   const reload = () => {
@@ -910,6 +916,80 @@ function GestaoContent() {
       setProfiles(fetchAnalystProfiles() ?? []);
     } catch {
       setProfiles([]);
+    }
+    fetchAnalistas().then(setAnalistasDB).catch(() => {});
+  };
+
+  const handleImportAnalistasCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportingAnalistas(true);
+    setImportAnalistasResult(null);
+    try {
+      const text = await file.text();
+      const lines = text.split('\n').filter((l) => l.trim());
+      if (lines.length < 2) { setImportAnalistasResult({ success: 0, errors: ['Arquivo vazio ou sem dados'] }); return; }
+      const headers = lines[0].split(',').map((h) => h.replace(/^\uFEFF/, '').trim().replace(/"/g, ''));
+      const getCol = (row: string[], ...keys: string[]) => {
+        for (const k of keys) {
+          const idx = headers.findIndex((h) => h.toLowerCase().includes(k.toLowerCase()));
+          if (idx >= 0) return row[idx]?.replace(/"/g, '').trim() || '';
+        }
+        return '';
+      };
+      let success = 0;
+      const errors: string[] = [];
+      for (let i = 1; i < lines.length; i++) {
+        const row = lines[i].split(',');
+        const nome = getCol(row, 'nome', 'name');
+        if (!nome) continue;
+        const email = getCol(row, 'email');
+        const squad = getCol(row, 'squad', 'equipe', 'team');
+        const coordenador = getCol(row, 'coordenador', 'coordinator', 'gestor');
+        const cargo = getCol(row, 'cargo', 'role', 'função', 'funcao');
+        const nivel = getCol(row, 'nivel', 'nível', 'level');
+        const dataAdmissaoRaw = getCol(row, 'admissão', 'admissao', 'admission', 'data admissão', 'data_admissao');
+        const ultimaPromocaoRaw = getCol(row, 'promoção', 'promocao', 'promotion', 'última promoção');
+        const aniversarioRaw = getCol(row, 'aniversário', 'aniversario', 'birthday', 'nascimento');
+        // Parse date
+        const parseDate = (raw: string): string | undefined => {
+          if (!raw) return undefined;
+          // Try DD/MM/YYYY
+          const parts = raw.split('/');
+          if (parts.length === 3) return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+          // Try YYYY-MM-DD
+          if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+          return undefined;
+        };
+        const dataAdmissao = parseDate(dataAdmissaoRaw);
+        const tempoEmpresa = dataAdmissao ? calcTempoEmpresa(dataAdmissao) : { texto: '', meses: 0 };
+        const analista: Omit<AnalistaRecord, 'id' | 'created_at' | 'updated_at'> = {
+          nome,
+          email: email || undefined,
+          squad: squad || undefined,
+          equipe: squad || undefined,
+          coordenador: coordenador || undefined,
+          cargo_operacional: cargo || 'Analista',
+          nivel: nivel || 'Junior',
+          status: 'ativo',
+          aniversario: parseDate(aniversarioRaw) || undefined,
+          tempo_empresa: tempoEmpresa.texto || undefined,
+          tempo_empresa_calculado: tempoEmpresa.texto || undefined,
+          tempo_empresa_meses: tempoEmpresa.meses || 0,
+          ultima_promocao: parseDate(ultimaPromocaoRaw) || undefined,
+          data_admissao: dataAdmissao || undefined,
+        };
+        const result = await upsertAnalista(analista);
+        if (result.success) { success++; }
+        else { errors.push(`${nome}: ${result.error}`); }
+      }
+      setImportAnalistasResult({ success, errors });
+      reload();
+    } catch (err: any) {
+      setImportAnalistasResult({ success: 0, errors: [err.message] });
+    } finally {
+      setImportingAnalistas(false);
+      if (importAnalistasRef.current) importAnalistasRef.current.value = '';
     }
   };
 
@@ -984,6 +1064,15 @@ function GestaoContent() {
             </div>
             {activeTab === 'analistas' && (
               <div className="flex items-center gap-2">
+                <input ref={importAnalistasRef} type="file" accept=".csv" className="hidden" onChange={handleImportAnalistasCSV} />
+                <button
+                  onClick={() => importAnalistasRef.current?.click()}
+                  disabled={importingAnalistas}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-50"
+                  style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.25)' }}>
+                  <Upload size={14} />
+                  {importingAnalistas ? 'Importando...' : 'Importar CSV'}
+                </button>
                 <button
                   onClick={() => setShowDeleteDataModal(true)}
                   className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all"
@@ -1023,6 +1112,26 @@ function GestaoContent() {
           {/* Tab: Analistas */}
           {activeTab === 'analistas' && (
             <>
+              {/* Import result */}
+              {importAnalistasResult && (
+                <div className="p-4 rounded-xl" style={{ backgroundColor: importAnalistasResult.errors.length > 0 ? 'rgba(245,158,11,0.06)' : 'rgba(34,197,94,0.06)', border: `1px solid ${importAnalistasResult.errors.length > 0 ? 'rgba(245,158,11,0.2)' : 'rgba(34,197,94,0.2)'}` }}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-white">
+                        ✅ {importAnalistasResult.success} analistas importados com sucesso
+                        {importAnalistasResult.errors.length > 0 && ` · ⚠️ ${importAnalistasResult.errors.length} erros`}
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Tempo de empresa calculado automaticamente a partir da data de admissão</p>
+                      {importAnalistasResult.errors.length > 0 && (
+                        <ul className="mt-2 space-y-0.5">
+                          {importAnalistasResult.errors.slice(0, 5).map((e, i) => <li key={i} className="text-xs" style={{ color: '#F59E0B' }}>{e}</li>)}
+                        </ul>
+                      )}
+                    </div>
+                    <button onClick={() => setImportAnalistasResult(null)} className="p-1 rounded hover:bg-white/10" style={{ color: '#94A3B8' }}><X size={14} /></button>
+                  </div>
+                </div>
+              )}
               {/* Stats */}
               <div className="grid grid-cols-3 gap-4">
                 {[

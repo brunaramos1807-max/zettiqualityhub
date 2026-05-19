@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
-import { fetchCycleScores, fetchAllPeriodos, fetchNCRecords, fetchElogios, buildAnalystsFromScores, syncClosedCyclesFromSupabase } from '@/lib/services/dataService';
+import { fetchCycleScores, fetchAllPeriodos, fetchNCRecords, fetchElogios, buildAnalystsFromScores, syncClosedCyclesFromSupabase, deletePeriodDataFromDB } from '@/lib/services/dataService';
 import { createClient } from '@/lib/supabase/client';
 import { RefreshCw, Lock, Unlock, BarChart2, ChevronRight, Activity, CheckCircle, X, Clock, History, Loader2, Trash2, RotateCcw, Shield } from 'lucide-react';
 import Link from 'next/link';
@@ -287,6 +287,7 @@ function CiclosContent() {
   const [aiLoadingPeriodo, setAiLoadingPeriodo] = useState<string | null>(null);
   const [closingCycle, setClosingCycle] = useState<string | null>(null);
   const [reopeningCycle, setReopeningCycle] = useState<string | null>(null);
+  const [deletingCycle, setDeletingCycle] = useState<string | null>(null);
   const [showCleanup, setShowCleanup] = useState(false);
   const [closureHistory, setClosureHistory] = useState<ClosureHistoryEntry[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -436,6 +437,20 @@ function CiclosContent() {
       syncClosedCyclesFromSupabase([{ periodo, is_closed: false, status: 'reaberto' }]);
       setReopeningCycle(null);
       await loadData(); await loadHistory();
+    } catch { /* ignore */ }
+    setActionLoading(null);
+  };
+
+  const handleDeleteCycle = async (periodo: string) => {
+    if (!isAdmin) return;
+    setActionLoading(periodo);
+    try {
+      const result = await deletePeriodDataFromDB(periodo);
+      if (result.success) {
+        setDeletingCycle(null);
+        await loadData();
+        await loadHistory();
+      }
     } catch { /* ignore */ }
     setActionLoading(null);
   };
@@ -603,6 +618,13 @@ function CiclosContent() {
                         Reabrir
                       </button>
                     )}
+                    {isAdmin && !isClosed && (
+                      <button onClick={() => setDeletingCycle(cycle.periodo)} disabled={actionLoading === cycle.periodo}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
+                        style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>
+                        <Trash2 size={11} /> Excluir
+                      </button>
+                    )}
                     <button onClick={() => handleGenerateSummary(cycle)} disabled={aiLoadingPeriodo === cycle.periodo}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
                       style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}>
@@ -665,6 +687,34 @@ function CiclosContent() {
 
       {showCleanup && (
         <CleanupModal actorEmail={actorEmail} onClose={() => setShowCleanup(false)} onSuccess={() => { loadData(); loadHistory(); }} />
+      )}
+
+      {deletingCycle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.85)' }}>
+          <div className="w-full max-w-sm rounded-2xl overflow-hidden" style={{ backgroundColor: '#0A1628', border: '1px solid rgba(239,68,68,0.25)' }}>
+            <div className="p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(239,68,68,0.1)' }}>
+                  <Trash2 size={18} style={{ color: '#EF4444' }} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white">Excluir Ciclo</h3>
+                  <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{deletingCycle}</p>
+                </div>
+              </div>
+              <p className="text-sm mb-5" style={{ color: '#94A3B8' }}>Todos os dados deste ciclo (avaliações, NCs, elogios, PDIs) serão excluídos permanentemente do banco de dados.</p>
+              <div className="flex gap-3">
+                <button onClick={() => setDeletingCycle(null)} className="flex-1 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
+                <button onClick={() => handleDeleteCycle(deletingCycle)} disabled={actionLoading === deletingCycle}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
+                  style={{ backgroundColor: '#DC2626' }}>
+                  {actionLoading === deletingCycle ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  Excluir
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

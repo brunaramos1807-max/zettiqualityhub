@@ -335,6 +335,34 @@ export async function importCycleData(
 // ─── Delete functions ─────────────────────────────────────────────────────────
 
 /**
+ * Delete all data for a specific period from SUPABASE (scores, NCs, elogios, cycle record)
+ */
+export async function deletePeriodDataFromDB(periodo: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      // Delete child tables first, then parent
+      await supabase.from('cycle_scores').delete().eq('periodo', periodo);
+      await supabase.from('nc_records').delete().eq('periodo', periodo);
+      await supabase.from('elogios').delete().eq('periodo', periodo);
+      await supabase.from('pdi_records').delete().eq('periodo', periodo);
+      await supabase.from('cycle_summaries').delete().eq('periodo', periodo);
+      await supabase.from('import_cycles').delete().eq('periodo', periodo);
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+  // Also clear localStorage
+  lsSet(LS_SCORES,  lsGet<any>(LS_SCORES).filter((r) => r.periodo !== periodo));
+  lsSet(LS_NCS,     lsGet<any>(LS_NCS).filter((r) => r.periodo !== periodo));
+  lsSet(LS_ELOGIOS, lsGet<any>(LS_ELOGIOS).filter((r) => r.periodo !== periodo));
+  lsSet(LS_CYCLES,  lsGet<any>(LS_CYCLES).filter((r) => r.periodo !== periodo));
+  dispatchDataChanged({ tipo: 'delete', periodo });
+  return { success: true };
+}
+
+/**
  * Delete all data for a specific period (scores, NCs, elogios, cycle record, import records)
  */
 export function deletePeriodData(periodo: string): void {
@@ -883,6 +911,246 @@ export function deleteAnalystFromData(analystName: string, periodo?: string): vo
   lsSet(LS_NCS,     lsGet<any>(LS_NCS).filter((r) => !matchFn(r)));
   lsSet(LS_ELOGIOS, lsGet<any>(LS_ELOGIOS).filter((r) => !matchFn(r)));
   dispatchDataChanged({ tipo: 'delete_analyst', analystName, periodo });
+}
+
+// ─── PDI Supabase functions ───────────────────────────────────────────────────
+
+export interface PDIRecord {
+  id: string;
+  cycle_id?: string;
+  periodo: string;
+  analista: string;
+  squad: string;
+  coordenador: string;
+  status_pdi: 'Em andamento' | 'Atrasado' | 'Concluído' | 'Crítico';
+  acoes: any[];
+  metas: any[];
+  evidencias: any[];
+  feedback?: string;
+  nc_reincidentes: any[];
+  qa_score: number;
+  iepc_score: number;
+  sintese_ia?: string;
+  source: string;
+  created_at: string;
+  updated_at: string;
+  // Legacy compat
+  objetivo?: string;
+  prazo?: string;
+  observacoes?: string;
+}
+
+export async function fetchPDIRecords(filters?: { periodo?: string; squad?: string; analista?: string }): Promise<PDIRecord[]> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      let query = supabase.from('pdi_records').select('*').order('created_at', { ascending: false });
+      if (filters?.periodo) query = query.eq('periodo', filters.periodo);
+      if (filters?.squad) query = query.eq('squad', filters.squad);
+      if (filters?.analista) query = query.eq('analista', filters.analista);
+      const { data, error } = await query;
+      if (!error && data) return data as PDIRecord[];
+    }
+  } catch { /* fall through */ }
+  // Fallback: localStorage legacy
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('zetti_pdis');
+      const pdis = raw ? JSON.parse(raw) : [];
+      return pdis.map((p: any) => ({
+        ...p,
+        status_pdi: p.status === 'concluido' ? 'Concluído' : p.status === 'em_andamento' ? 'Em andamento' : 'Em andamento',
+        acoes: [], metas: [], evidencias: [], nc_reincidentes: [],
+        qa_score: 0, iepc_score: 0, source: 'manual',
+        created_at: p.created_at || new Date().toISOString(),
+        updated_at: p.updated_at || new Date().toISOString(),
+      }));
+    } catch { return []; }
+  }
+  return [];
+}
+
+export async function savePDIRecord(pdi: Omit<PDIRecord, 'id' | 'created_at' | 'updated_at'>): Promise<{ success: boolean; data?: PDIRecord; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { data, error } = await supabase.from('pdi_records').insert({
+        ...pdi,
+        acoes: pdi.acoes || [],
+        metas: pdi.metas || [],
+        evidencias: pdi.evidencias || [],
+        nc_reincidentes: pdi.nc_reincidentes || [],
+      }).select().single();
+      if (error) return { success: false, error: error.message };
+      dispatchDataChanged({ tipo: 'pdi_saved', analista: pdi.analista });
+      return { success: true, data: data as PDIRecord };
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+  return { success: false, error: 'Supabase não disponível' };
+}
+
+export async function updatePDIRecord(id: string, updates: Partial<PDIRecord>): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { error } = await supabase.from('pdi_records').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id);
+      if (error) return { success: false, error: error.message };
+      dispatchDataChanged({ tipo: 'pdi_updated' });
+      return { success: true };
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+  return { success: false, error: 'Supabase não disponível' };
+}
+
+export async function deletePDIRecord(id: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { error } = await supabase.from('pdi_records').delete().eq('id', id);
+      if (error) return { success: false, error: error.message };
+      dispatchDataChanged({ tipo: 'pdi_deleted' });
+      return { success: true };
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+  return { success: false, error: 'Supabase não disponível' };
+}
+
+// ─── Analistas Supabase functions ─────────────────────────────────────────────
+
+export interface AnalistaRecord {
+  id: string;
+  nome: string;
+  email?: string;
+  squad?: string;
+  equipe?: string;
+  coordenador?: string;
+  cargo_operacional?: string;
+  nivel: string;
+  status: 'ativo' | 'ferias' | 'afastado' | 'desligado';
+  aniversario?: string;
+  tempo_empresa?: string;
+  tempo_empresa_calculado?: string;
+  tempo_empresa_meses?: number;
+  ultima_promocao?: string;
+  data_admissao?: string;
+  observacoes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function fetchAnalistas(filters?: { squad?: string; status?: string }): Promise<AnalistaRecord[]> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      let query = supabase.from('analistas').select('*').order('nome', { ascending: true });
+      if (filters?.squad) query = query.eq('squad', filters.squad);
+      if (filters?.status) query = query.eq('status', filters.status);
+      const { data, error } = await query;
+      if (!error && data) return data as AnalistaRecord[];
+    }
+  } catch { /* fall through */ }
+  return [];
+}
+
+export async function upsertAnalista(analista: Omit<AnalistaRecord, 'id' | 'created_at' | 'updated_at'>): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { error } = await supabase.from('analistas').upsert(
+        { ...analista, updated_at: new Date().toISOString() },
+        { onConflict: 'email' }
+      );
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+  return { success: false, error: 'Supabase não disponível' };
+}
+
+export async function deleteAnalista(id: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { error } = await supabase.from('analistas').delete().eq('id', id);
+      if (error) return { success: false, error: error.message };
+      dispatchDataChanged({ tipo: 'analista_deleted' });
+      return { success: true };
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+  return { success: false, error: 'Supabase não disponível' };
+}
+
+export function calcTempoEmpresa(dataAdmissao: string): { texto: string; meses: number } {
+  if (!dataAdmissao) return { texto: '', meses: 0 };
+  const admissao = new Date(dataAdmissao);
+  const hoje = new Date();
+  const totalMeses = (hoje.getFullYear() - admissao.getFullYear()) * 12 + (hoje.getMonth() - admissao.getMonth());
+  const anos = Math.floor(totalMeses / 12);
+  const meses = totalMeses % 12;
+  let texto = '';
+  if (anos === 0) texto = `${meses} mes(es)`;
+  else if (meses === 0) texto = `${anos} ano(s)`;
+  else texto = `${anos} ano(s) e ${meses} mes(es)`;
+  return { texto, meses: totalMeses };
+}
+
+// ─── Admin Logs ───────────────────────────────────────────────────────────────
+
+export interface AdminLog {
+  id: string;
+  created_at: string;
+  log_type: string;
+  category: string;
+  actor_email?: string;
+  action: string;
+  entity_type?: string;
+  entity_id?: string;
+  details?: any;
+  duration_ms?: number;
+  error_message?: string;
+  severity: string;
+}
+
+export async function fetchAdminLogs(filters?: { category?: string; severity?: string; limit?: number }): Promise<AdminLog[]> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      let query = supabase.from('admin_logs').select('*').order('created_at', { ascending: false }).limit(filters?.limit || 200);
+      if (filters?.category && filters.category !== 'all') query = query.eq('category', filters.category);
+      if (filters?.severity && filters.severity !== 'all') query = query.eq('severity', filters.severity);
+      const { data, error } = await query;
+      if (!error && data) return data as AdminLog[];
+    }
+  } catch { /* fall through */ }
+  return [];
+}
+
+export async function writeAdminLog(log: Omit<AdminLog, 'id' | 'created_at'>): Promise<void> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      await supabase.from('admin_logs').insert(log);
+    }
+  } catch { /* silently ignore */ }
 }
 
 // ─── Full Backup / Restore ────────────────────────────────────────────────────

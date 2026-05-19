@@ -996,25 +996,52 @@ export default function HomeExecutiveView() {
 
   const hasData = history.length > 0;
 
-  // ── Strategic Radar Data — uses official WEIGHTS (not scores) ──────────────
-  // QA: shows weight distribution of each pillar (P1=22, P2=34, P3=18, P4=14, P5=12)
-  // The "value" in radar = the official weight (strategic importance)
-  // pct = percentage of total (same as weight since total=100)
-  const qaStrategicPillars = useMemo(() => [
-    { subject: 'P1 Fluxo', weight: QA_PILLAR_WEIGHTS.p1, pct: QA_PILLAR_WEIGHTS.p1, color: PILLAR_COLORS.p1, fullName: 'P1 — Gestão do Fluxo e Rastreabilidade' },
-    { subject: 'P2 Tratativa', weight: QA_PILLAR_WEIGHTS.p2, pct: QA_PILLAR_WEIGHTS.p2, color: PILLAR_COLORS.p2, fullName: 'P2 — Gestão da Tratativa da Demanda' },
-    { subject: 'P3 Análise', weight: QA_PILLAR_WEIGHTS.p3, pct: QA_PILLAR_WEIGHTS.p3, color: PILLAR_COLORS.p3, fullName: 'P3 — Análise e Assertividade Técnica' },
-    { subject: 'P4 Comunicação', weight: QA_PILLAR_WEIGHTS.p4, pct: QA_PILLAR_WEIGHTS.p4, color: PILLAR_COLORS.p4, fullName: 'P4 — Qualidade da Comunicação' },
-    { subject: 'P5 Conduta', weight: QA_PILLAR_WEIGHTS.p5, pct: QA_PILLAR_WEIGHTS.p5, color: PILLAR_COLORS.p5, fullName: 'P5 — Conduta Relacional' },
-  ], []);
+  // ── Strategic Radar Data — uses REAL pillar averages from current cycle ──────
+  // When real data exists: shows actual % performance per pillar
+  // When no data: falls back to official weight distribution
+  const qaStrategicPillars = useMemo(() => {
+    const current = lastPeriod;
+    const hasRealData = current && (current.p1 || current.p2 || current.p3 || current.p4 || current.p5);
+    if (hasRealData && current) {
+      // Convert raw pillar points to percentage of max weight
+      return [
+        { subject: 'P1 Fluxo', weight: toPercent(current.p1 || 0, QA_PILLAR_WEIGHTS.p1), pct: toPercent(current.p1 || 0, QA_PILLAR_WEIGHTS.p1), color: PILLAR_COLORS.p1, fullName: 'P1 — Gestão do Fluxo e Rastreabilidade' },
+        { subject: 'P2 Tratativa', weight: toPercent(current.p2 || 0, QA_PILLAR_WEIGHTS.p2), pct: toPercent(current.p2 || 0, QA_PILLAR_WEIGHTS.p2), color: PILLAR_COLORS.p2, fullName: 'P2 — Gestão da Tratativa da Demanda' },
+        { subject: 'P3 Análise', weight: toPercent(current.p3 || 0, QA_PILLAR_WEIGHTS.p3), pct: toPercent(current.p3 || 0, QA_PILLAR_WEIGHTS.p3), color: PILLAR_COLORS.p3, fullName: 'P3 — Análise e Assertividade Técnica' },
+        { subject: 'P4 Comunicação', weight: toPercent(current.p4 || 0, QA_PILLAR_WEIGHTS.p4), pct: toPercent(current.p4 || 0, QA_PILLAR_WEIGHTS.p4), color: PILLAR_COLORS.p4, fullName: 'P4 — Qualidade da Comunicação' },
+        { subject: 'P5 Conduta', weight: toPercent(current.p5 || 0, QA_PILLAR_WEIGHTS.p5), pct: toPercent(current.p5 || 0, QA_PILLAR_WEIGHTS.p5), color: PILLAR_COLORS.p5, fullName: 'P5 — Conduta Relacional' },
+      ];
+    }
+    // Fallback: official weight distribution
+    return [
+      { subject: 'P1 Fluxo', weight: QA_PILLAR_WEIGHTS.p1, pct: QA_PILLAR_WEIGHTS.p1, color: PILLAR_COLORS.p1, fullName: 'P1 — Gestão do Fluxo e Rastreabilidade' },
+      { subject: 'P2 Tratativa', weight: QA_PILLAR_WEIGHTS.p2, pct: QA_PILLAR_WEIGHTS.p2, color: PILLAR_COLORS.p2, fullName: 'P2 — Gestão da Tratativa da Demanda' },
+      { subject: 'P3 Análise', weight: QA_PILLAR_WEIGHTS.p3, pct: QA_PILLAR_WEIGHTS.p3, color: PILLAR_COLORS.p3, fullName: 'P3 — Análise e Assertividade Técnica' },
+      { subject: 'P4 Comunicação', weight: QA_PILLAR_WEIGHTS.p4, pct: QA_PILLAR_WEIGHTS.p4, color: PILLAR_COLORS.p4, fullName: 'P4 — Qualidade da Comunicação' },
+      { subject: 'P5 Conduta', weight: QA_PILLAR_WEIGHTS.p5, pct: QA_PILLAR_WEIGHTS.p5, color: PILLAR_COLORS.p5, fullName: 'P5 — Conduta Relacional' },
+    ];
+  }, [lastPeriod]);
 
-  const iepcStrategicPillars = useMemo(() => [
-    { subject: 'E1 Resolução', weight: IEPC_PILLAR_WEIGHTS.e1, pct: IEPC_PILLAR_WEIGHTS.e1, color: PILLAR_COLORS.e1, fullName: 'E1 — Resolução Percebida' },
-    { subject: 'E2 Compreensão', weight: IEPC_PILLAR_WEIGHTS.e2, pct: IEPC_PILLAR_WEIGHTS.e2, color: PILLAR_COLORS.e2, fullName: 'E2 — Compreensão e Segurança Percebida' },
-    { subject: 'E3 Esforço', weight: IEPC_PILLAR_WEIGHTS.e3, pct: IEPC_PILLAR_WEIGHTS.e3, color: PILLAR_COLORS.e3, fullName: 'E3 — Esforço Percebido pelo Cliente' },
-    { subject: 'E4 Tempo', weight: IEPC_PILLAR_WEIGHTS.e4, pct: IEPC_PILLAR_WEIGHTS.e4, color: PILLAR_COLORS.e4, fullName: 'E4 — Tempo e Fluidez' },
-    { subject: 'E5 Relacional', weight: IEPC_PILLAR_WEIGHTS.e5, pct: IEPC_PILLAR_WEIGHTS.e5, color: PILLAR_COLORS.e5, fullName: 'E5 — Experiência Relacional' },
-  ], []);
+  const iepcStrategicPillars = useMemo(() => {
+    const current = lastPeriod;
+    const hasRealData = current && (current.e1 || current.e2 || current.e3 || current.e4 || current.e5);
+    if (hasRealData && current) {
+      return [
+        { subject: 'E1 Resolução', weight: toPercent(current.e1 || 0, IEPC_PILLAR_WEIGHTS.e1), pct: toPercent(current.e1 || 0, IEPC_PILLAR_WEIGHTS.e1), color: PILLAR_COLORS.e1, fullName: 'E1 — Resolução Percebida' },
+        { subject: 'E2 Compreensão', weight: toPercent(current.e2 || 0, IEPC_PILLAR_WEIGHTS.e2), pct: toPercent(current.e2 || 0, IEPC_PILLAR_WEIGHTS.e2), color: PILLAR_COLORS.e2, fullName: 'E2 — Compreensão e Segurança Percebida' },
+        { subject: 'E3 Esforço', weight: toPercent(current.e3 || 0, IEPC_PILLAR_WEIGHTS.e3), pct: toPercent(current.e3 || 0, IEPC_PILLAR_WEIGHTS.e3), color: PILLAR_COLORS.e3, fullName: 'E3 — Esforço Percebido pelo Cliente' },
+        { subject: 'E4 Tempo', weight: toPercent(current.e4 || 0, IEPC_PILLAR_WEIGHTS.e4), pct: toPercent(current.e4 || 0, IEPC_PILLAR_WEIGHTS.e4), color: PILLAR_COLORS.e4, fullName: 'E4 — Tempo e Fluidez' },
+        { subject: 'E5 Relacional', weight: toPercent(current.e5 || 0, IEPC_PILLAR_WEIGHTS.e5), pct: toPercent(current.e5 || 0, IEPC_PILLAR_WEIGHTS.e5), color: PILLAR_COLORS.e5, fullName: 'E5 — Experiência Relacional' },
+      ];
+    }
+    return [
+      { subject: 'E1 Resolução', weight: IEPC_PILLAR_WEIGHTS.e1, pct: IEPC_PILLAR_WEIGHTS.e1, color: PILLAR_COLORS.e1, fullName: 'E1 — Resolução Percebida' },
+      { subject: 'E2 Compreensão', weight: IEPC_PILLAR_WEIGHTS.e2, pct: IEPC_PILLAR_WEIGHTS.e2, color: PILLAR_COLORS.e2, fullName: 'E2 — Compreensão e Segurança Percebida' },
+      { subject: 'E3 Esforço', weight: IEPC_PILLAR_WEIGHTS.e3, pct: IEPC_PILLAR_WEIGHTS.e3, color: PILLAR_COLORS.e3, fullName: 'E3 — Esforço Percebido pelo Cliente' },
+      { subject: 'E4 Tempo', weight: IEPC_PILLAR_WEIGHTS.e4, pct: IEPC_PILLAR_WEIGHTS.e4, color: PILLAR_COLORS.e4, fullName: 'E4 — Tempo e Fluidez' },
+      { subject: 'E5 Relacional', weight: IEPC_PILLAR_WEIGHTS.e5, pct: IEPC_PILLAR_WEIGHTS.e5, color: PILLAR_COLORS.e5, fullName: 'E5 — Experiência Relacional' },
+    ];
+  }, [lastPeriod]);
 
   // NC distribution from real data
   const ncDistribution = useMemo(() => {
