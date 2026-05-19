@@ -27,85 +27,55 @@ export async function importCycleDataToSupabase(
 
   try {
     // ── Step 1: Upsert import_cycles record ──────────────────────────────────
-    // First try to get existing cycle for this period
-    const { data: existingCycle } = await supabase
+    // Use upsert directly — avoids race conditions and FK issues
+    const cyclePayload = {
+      periodo,
+      file_name: fileName,
+      record_count: scores.length + ncs.length + elogios.length,
+      is_current: true,
+      is_closed: false,
+      status: 'em_andamento',
+      import_status: 'completed',
+      data_type: 'mixed',
+      updated_at: new Date().toISOString(),
+    };
+
+    // Try upsert first
+    const { data: upsertedCycle, error: upsertError } = await supabase
       .from('import_cycles')
+      .upsert(cyclePayload, { onConflict: 'periodo' })
       .select('id')
-      .eq('periodo', periodo)
       .maybeSingle();
 
-    let cycleId: string | undefined;
+    let cycleId: string | undefined = upsertedCycle?.id;
 
-    if (existingCycle?.id) {
-      // Update existing cycle record
-      cycleId = existingCycle.id;
-      const { error: updateError } = await supabase
+    if (upsertError) {
+      console.error('[IMPORT] Upsert import_cycles error:', upsertError.message, upsertError.code);
+      // Fallback: try to get existing
+      const { data: existing } = await supabase
         .from('import_cycles')
-        .update({
-          file_name: fileName,
-          record_count: scores.length + ncs.length + elogios.length,
-          updated_at: new Date().toISOString(),
-          import_status: 'completed',
-          status: 'em_andamento',
-        })
-        .eq('id', cycleId);
-
-      if (updateError) {
-        console.error('[IMPORT] Erro ao atualizar import_cycles:', updateError.message, updateError.code);
-      } else {
-        console.log(`[IMPORT] import_cycles atualizado: ${cycleId}`);
-      }
-    } else {
-      // Insert new cycle record
-      const { data: newCycle, error: insertError } = await supabase
-        .from('import_cycles')
-        .insert({
-          periodo,
-          file_name: fileName,
-          record_count: scores.length + ncs.length + elogios.length,
-          is_current: true,
-          is_closed: false,
-          status: 'em_andamento',
-          import_status: 'completed',
-          data_type: 'mixed',
-        })
         .select('id')
-        .single();
+        .eq('periodo', periodo)
+        .maybeSingle();
+      cycleId = existing?.id;
 
-      if (insertError) {
-        console.error('[IMPORT] Erro ao inserir import_cycles:', insertError.message, insertError.code);
-        // Try one more time with upsert as fallback
-        const { data: upsertCycle, error: upsertError } = await supabase
+      if (!cycleId) {
+        // Last resort: plain insert without onConflict
+        const { data: inserted, error: insertErr } = await supabase
           .from('import_cycles')
-          .upsert(
-            {
-              periodo,
-              file_name: fileName,
-              record_count: scores.length + ncs.length + elogios.length,
-              is_current: true,
-              is_closed: false,
-              status: 'em_andamento',
-              import_status: 'completed',
-              data_type: 'mixed',
-            },
-            { onConflict: 'periodo' }
-          )
+          .insert(cyclePayload)
           .select('id')
           .maybeSingle();
-
-        if (upsertError) {
-          console.error('[IMPORT] Erro no upsert de import_cycles:', upsertError.message);
-          return { success: false, error: `Falha ao criar registro do ciclo: ${upsertError.message}` };
+        if (insertErr) {
+          console.error('[IMPORT] Insert import_cycles error:', insertErr.message);
+          return { success: false, error: `Falha ao criar ciclo: ${insertErr.message}` };
         }
-        cycleId = upsertCycle?.id;
-      } else {
-        cycleId = newCycle?.id;
-        console.log(`[IMPORT] import_cycles criado: ${cycleId}`);
+        cycleId = inserted?.id;
       }
     }
 
-    // If we still don't have a cycleId, try one final lookup
     if (!cycleId) {
+      // Final lookup
       const { data: finalLookup } = await supabase
         .from('import_cycles')
         .select('id')
@@ -119,22 +89,19 @@ export async function importCycleDataToSupabase(
       return { success: false, error: 'Não foi possível criar ou localizar o registro do ciclo.' };
     }
 
+    console.log(`[IMPORT] cycleId obtido: ${cycleId}`);
+
     // ── Step 2: Delete existing data for this period ─────────────────────────
     console.log(`[IMPORT] Limpando dados anteriores do período: ${periodo}`);
-    const [delScores, delNCs, delElogios] = await Promise.all([
+    await Promise.all([
       supabase.from('cycle_scores').delete().eq('periodo', periodo),
       supabase.from('nc_records').delete().eq('periodo', periodo),
       supabase.from('elogios').delete().eq('periodo', periodo),
     ]);
 
-    if (delScores.error) console.warn('[IMPORT] Aviso ao deletar scores:', delScores.error.message);
-    if (delNCs.error) console.warn('[IMPORT] Aviso ao deletar NCs:', delNCs.error.message);
-    if (delElogios.error) console.warn('[IMPORT] Aviso ao deletar elogios:', delElogios.error.message);
-
     // ── Step 3: Insert scores ─────────────────────────────────────────────────
     let scoresInserted = 0;
     if (scores.length > 0) {
-      // Insert in batches of 50 to avoid payload limits
       const BATCH_SIZE = 50;
       for (let i = 0; i < scores.length; i += BATCH_SIZE) {
         const batch = scores.slice(i, i + BATCH_SIZE);
@@ -171,7 +138,7 @@ export async function importCycleDataToSupabase(
           .select('id');
 
         if (scoresError) {
-          console.error(`[IMPORT] Erro ao inserir scores (batch ${i}-${i + BATCH_SIZE}):`, scoresError.message, scoresError.code, scoresError.details);
+          console.error(`[IMPORT] Erro ao inserir scores (batch ${i}):`, scoresError.message, scoresError.code, scoresError.details);
         } else {
           scoresInserted += (scoresData?.length || 0);
         }
@@ -206,7 +173,7 @@ export async function importCycleDataToSupabase(
           .select('id');
 
         if (ncsError) {
-          console.error(`[IMPORT] Erro ao inserir NCs (batch ${i}-${i + BATCH_SIZE}):`, ncsError.message, ncsError.code);
+          console.error(`[IMPORT] Erro ao inserir NCs (batch ${i}):`, ncsError.message, ncsError.code);
         } else {
           ncsInserted += (ncsData?.length || 0);
         }
@@ -237,7 +204,7 @@ export async function importCycleDataToSupabase(
           .select('id');
 
         if (elogiosError) {
-          console.error(`[IMPORT] Erro ao inserir elogios (batch ${i}-${i + BATCH_SIZE}):`, elogiosError.message, elogiosError.code);
+          console.error(`[IMPORT] Erro ao inserir elogios (batch ${i}):`, elogiosError.message, elogiosError.code);
         } else {
           elogiosInserted += (elogiosData?.length || 0);
         }
@@ -249,8 +216,8 @@ export async function importCycleDataToSupabase(
     try {
       const { error: summaryError } = await supabase.rpc('refresh_cycle_summary', { p_periodo: periodo });
       if (summaryError) {
-        console.warn('[IMPORT] Aviso ao atualizar cycle_summary:', summaryError.message);
-        // Fallback: manual upsert of cycle_summaries
+        console.warn('[IMPORT] RPC refresh_cycle_summary falhou, fazendo upsert manual:', summaryError.message);
+        // Manual fallback
         const qaMedia = scores.length > 0
           ? scores.reduce((s, r) => s + (r.nota_final_qa ?? 0), 0) / scores.length
           : 0;
@@ -317,7 +284,6 @@ export async function fetchNCRecordsFromSupabase(periodo?: string): Promise<NCRo
     console.error('[FETCH] fetchNCRecords error:', error.message, error.code);
     return [];
   }
-  console.log(`[FETCH] nc_records: ${data?.length || 0} registros${periodo ? ` para ${periodo}` : ''}`);
   return (data || []) as NCRow[];
 }
 
@@ -333,7 +299,6 @@ export async function fetchElogiosFromSupabase(periodo?: string): Promise<Elogio
     console.error('[FETCH] fetchElogios error:', error.message, error.code);
     return [];
   }
-  console.log(`[FETCH] elogios: ${data?.length || 0} registros${periodo ? ` para ${periodo}` : ''}`);
   return (data || []) as ElogioRow[];
 }
 
@@ -341,7 +306,6 @@ export async function fetchAllPeriodosFromSupabase(): Promise<string[]> {
   const supabase = getSupabase();
   if (!supabase) return [];
 
-  // Fetch from import_cycles AND derive from actual data tables
   const [cyclesRes, scoresRes] = await Promise.all([
     supabase.from('import_cycles').select('periodo').order('periodo', { ascending: false }),
     supabase.from('cycle_scores').select('periodo'),

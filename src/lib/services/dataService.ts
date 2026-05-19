@@ -1073,11 +1073,40 @@ export async function upsertAnalista(analista: Omit<AnalistaRecord, 'id' | 'crea
     const { createClient } = await import('@/lib/supabase/client');
     const supabase = createClient();
     if (supabase) {
-      const { error } = await supabase.from('analistas').upsert(
-        { ...analista, updated_at: new Date().toISOString() },
-        { onConflict: 'email' }
-      );
-      if (error) return { success: false, error: error.message };
+      // If email is present, upsert by email; otherwise upsert by nome
+      if (analista.email && analista.email.trim()) {
+        const { error } = await supabase.from('analistas').upsert(
+          { ...analista, updated_at: new Date().toISOString() },
+          { onConflict: 'email' }
+        );
+        if (error) {
+          // Fallback: try insert ignoring conflict
+          const { error: insertErr } = await supabase.from('analistas').insert(
+            { ...analista, updated_at: new Date().toISOString() }
+          );
+          if (insertErr) return { success: false, error: insertErr.message };
+        }
+      } else {
+        // No email — check if nome already exists, then update or insert
+        const { data: existing } = await supabase
+          .from('analistas')
+          .select('id')
+          .eq('nome', analista.nome)
+          .maybeSingle();
+
+        if (existing?.id) {
+          const { error } = await supabase
+            .from('analistas')
+            .update({ ...analista, email: null, updated_at: new Date().toISOString() })
+            .eq('id', existing.id);
+          if (error) return { success: false, error: error.message };
+        } else {
+          const { error } = await supabase
+            .from('analistas')
+            .insert({ ...analista, email: null, updated_at: new Date().toISOString() });
+          if (error) return { success: false, error: error.message };
+        }
+      }
       return { success: true };
     }
   } catch (err: any) {

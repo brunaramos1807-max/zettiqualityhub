@@ -1,5 +1,7 @@
 'use client';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 
 
 
@@ -925,44 +927,103 @@ function GestaoContent() {
     if (!file) return;
     setImportingAnalistas(true);
     setImportAnalistasResult(null);
-    try {
-      const text = await file.text();
-      const lines = text.split('\n').filter((l) => l.trim());
-      if (lines.length < 2) { setImportAnalistasResult({ success: 0, errors: ['Arquivo vazio ou sem dados'] }); return; }
-      const headers = lines[0].split(',').map((h) => h.replace(/^\uFEFF/, '').trim().replace(/"/g, ''));
-      const getCol = (row: string[], ...keys: string[]) => {
-        for (const k of keys) {
-          const idx = headers.findIndex((h) => h.toLowerCase().includes(k.toLowerCase()));
-          if (idx >= 0) return row[idx]?.replace(/"/g, '').trim() || '';
+
+    // Helper: parse date from dd/mm/yyyy, dd/mm/yy, yyyy-mm-dd, or Excel serial
+    const parseDate = (raw: any): string | undefined => {
+      if (raw === null || raw === undefined || raw === '') return undefined;
+      const s = String(raw).trim();
+      if (!s) return undefined;
+      // Excel serial number (e.g. 44927)
+      if (/^\d{5}$/.test(s)) {
+        const d = XLSX.SSF.parse_date_code(parseInt(s));
+        if (d) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
+      }
+      // DD/MM/YYYY or DD/MM/YY
+      const slashParts = s.split('/');
+      if (slashParts.length === 3) {
+        const [dd, mm, yy] = slashParts;
+        const year = yy.length === 2 ? `20${yy}` : yy;
+        return `${year}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
+      }
+      // DD-MM-YYYY
+      const dashParts = s.split('-');
+      if (dashParts.length === 3 && dashParts[0].length <= 2) {
+        const [dd, mm, yyyy] = dashParts;
+        return `${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
+      }
+      // YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+      return undefined;
+    };
+
+    // Helper: get value from row object by trying multiple key variants
+    const getVal = (row: Record<string, any>, ...keys: string[]): string => {
+      const rowLower: Record<string, any> = {};
+      Object.keys(row).forEach((k) => {
+        rowLower[k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()] = row[k];
+      });
+      for (const k of keys) {
+        const norm = k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        // Exact match
+        if (rowLower[norm] !== undefined && rowLower[norm] !== null && rowLower[norm] !== '') {
+          return String(rowLower[norm]).trim();
         }
-        return '';
-      };
+        // Partial match
+        const found = Object.keys(rowLower).find((rk) => rk.includes(norm) || norm.includes(rk));
+        if (found && rowLower[found] !== undefined && rowLower[found] !== null && rowLower[found] !== '') {
+          return String(rowLower[found]).trim();
+        }
+      }
+      return '';
+    };
+
+    try {
+      // Parse file — support CSV and XLSX
+      let rows: Record<string, any>[] = [];
+      const ext = file.name.split('.').pop()?.toLowerCase();
+
+      if (ext === 'xlsx' || ext === 'xls') {
+        const buffer = await file.arrayBuffer();
+        const wb = XLSX.read(new Uint8Array(buffer), { type: 'array', cellDates: false });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(ws, { defval: '' }) as Record<string, any>[];
+      } else {
+        // CSV — use PapaParse for proper quoted field handling
+        const text = await file.text();
+        const firstLine = text.split('\n')[0] || '';
+        const semicolonCount = (firstLine.match(/;/g) || []).length;
+        const commaCount = (firstLine.match(/,/g) || []).length;
+        const delimiter = semicolonCount > commaCount ? ';' : ',';
+        const result = Papa.parse(text, { header: true, skipEmptyLines: true, delimiter });
+        rows = result.data as Record<string, any>[];
+      }
+
+      if (rows.length === 0) {
+        setImportAnalistasResult({ success: 0, errors: ['Arquivo vazio ou sem dados válidos'] });
+        return;
+      }
+
       let success = 0;
       const errors: string[] = [];
-      for (let i = 1; i < lines.length; i++) {
-        const row = lines[i].split(',');
-        const nome = getCol(row, 'nome', 'name');
+
+      for (const row of rows) {
+        const nome = getVal(row, 'nome', 'name', 'analista');
         if (!nome) continue;
-        const email = getCol(row, 'email');
-        const squad = getCol(row, 'squad', 'equipe', 'team');
-        const coordenador = getCol(row, 'coordenador', 'coordinator', 'gestor');
-        const cargo = getCol(row, 'cargo', 'role', 'função', 'funcao');
-        const nivel = getCol(row, 'nivel', 'nível', 'level');
-        const dataAdmissaoRaw = getCol(row, 'admissão', 'admissao', 'admission', 'data admissão', 'data_admissao');
-        const ultimaPromocaoRaw = getCol(row, 'promoção', 'promocao', 'promotion', 'última promoção');
-        const aniversarioRaw = getCol(row, 'aniversário', 'aniversario', 'birthday', 'nascimento');
-        // Parse date
-        const parseDate = (raw: string): string | undefined => {
-          if (!raw) return undefined;
-          // Try DD/MM/YYYY
-          const parts = raw.split('/');
-          if (parts.length === 3) return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-          // Try YYYY-MM-DD
-          if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
-          return undefined;
-        };
+
+        const email = getVal(row, 'email', 'e-mail', 'e mail');
+        const squad = getVal(row, 'squad', 'equipe', 'team', 'time');
+        const coordenador = getVal(row, 'coordenador', 'coordinator', 'gestor', 'lider', 'líder');
+        const cargo = getVal(row, 'cargo', 'role', 'funcao', 'função', 'cargo operacional');
+        const nivel = getVal(row, 'nivel', 'nível', 'level', 'senioridade');
+        const dataAdmissaoRaw = getVal(row, 'data admissao', 'data_admissao', 'admissao', 'admissão', 'admission', 'data de admissao', 'data de admissão', 'dt admissao', 'dt_admissao');
+        const aniversarioRaw = getVal(row, 'aniversario', 'aniversário', 'birthday', 'nascimento', 'data nascimento', 'data de nascimento', 'dt nascimento', 'aniversario do colaborador');
+        const ultimaPromocaoRaw = getVal(row, 'ultima promocao', 'última promoção', 'promocao', 'promoção', 'promotion', 'dt promocao');
+
         const dataAdmissao = parseDate(dataAdmissaoRaw);
+        const aniversario = parseDate(aniversarioRaw);
+        const ultimaPromocao = parseDate(ultimaPromocaoRaw);
         const tempoEmpresa = dataAdmissao ? calcTempoEmpresa(dataAdmissao) : { texto: '', meses: 0 };
+
         const analista: Omit<AnalistaRecord, 'id' | 'created_at' | 'updated_at'> = {
           nome,
           email: email || undefined,
@@ -972,17 +1033,22 @@ function GestaoContent() {
           cargo_operacional: cargo || 'Analista',
           nivel: nivel || 'Junior',
           status: 'ativo',
-          aniversario: parseDate(aniversarioRaw) || undefined,
+          aniversario: aniversario || undefined,
           tempo_empresa: tempoEmpresa.texto || undefined,
           tempo_empresa_calculado: tempoEmpresa.texto || undefined,
           tempo_empresa_meses: tempoEmpresa.meses || 0,
-          ultima_promocao: parseDate(ultimaPromocaoRaw) || undefined,
+          ultima_promocao: ultimaPromocao || undefined,
           data_admissao: dataAdmissao || undefined,
         };
+
         const result = await upsertAnalista(analista);
-        if (result.success) { success++; }
-        else { errors.push(`${nome}: ${result.error}`); }
+        if (result.success) {
+          success++;
+        } else {
+          errors.push(`${nome}: ${result.error}`);
+        }
       }
+
       setImportAnalistasResult({ success, errors });
       reload();
     } catch (err: any) {
@@ -1064,7 +1130,7 @@ function GestaoContent() {
             </div>
             {activeTab === 'analistas' && (
               <div className="flex items-center gap-2">
-                <input ref={importAnalistasRef} type="file" accept=".csv" className="hidden" onChange={handleImportAnalistasCSV} />
+                <input ref={importAnalistasRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleImportAnalistasCSV} />
                 <button
                   onClick={() => importAnalistasRef.current?.click()}
                   disabled={importingAnalistas}
