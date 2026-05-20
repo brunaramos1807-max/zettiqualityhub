@@ -1,6 +1,5 @@
 'use client';
-import React, { useState, useEffect, useCallback } from 'react';
-
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 
 import ImportModal from '@/components/ImportModal';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
@@ -13,6 +12,7 @@ import {
   buildAnalystsFromScores,
   type RealAnalyst,
 } from '@/lib/services/dataService';
+import { getActiveCycle } from '@/lib/services/supabaseDataService';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { Activity, AlertTriangle, Users, TrendingUp, RefreshCw, BarChart2, ChevronUp, ChevronDown } from 'lucide-react';
 
@@ -32,6 +32,7 @@ function CicloAtualContent() {
   const [lastClosedAnalysts, setLastClosedAnalysts] = useState<RealAnalyst[]>([]);
   const [currentPeriodo, setCurrentPeriodo] = useState('');
   const [lastPeriodo, setLastPeriodo] = useState('');
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const canImport = session?.permissoes?.permissao_editar ||
     session?.permissoes?.acesso_total ||
@@ -41,11 +42,12 @@ function CicloAtualContent() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [scores, periodos, allNCs, allElogios] = await Promise.all([
+    const [scores, periodos, allNCs, allElogios, savedActiveCycle] = await Promise.all([
       fetchCycleScores(),
       fetchAllPeriodos(),
       fetchNCRecords(),
       fetchElogios(),
+      getActiveCycle(),
     ]);
 
     if (periodos.length === 0) {
@@ -53,9 +55,14 @@ function CicloAtualContent() {
       return;
     }
 
-    // periodos is sorted descending (newest first), so index 0 is the latest by calendar date
-    const current = periodos[0];
-    const lastClosed = periodos.length > 1 ? periodos[1] : '';
+    // Use the manually-defined active cycle if set; otherwise fall back to newest by calendar
+    const current = (savedActiveCycle && periodos.includes(savedActiveCycle))
+      ? savedActiveCycle
+      : periodos[0];
+
+    // For comparison, use the previous cycle (the one just before current in sorted list)
+    const currentIdx = periodos.indexOf(current);
+    const lastClosed = currentIdx < periodos.length - 1 ? periodos[currentIdx + 1] : '';
 
     setCurrentPeriodo(current);
     setLastPeriodo(lastClosed);
@@ -74,9 +81,23 @@ function CicloAtualContent() {
 
   useEffect(() => {
     loadData();
-    const handler = () => loadData();
-    window.addEventListener('zetti_import_done', handler);
-    return () => window.removeEventListener('zetti_import_done', handler);
+
+    // Listen for import events and active cycle changes
+    const handleImport = () => loadData();
+    const handleCycleChange = () => loadData();
+    window.addEventListener('zetti_import_done', handleImport);
+    window.addEventListener('zetti_active_cycle_changed', handleCycleChange);
+
+    // Real-time polling every 30 seconds to pick up integration data
+    pollingRef.current = setInterval(() => {
+      loadData();
+    }, 30000);
+
+    return () => {
+      window.removeEventListener('zetti_import_done', handleImport);
+      window.removeEventListener('zetti_active_cycle_changed', handleCycleChange);
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
   }, [loadData]);
 
   const qaMedia = analysts.length > 0

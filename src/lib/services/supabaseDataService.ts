@@ -573,3 +573,37 @@ export async function fetchImportLogs(periodo?: string, limit = 100): Promise<an
   }
   return data || [];
 }
+
+// ─── App Settings: Active Cycle ───────────────────────────────────────────────
+
+export async function getActiveCycle(): Promise<string> {
+  const supabase = getSupabase();
+  if (!supabase) return '';
+  try {
+    const { data } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'active_cycle')
+      .maybeSingle();
+    return data?.value || '';
+  } catch {
+    return '';
+  }
+}
+
+export async function setActiveCycle(periodo: string, actorEmail?: string): Promise<{ success: boolean; error?: string }> {
+  const supabase = getSupabase();
+  if (!supabase) return { success: false, error: 'Supabase não configurado.' };
+  try {
+    const { error } = await supabase
+      .from('app_settings')
+      .upsert(
+        { key: 'active_cycle', value: periodo, updated_at: new Date().toISOString(), updated_by: actorEmail || null },
+        { onConflict: 'key' }
+      );
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}

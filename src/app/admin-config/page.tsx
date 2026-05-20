@@ -4,10 +4,12 @@ import AppHeader from '@/components/AppHeader';
 import AppFooter from '@/components/AppFooter';
 
 import { fetchUserProfiles, updateUserRole } from '@/lib/services/dataService';
-import { Shield, User, Eye, CheckCircle, Loader2, RefreshCw, Plus, Trash2, X } from 'lucide-react';
+import { Shield, User, Eye, CheckCircle, Loader2, RefreshCw, Plus, Trash2, X, Calendar, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { MOCK_USERS } from '@/lib/mockData';
 import RouteGuard from '@/components/RouteGuard';
+import { fetchAllPeriodos } from '@/lib/services/dataService';
+import { getActiveCycle, setActiveCycle } from '@/lib/services/supabaseDataService';
 
 
 interface UserProfile {
@@ -79,6 +81,13 @@ function AdminConfigContent() {
   const [addModal, setAddModal] = useState(false);
   const [newUser, setNewUser] = useState({ email: '', full_name: '', role: 'Coordenador', squad: '' });
 
+  // Active cycle state
+  const [periodos, setPeriodos] = useState<string[]>([]);
+  const [activeCycle, setActiveCycleState] = useState('');
+  const [selectedCycle, setSelectedCycle] = useState('');
+  const [savingCycle, setSavingCycle] = useState(false);
+  const [cycleLoading, setCycleLoading] = useState(true);
+
   const loadUsers = async () => {
     setLoading(true);
     try {
@@ -115,7 +124,45 @@ function AdminConfigContent() {
 
   useEffect(() => {
     loadUsers();
+    loadCycleSettings();
   }, []);
+
+  const loadCycleSettings = async () => {
+    setCycleLoading(true);
+    try {
+      const [allPeriodos, current] = await Promise.all([
+        fetchAllPeriodos(),
+        getActiveCycle(),
+      ]);
+      setPeriodos(allPeriodos);
+      const effective = current || (allPeriodos.length > 0 ? allPeriodos[0] : '');
+      setActiveCycleState(effective);
+      setSelectedCycle(effective);
+    } catch {
+      // ignore
+    } finally {
+      setCycleLoading(false);
+    }
+  };
+
+  const handleSaveCycle = async () => {
+    if (!selectedCycle) { toast.error('Selecione um ciclo'); return; }
+    setSavingCycle(true);
+    try {
+      const result = await setActiveCycle(selectedCycle);
+      if (result.success) {
+        setActiveCycleState(selectedCycle);
+        toast.success(`Ciclo atual definido como ${selectedCycle}`);
+        window.dispatchEvent(new CustomEvent('zetti_active_cycle_changed', { detail: { periodo: selectedCycle } }));
+      } else {
+        toast.error(result.error || 'Erro ao salvar ciclo');
+      }
+    } catch {
+      toast.error('Erro ao salvar ciclo');
+    } finally {
+      setSavingCycle(false);
+    }
+  };
 
   const handleRoleChange = async (userId: string, newRole: string) => {
     setUpdatingId(userId);
@@ -166,7 +213,7 @@ function AdminConfigContent() {
               <h1 className="font-display text-2xl font-bold text-white" style={{ fontFamily: "'Playfair Display', serif" }}>
                 Configurações
               </h1>
-              <p className="text-sm mt-1" style={{ color: '#8B949E' }}>Gestão de usuários e controle de acesso (RBAC)</p>
+              <p className="text-sm mt-1" style={{ color: '#8B949E' }}>Gestão de usuários, controle de acesso e ciclo ativo</p>
             </div>
             <button
               onClick={() => setAddModal(true)}
@@ -176,6 +223,58 @@ function AdminConfigContent() {
               <Plus size={14} />
               Novo Usuário
             </button>
+          </div>
+
+          {/* ── Ciclo Atual ── */}
+          <div className="rounded-xl p-5" style={{ backgroundColor: '#161B22', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <div className="flex items-center gap-2 mb-4">
+              <Calendar size={16} style={{ color: '#60A5FA' }} />
+              <h3 className="text-sm font-semibold text-white" style={{ fontFamily: "'Playfair Display', serif" }}>
+                Ciclo Atual (em Auditoria)
+              </h3>
+            </div>
+            <p className="text-xs mb-4" style={{ color: '#8B949E' }}>
+              Defina manualmente qual ciclo está em aberto para auditoria. A página <strong className="text-white">Ciclo Atual</strong> sempre abrirá neste ciclo e exibirá os dados em tempo real.
+            </p>
+            {cycleLoading ? (
+              <div className="flex items-center gap-2 py-2">
+                <Loader2 size={14} className="animate-spin" style={{ color: '#8B949E' }} />
+                <span className="text-xs" style={{ color: '#8B949E' }}>Carregando ciclos...</span>
+              </div>
+            ) : (
+              <div className="flex items-end gap-3 flex-wrap">
+                <div className="flex-1 min-w-48">
+                  <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: '#8B949E' }}>
+                    Ciclo em Auditoria
+                  </label>
+                  <select
+                    value={selectedCycle}
+                    onChange={(e) => setSelectedCycle(e.target.value)}
+                    style={{ ...selectStyle, borderColor: selectedCycle !== activeCycle ? 'rgba(96,165,250,0.4)' : 'rgba(255,255,255,0.12)' }}
+                  >
+                    {periodos.length === 0 && <option value="">Nenhum ciclo importado</option>}
+                    {periodos.map((p) => (
+                      <option key={p} value={p}>{p}{p === activeCycle ? ' ✓ atual' : ''}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={handleSaveCycle}
+                  disabled={savingCycle || selectedCycle === activeCycle || !selectedCycle}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-all disabled:opacity-50"
+                  style={{ backgroundColor: '#1E40AF', height: '38px' }}
+                >
+                  {savingCycle ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                  {savingCycle ? 'Salvando...' : 'Definir como Atual'}
+                </button>
+                {activeCycle && (
+                  <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                    <span className="text-xs font-medium" style={{ color: '#22C55E' }}>Ativo: {activeCycle}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Role legend */}
