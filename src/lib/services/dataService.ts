@@ -939,10 +939,18 @@ export interface PDIRecord {
   source: string;
   created_at: string;
   updated_at: string;
-  // Legacy compat
+  // Core fields
   objetivo?: string;
   prazo?: string;
   observacoes?: string;
+  // Extended PDI fields
+  evolucao_tecnica?: string;
+  evolucao_comportamental?: string;
+  performance_operacional?: string;
+  risco_operacional?: string;
+  plano_desenvolvimento?: string;
+  proxima_revisao?: string;
+  ciclo?: string;
 }
 
 export async function fetchPDIRecords(filters?: { periodo?: string; squad?: string; analista?: string }): Promise<PDIRecord[]> {
