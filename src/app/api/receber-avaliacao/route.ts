@@ -120,25 +120,39 @@ async function validateToken(
   supabase: ReturnType<typeof createSupabaseClient>,
   authHeader: string | null
 ): Promise<{ valid: boolean; error?: string }> {
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return { valid: false, error: 'Missing or invalid Authorization header. Expected: Bearer <token>' };
+  // ── DIAGNOSTIC LOGS (temporary) ──────────────────────────────────────────
+  console.log('[receber-avaliacao] Raw Authorization header:', authHeader);
+
+  if (!authHeader) {
+    return { valid: false, error: 'Missing Authorization header. Expected: Bearer <token>' };
   }
 
-  const token = authHeader.replace('Bearer ', '').trim();
+  // Normalize: handle both "Bearer token" and "bearer token" (case-insensitive)
+  const bearerMatch = authHeader.match(/^[Bb]earer\s+(.+)$/);
+  if (!bearerMatch) {
+    return { valid: false, error: 'Invalid Authorization header format. Expected: Bearer <token>' };
+  }
 
-  // Hash the incoming token and compare against stored hashes
-  const encoder = new TextEncoder();
-  const data = encoder.encode(token);
+  const token = bearerMatch[1].trim();
+  console.log('[receber-avaliacao] Extracted token (first 8 chars):', token.substring(0, 8) + '...');
+
+  // Hash the incoming token using SHA-256
   let hashHex: string;
 
   try {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(token);
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-  } catch {
+  } catch (cryptoErr) {
+    console.error('[receber-avaliacao] crypto.subtle failed:', cryptoErr);
     // Fallback: simple hash comparison for environments without crypto.subtle
     hashHex = hashPayload(token);
   }
+
+  console.log('[receber-avaliacao] Computed SHA-256 hash:', hashHex);
+  console.log('[receber-avaliacao] Expected hash:         4c42bf27615c0ecc61aefec1214ce3fe99d82651a91b7424c5c6f962e42bf46b');
 
   const { data: tokenRow, error } = await supabase
     .from('integration_tokens')
@@ -146,6 +160,8 @@ async function validateToken(
     .eq('token_hash', hashHex)
     .eq('is_active', true)
     .maybeSingle();
+
+  console.log('[receber-avaliacao] DB query result - tokenRow:', tokenRow, '| error:', error);
 
   if (error || !tokenRow) {
     return { valid: false, error: 'Invalid or inactive token' };
