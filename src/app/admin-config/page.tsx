@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { MOCK_USERS } from '@/lib/mockData';
 import RouteGuard from '@/components/RouteGuard';
 import { fetchAllPeriodos } from '@/lib/services/dataService';
-import { getActiveCycle, setActiveCycle } from '@/lib/services/supabaseDataService';
+import { getActiveCycle, setActiveCycle, createNewCycle } from '@/lib/services/supabaseDataService';
 
 
 interface UserProfile {
@@ -88,6 +88,13 @@ function AdminConfigContent() {
   const [savingCycle, setSavingCycle] = useState(false);
   const [cycleLoading, setCycleLoading] = useState(true);
 
+  // New cycle creation
+  const [showNewCycleForm, setShowNewCycleForm] = useState(false);
+  const [newCyclePeriodo, setNewCyclePeriodo] = useState('');
+  const [newCycleInicio, setNewCycleInicio] = useState('');
+  const [newCycleFim, setNewCycleFim] = useState('');
+  const [creatingCycle, setCreatingCycle] = useState(false);
+
   const loadUsers = async () => {
     setLoading(true);
     try {
@@ -164,6 +171,30 @@ function AdminConfigContent() {
     }
   };
 
+  const handleCreateCycle = async () => {
+    if (!newCyclePeriodo.trim()) { toast.error('Informe o período do ciclo (ex: 05/2026)'); return; }
+    setCreatingCycle(true);
+    try {
+      const result = await createNewCycle(newCyclePeriodo.trim(), newCycleInicio, newCycleFim);
+      if (result.success) {
+        toast.success(`Ciclo ${newCyclePeriodo} criado com sucesso!`);
+        setShowNewCycleForm(false);
+        setNewCyclePeriodo('');
+        setNewCycleInicio('');
+        setNewCycleFim('');
+        await loadCycleSettings();
+        // Auto-select the new cycle
+        setSelectedCycle(newCyclePeriodo.trim());
+      } else {
+        toast.error(result.error || 'Erro ao criar ciclo');
+      }
+    } catch {
+      toast.error('Erro ao criar ciclo');
+    } finally {
+      setCreatingCycle(false);
+    }
+  };
+
   const handleRoleChange = async (userId: string, newRole: string) => {
     setUpdatingId(userId);
     try {
@@ -227,15 +258,89 @@ function AdminConfigContent() {
 
           {/* ── Ciclo Atual ── */}
           <div className="rounded-xl p-5" style={{ backgroundColor: '#161B22', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <div className="flex items-center gap-2 mb-4">
-              <Calendar size={16} style={{ color: '#60A5FA' }} />
-              <h3 className="text-sm font-semibold text-white" style={{ fontFamily: "'Playfair Display', serif" }}>
-                Ciclo Atual (em Auditoria)
-              </h3>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Calendar size={16} style={{ color: '#60A5FA' }} />
+                <h3 className="text-sm font-semibold text-white" style={{ fontFamily: "'Playfair Display', serif" }}>
+                  Ciclo Atual (em Auditoria)
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowNewCycleForm((v) => !v)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                style={{ backgroundColor: showNewCycleForm ? 'rgba(96,165,250,0.15)' : 'rgba(255,255,255,0.05)', color: '#60A5FA', border: '1px solid rgba(96,165,250,0.25)' }}
+              >
+                <Plus size={12} />
+                Criar Novo Ciclo
+              </button>
             </div>
             <p className="text-xs mb-4" style={{ color: '#8B949E' }}>
               Defina manualmente qual ciclo está em aberto para auditoria. A página <strong className="text-white">Ciclo Atual</strong> sempre abrirá neste ciclo e exibirá os dados em tempo real.
             </p>
+
+            {/* New cycle creation form */}
+            {showNewCycleForm && (
+              <div className="mb-4 p-4 rounded-xl" style={{ backgroundColor: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.2)' }}>
+                <p className="text-xs font-semibold text-white mb-3">Criar Novo Ciclo</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: '#8B949E' }}>
+                      Período (MM/AAAA) *
+                    </label>
+                    <input
+                      type="text"
+                      value={newCyclePeriodo}
+                      onChange={(e) => setNewCyclePeriodo(e.target.value)}
+                      placeholder="05/2026"
+                      style={{ ...selectStyle, width: '100%' }}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: '#8B949E' }}>
+                      Data Início
+                    </label>
+                    <input
+                      type="text"
+                      value={newCycleInicio}
+                      onChange={(e) => setNewCycleInicio(e.target.value)}
+                      placeholder="26/04/2026"
+                      style={{ ...selectStyle, width: '100%' }}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: '#8B949E' }}>
+                      Data Fim
+                    </label>
+                    <input
+                      type="text"
+                      value={newCycleFim}
+                      onChange={(e) => setNewCycleFim(e.target.value)}
+                      placeholder="25/05/2026"
+                      style={{ ...selectStyle, width: '100%' }}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleCreateCycle}
+                    disabled={creatingCycle || !newCyclePeriodo.trim()}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-all disabled:opacity-50"
+                    style={{ backgroundColor: '#1E40AF' }}
+                  >
+                    {creatingCycle ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                    {creatingCycle ? 'Criando...' : 'Criar Ciclo'}
+                  </button>
+                  <button
+                    onClick={() => setShowNewCycleForm(false)}
+                    className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
+                    style={{ color: '#8B949E', border: '1px solid rgba(255,255,255,0.08)' }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+
             {cycleLoading ? (
               <div className="flex items-center gap-2 py-2">
                 <Loader2 size={14} className="animate-spin" style={{ color: '#8B949E' }} />
@@ -252,7 +357,7 @@ function AdminConfigContent() {
                     onChange={(e) => setSelectedCycle(e.target.value)}
                     style={{ ...selectStyle, borderColor: selectedCycle !== activeCycle ? 'rgba(96,165,250,0.4)' : 'rgba(255,255,255,0.12)' }}
                   >
-                    {periodos.length === 0 && <option value="">Nenhum ciclo importado</option>}
+                    {periodos.length === 0 && <option value="">Nenhum ciclo disponível</option>}
                     {periodos.map((p) => (
                       <option key={p} value={p}>{p}{p === activeCycle ? ' ✓ atual' : ''}</option>
                     ))}

@@ -36,6 +36,8 @@ function CicloAtualContent() {
   const [selectedPeriodo, setSelectedPeriodo] = useState<string>('');
   const [activeCycleDefault, setActiveCycleDefault] = useState<string>('');
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Use a ref to track selected periodo without causing stale closures
+  const selectedPeriodoRef = useRef<string>('');
 
   const canImport = session?.permissoes?.permissao_editar ||
     session?.permissoes?.acesso_total ||
@@ -55,30 +57,41 @@ function CicloAtualContent() {
 
     setAllPeriodos(periodos);
 
-    if (periodos.length === 0) {
+    // Determine which cycle to display
+    // Priority: overridePeriodo > selectedPeriodoRef > savedActiveCycle > periodos[0]
+    const currentSelected = selectedPeriodoRef.current;
+
+    // The active cycle from settings (may not have data yet)
+    const activeCycleFromSettings = savedActiveCycle || '';
+    setActiveCycleDefault(activeCycleFromSettings || (periodos.length > 0 ? periodos[0] : ''));
+
+    // Build the full list including the active cycle even if it has no data
+    const allPeriodsWithActive = activeCycleFromSettings && !periodos.includes(activeCycleFromSettings)
+      ? [activeCycleFromSettings, ...periodos]
+      : periodos;
+
+    if (allPeriodsWithActive.length === 0) {
       setLoading(false);
       return;
     }
 
-    // Determine which cycle to display
-    const defaultCycle = (savedActiveCycle && periodos.includes(savedActiveCycle))
-      ? savedActiveCycle
-      : periodos[0];
+    setAllPeriodos(allPeriodsWithActive);
 
-    setActiveCycleDefault(defaultCycle);
-
-    const current = overridePeriodo && periodos.includes(overridePeriodo)
+    const current = overridePeriodo
       ? overridePeriodo
-      : (selectedPeriodo && periodos.includes(selectedPeriodo))
-        ? selectedPeriodo
-        : defaultCycle;
+      : (currentSelected && allPeriodsWithActive.includes(currentSelected))
+        ? currentSelected
+        : activeCycleFromSettings || allPeriodsWithActive[0];
 
-    const currentIdx = periodos.indexOf(current);
-    const lastClosed = currentIdx < periodos.length - 1 ? periodos[currentIdx + 1] : '';
+    const currentIdx = allPeriodsWithActive.indexOf(current);
+    const lastClosed = currentIdx < allPeriodsWithActive.length - 1 ? allPeriodsWithActive[currentIdx + 1] : '';
 
     setCurrentPeriodo(current);
     setLastPeriodo(lastClosed);
-    if (!selectedPeriodo) setSelectedPeriodo(current);
+    if (!currentSelected) {
+      setSelectedPeriodo(current);
+      selectedPeriodoRef.current = current;
+    }
 
     const currentScores = scores.filter((s: any) => s.periodo === current);
     const lastScores = lastClosed ? scores.filter((s: any) => s.periodo === lastClosed) : [];
@@ -90,13 +103,18 @@ function CicloAtualContent() {
     setNcs(currentNCs);
     setElogios(currentElogios);
     setLoading(false);
-  }, [selectedPeriodo]);
+  }, []);
 
   useEffect(() => {
     loadData();
 
     const handleImport = () => loadData();
-    const handleCycleChange = () => loadData();
+    const handleCycleChange = () => {
+      // Reset selected periodo so it picks up the new active cycle
+      selectedPeriodoRef.current = '';
+      setSelectedPeriodo('');
+      loadData();
+    };
     window.addEventListener('zetti_import_done', handleImport);
     window.addEventListener('zetti_active_cycle_changed', handleCycleChange);
 
@@ -109,10 +127,11 @@ function CicloAtualContent() {
       window.removeEventListener('zetti_active_cycle_changed', handleCycleChange);
       if (pollingRef.current) clearInterval(pollingRef.current);
     };
-  }, []);
+  }, [loadData]);
 
   const handlePeriodoChange = (periodo: string) => {
     setSelectedPeriodo(periodo);
+    selectedPeriodoRef.current = periodo;
     loadData(periodo);
   };
 

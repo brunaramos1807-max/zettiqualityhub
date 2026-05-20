@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import ImportModal from '@/components/ImportModal';
 import { fetchCycleScores } from '@/lib/services/dataService';
+import { getActiveCycle } from '@/lib/services/supabaseDataService';
 import { ClipboardCheck, CheckCircle, Clock, AlertCircle, ChevronDown, ChevronUp, RefreshCw, GitMerge, UserMinus } from 'lucide-react';
 
 const EMBEDDED_ANALYSTS = [
@@ -81,12 +82,16 @@ function AuditoriaContent() {
   const [removedAnalysts, setRemovedAnalysts] = useState<string[]>(() => loadRemovedAnalysts());
   const [loading, setLoading] = useState(true);
   const [andamentoCount, setAndamentoCount] = useState(0);
-  const [currentPeriodo] = useState('04/2026');
+  const [currentPeriodo, setCurrentPeriodo] = useState('');
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
 
   const loadAnalysts = async () => {
     setLoading(true);
     try {
+      // Load active cycle from app_settings
+      const activeCycle = await getActiveCycle();
+      if (activeCycle) setCurrentPeriodo(activeCycle);
+
       const scores = await fetchCycleScores();
       if (scores.length > 0) {
         const map: Record<string, { id: string; name: string; squad: string; coordenador: string }> = {};
@@ -103,7 +108,8 @@ function AuditoriaContent() {
       setAnalysts(EMBEDDED_ANALYSTS);
     }
     try {
-      const key = `zetti_andamento_${currentPeriodo}`;
+      const period = currentPeriodo || '05/2026';
+      const key = `zetti_andamento_${period}`;
       const data = JSON.parse(localStorage.getItem(key) || '[]');
       setAndamentoCount(data.length);
     } catch { /* ignore */ }
@@ -115,9 +121,11 @@ function AuditoriaContent() {
     const handler = () => loadAnalysts();
     window.addEventListener('zetti_import_done', handler);
     window.addEventListener('zetti_andamento_update', handler);
+    window.addEventListener('zetti_active_cycle_changed', handler);
     return () => {
       window.removeEventListener('zetti_import_done', handler);
       window.removeEventListener('zetti_andamento_update', handler);
+      window.removeEventListener('zetti_active_cycle_changed', handler);
     };
   }, []);
 

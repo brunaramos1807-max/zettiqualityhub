@@ -607,3 +607,41 @@ export async function setActiveCycle(periodo: string, actorEmail?: string): Prom
     return { success: false, error: err.message };
   }
 }
+
+// ─── Create a new cycle (without imported data) ───────────────────────────────
+
+export async function createNewCycle(
+  periodo: string,
+  periodoInicio?: string,
+  periodoFim?: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = getSupabase();
+  if (!supabase) return { success: false, error: 'Supabase não configurado.' };
+  try {
+    const metadata: Record<string, string> = {};
+    if (periodoInicio) metadata.periodo_inicio = periodoInicio;
+    if (periodoFim) metadata.periodo_fim = periodoFim;
+
+    const { error } = await supabase
+      .from('import_cycles')
+      .upsert(
+        {
+          periodo,
+          file_name: `Ciclo ${periodo}${periodoInicio && periodoFim ? ` - Período ${periodoInicio} a ${periodoFim}` : ''}`,
+          record_count: 0,
+          is_current: true,
+          is_closed: false,
+          status: 'em_andamento',
+          import_status: 'pending',
+          data_type: 'mixed',
+          metadata,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'periodo' }
+      );
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}

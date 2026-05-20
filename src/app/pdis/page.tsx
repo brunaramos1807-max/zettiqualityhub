@@ -148,11 +148,20 @@ function PDIsContent() {
       observacoes: form.observacoes,
     };
 
+    let result: { success: boolean; error?: string };
     if (editingId) {
-      await updatePDIRecord(editingId, pdiData);
+      result = await updatePDIRecord(editingId, pdiData);
     } else {
-      await savePDIRecord(pdiData);
+      result = await savePDIRecord(pdiData);
     }
+
+    if (!result.success) {
+      console.error('[PDI] Erro ao salvar:', result.error);
+      alert(`Erro ao salvar PDI: ${result.error || 'Tente novamente'}`);
+      setSaving(false);
+      return;
+    }
+
     setForm({ analista: '', squad: '', coordenador: '', periodo: '', objetivo: '', prazo: '', observacoes: '', status_pdi: 'Em andamento' });
     setAttachments([]);
     setShowForm(false);
