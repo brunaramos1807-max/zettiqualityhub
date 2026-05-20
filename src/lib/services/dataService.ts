@@ -927,7 +927,7 @@ export interface PDIRecord {
   analista: string;
   squad: string;
   coordenador: string;
-  status_pdi: 'Em andamento' | 'Atrasado' | 'Concluído' | 'Crítico';
+  status_pdi: 'Em andamento' | 'Atrasado' | 'Concluído' | 'Crítico' | 'Parcial' | 'Aderido' | 'Em reavaliação' | 'Não aderido';
   acoes: any[];
   metas: any[];
   evidencias: any[];
