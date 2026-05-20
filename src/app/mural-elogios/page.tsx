@@ -38,6 +38,7 @@ function MuralContent() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterSquad, setFilterSquad] = useState('all');
+  const [filterPeriodo, setFilterPeriodo] = useState('all');
   const [filterDestaque, setFilterDestaque] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
@@ -53,14 +54,16 @@ function MuralContent() {
   useEffect(() => { loadData(); }, []);
 
   const squads = useMemo(() => ['all', ...Array.from(new Set(elogios.map((e) => e.squad).filter(Boolean)))], [elogios]);
+  const periodos = useMemo(() => ['all', ...Array.from(new Set(elogios.map((e) => e.periodo).filter(Boolean))).sort().reverse()], [elogios]);
 
   const filtered = useMemo(() => {
     let list = elogios;
     if (filterDestaque) list = list.filter((e) => e.destaque);
     if (filterSquad !== 'all') list = list.filter((e) => e.squad === filterSquad);
+    if (filterPeriodo !== 'all') list = list.filter((e) => e.periodo === filterPeriodo);
     if (search) list = list.filter((e) => e.colaborador.toLowerCase().includes(search.toLowerCase()) || e.elogio.toLowerCase().includes(search.toLowerCase()));
     return list;
-  }, [elogios, filterDestaque, filterSquad, search]);
+  }, [elogios, filterDestaque, filterSquad, filterPeriodo, search]);
 
   const topAnalysts = useMemo(() => {
     const map: Record<string, { name: string; squad: string; count: number }> = {};
@@ -71,12 +74,14 @@ function MuralContent() {
     return Object.values(map).sort((a, b) => b.count - a.count).slice(0, 5);
   }, [elogios]);
 
-  const handleToggleDestaque = async (id: string) => {
-    setTogglingId(id);
+  const handleToggleDestaque = async (elogio: ElogioItem) => {
+    setTogglingId(elogio.id);
     try {
-      await toggleElogioDestaque(id);
-      await loadData();
-      toast.success('Destaque atualizado');
+      const newDestaque = !elogio.destaque;
+      await toggleElogioDestaque(elogio.id, newDestaque);
+      // Optimistic update
+      setElogios((prev) => prev.map((e) => e.id === elogio.id ? { ...e, destaque: newDestaque } : e));
+      toast.success(newDestaque ? 'Elogio marcado como destaque' : 'Destaque removido');
     } catch { toast.error('Erro ao atualizar destaque'); }
     setTogglingId(null);
   };
@@ -105,7 +110,7 @@ function MuralContent() {
           { label: 'Destaques', value: elogios.filter((e) => e.destaque).length, icon: <Star size={16} />, color: '#38BDF8' },
           { label: 'Analistas Reconhecidos', value: new Set(elogios.map((e) => e.colaborador)).size, icon: <Users size={16} />, color: '#22C55E' },
         ].map((s) => (
-          <div key={s.label} className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div key={s.label} className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-medium" style={{ color: '#94A3B8' }}>{s.label}</span>
               <span style={{ color: s.color }}>{s.icon}</span>
@@ -117,7 +122,7 @@ function MuralContent() {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Top Analysts */}
-        <div className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
           <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
             <Award size={14} style={{ color: '#F59E0B' }} /> Top Analistas
           </h3>
@@ -155,6 +160,14 @@ function MuralContent() {
               />
             </div>
             <select
+              value={filterPeriodo}
+              onChange={(e) => setFilterPeriodo(e.target.value)}
+              className="px-3 py-2 rounded-lg text-sm text-white outline-none"
+              style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)' }}
+            >
+              {periodos.map((p) => <option key={p} value={p}>{p === 'all' ? 'Todos os Ciclos' : p}</option>)}
+            </select>
+            <select
               value={filterSquad}
               onChange={(e) => setFilterSquad(e.target.value)}
               className="px-3 py-2 rounded-lg text-sm text-white outline-none"
@@ -184,34 +197,69 @@ function MuralContent() {
               {filtered.map((elogio) => (
                 <div
                   key={elogio.id}
-                  className="rounded-xl p-4 transition-all"
+                  className="rounded-xl p-5 transition-all"
                   style={{
-                    backgroundColor: elogio.destaque ? 'rgba(245,158,11,0.06)' : '#0F1B31',
-                    border: `1px solid ${elogio.destaque ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.06)'}`,
+                    backgroundColor: elogio.destaque ? 'rgba(245,158,11,0.08)' : '#0F1B31',
+                    border: `1px solid ${elogio.destaque ? 'rgba(245,158,11,0.35)' : 'rgba(255,255,255,0.08)'}`,
+                    boxShadow: elogio.destaque
+                      ? '0 4px 16px rgba(245,158,11,0.12), 0 1px 4px rgba(0,0,0,0.4)'
+                      : '0 2px 8px rgba(0,0,0,0.3)',
                   }}
                 >
                   <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ backgroundColor: getSquadColor(elogio.squad) }}>
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
+                        style={{ backgroundColor: getSquadColor(elogio.squad), boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}
+                      >
                         {getInitials(elogio.colaborador)}
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-white">{elogio.colaborador}</p>
-                        <p className="text-xs" style={{ color: '#94A3B8' }}>{elogio.squad}{elogio.periodo ? ` · ${elogio.periodo}` : ''}</p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: `${getSquadColor(elogio.squad)}20`, color: getSquadColor(elogio.squad) }}>{elogio.squad}</span>
+                          {elogio.periodo && <span className="text-xs" style={{ color: '#64748B' }}>{elogio.periodo}</span>}
+                        </div>
                       </div>
                     </div>
                     <button
-                      onClick={() => handleToggleDestaque(elogio.id)}
+                      onClick={() => handleToggleDestaque(elogio)}
                       disabled={togglingId === elogio.id}
-                      className="p-1 rounded transition-colors"
-                      style={{ color: elogio.destaque ? '#F59E0B' : 'rgba(255,255,255,0.2)' }}
+                      title={elogio.destaque ? 'Remover destaque' : 'Marcar como destaque'}
+                      className="p-1.5 rounded-lg transition-all hover:scale-110 disabled:opacity-50"
+                      style={{
+                        color: elogio.destaque ? '#F59E0B' : 'rgba(255,255,255,0.25)',
+                        backgroundColor: elogio.destaque ? 'rgba(245,158,11,0.12)' : 'transparent',
+                      }}
                     >
-                      <Star size={14} fill={elogio.destaque ? '#F59E0B' : 'none'} />
+                      <Star size={15} fill={elogio.destaque ? '#F59E0B' : 'none'} />
                     </button>
                   </div>
-                  <p className="text-xs leading-relaxed" style={{ color: 'rgba(255,255,255,0.65)' }}>"{elogio.elogio}"</p>
-                  {elogio.cliente && (
-                    <p className="text-xs mt-2" style={{ color: '#94A3B8' }}>Cliente: {elogio.cliente}</p>
+
+                  <div className="rounded-lg p-3 mb-3" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <p className="text-sm leading-relaxed italic" style={{ color: 'rgba(255,255,255,0.75)' }}>"{elogio.elogio}"</p>
+                  </div>
+
+                  {(elogio.cliente || elogio.protocolo) && (
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {elogio.cliente && (
+                        <p className="text-xs" style={{ color: '#94A3B8' }}>
+                          <span style={{ color: '#64748B' }}>Cliente:</span> {elogio.cliente}
+                        </p>
+                      )}
+                      {elogio.protocolo && (
+                        <p className="text-xs" style={{ color: '#94A3B8' }}>
+                          <span style={{ color: '#64748B' }}>Protocolo:</span> {elogio.protocolo}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {elogio.destaque && (
+                    <div className="mt-2 flex items-center gap-1">
+                      <Star size={10} fill="#F59E0B" style={{ color: '#F59E0B' }} />
+                      <span className="text-xs font-medium" style={{ color: '#F59E0B' }}>Destaque</span>
+                    </div>
                   )}
                 </div>
               ))}

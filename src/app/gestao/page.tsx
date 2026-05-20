@@ -928,57 +928,90 @@ function GestaoContent() {
     setImportingAnalistas(true);
     setImportAnalistasResult(null);
 
-    // Helper: parse date from dd/mm/yyyy, dd/mm/yy, yyyy-mm-dd, or Excel serial
+    // Helper: parse date from various formats
     const parseDate = (raw: any): string | undefined => {
       if (raw === null || raw === undefined || raw === '') return undefined;
       const s = String(raw).trim();
-      if (!s) return undefined;
+      if (!s || s === '0' || s === 'undefined') return undefined;
       // Excel serial number (e.g. 44927)
       if (/^\d{5}$/.test(s)) {
-        const d = XLSX.SSF.parse_date_code(parseInt(s));
-        if (d) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
+        try {
+          const d = XLSX.SSF.parse_date_code(parseInt(s));
+          if (d) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
+        } catch { /* ignore */ }
       }
       // DD/MM/YYYY or DD/MM/YY
       const slashParts = s.split('/');
       if (slashParts.length === 3) {
         const [dd, mm, yy] = slashParts;
         const year = yy.length === 2 ? `20${yy}` : yy;
-        return `${year}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
+        const result = `${year}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
+        // Validate
+        if (!isNaN(Date.parse(result))) return result;
       }
       // DD-MM-YYYY
       const dashParts = s.split('-');
       if (dashParts.length === 3 && dashParts[0].length <= 2) {
         const [dd, mm, yyyy] = dashParts;
-        return `${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
+        const result = `${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
+        if (!isNaN(Date.parse(result))) return result;
       }
       // YYYY-MM-DD
       if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
       return undefined;
     };
 
-    // Helper: get value from row object by trying multiple key variants
+    // Helper: normalize phone number
+    const parsePhone = (raw: any): string | undefined => {
+      if (!raw) return undefined;
+      const s = String(raw).trim().replace(/\D/g, '');
+      if (!s || s.length < 8) return undefined;
+      return s;
+    };
+
+    // Helper: get value from row by trying multiple key variants
     const getVal = (row: Record<string, any>, ...keys: string[]): string => {
-      const rowLower: Record<string, any> = {};
+      const rowNorm: Record<string, any> = {};
       Object.keys(row).forEach((k) => {
-        rowLower[k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()] = row[k];
+        const norm = k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ');
+        rowNorm[norm] = row[k];
+        // Also store without spaces
+        rowNorm[norm.replace(/\s/g, '_')] = row[k];
+        rowNorm[norm.replace(/\s/g, '')] = row[k];
       });
       for (const k of keys) {
-        const norm = k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        const norm = k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ');
         // Exact match
-        if (rowLower[norm] !== undefined && rowLower[norm] !== null && rowLower[norm] !== '') {
-          return String(rowLower[norm]).trim();
+        if (rowNorm[norm] !== undefined && rowNorm[norm] !== null && String(rowNorm[norm]).trim() !== '') {
+          return String(rowNorm[norm]).trim();
         }
-        // Partial match
-        const found = Object.keys(rowLower).find((rk) => rk.includes(norm) || norm.includes(rk));
-        if (found && rowLower[found] !== undefined && rowLower[found] !== null && rowLower[found] !== '') {
-          return String(rowLower[found]).trim();
+        // Without spaces
+        const normNoSpace = norm.replace(/\s/g, '');
+        if (rowNorm[normNoSpace] !== undefined && rowNorm[normNoSpace] !== null && String(rowNorm[normNoSpace]).trim() !== '') {
+          return String(rowNorm[normNoSpace]).trim();
+        }
+        // Partial match (key contains search term or vice versa)
+        const found = Object.keys(rowNorm).find((rk) => rk.includes(norm) || norm.includes(rk));
+        if (found && rowNorm[found] !== undefined && rowNorm[found] !== null && String(rowNorm[found]).trim() !== '') {
+          return String(rowNorm[found]).trim();
         }
       }
       return '';
     };
 
+    // Helper: map nivel from planilha values
+    const mapNivel = (raw: string): string => {
+      if (!raw) return 'Júnior';
+      const lower = raw.toLowerCase();
+      if (lower.includes('trainee') || lower.includes('estagio') || lower.includes('estágio')) return 'Júnior';
+      if (lower.includes('junior') || lower.includes('júnior') || lower.includes('jr') || lower.includes('1')) return 'Júnior';
+      if (lower.includes('pleno') || lower.includes('pl') || lower.includes('2')) return 'Pleno';
+      if (lower.includes('senior') || lower.includes('sênior') || lower.includes('sr') || lower.includes('3')) return 'Sênior';
+      if (lower.includes('especialista') || lower.includes('esp')) return 'Especialista';
+      return raw || 'Júnior';
+    };
+
     try {
-      // Parse file — support CSV and XLSX
       let rows: Record<string, any>[] = [];
       const ext = file.name.split('.').pop()?.toLowerCase();
 
@@ -988,7 +1021,7 @@ function GestaoContent() {
         const ws = wb.Sheets[wb.SheetNames[0]];
         rows = XLSX.utils.sheet_to_json(ws, { defval: '' }) as Record<string, any>[];
       } else {
-        // CSV — use PapaParse for proper quoted field handling
+        // CSV — use PapaParse
         const text = await file.text();
         const firstLine = text.split('\n')[0] || '';
         const semicolonCount = (firstLine.match(/;/g) || []).length;
@@ -1007,17 +1040,39 @@ function GestaoContent() {
       const errors: string[] = [];
 
       for (const row of rows) {
-        const nome = getVal(row, 'nome', 'name', 'analista');
+        // Support both "Nome" and "Nome Completo" columns
+        const nome = getVal(row,
+          'nome completo', 'nome', 'name', 'analista', 'colaborador'
+        );
         if (!nome) continue;
 
-        const email = getVal(row, 'email', 'e-mail', 'e mail');
+        const email = getVal(row, 'email', 'e-mail', 'e mail', 'e_mail');
+        const telefone = parsePhone(getVal(row, 'telefone', 'phone', 'celular', 'fone', 'tel'));
         const squad = getVal(row, 'squad', 'equipe', 'team', 'time');
         const coordenador = getVal(row, 'coordenador', 'coordinator', 'gestor', 'lider', 'líder');
-        const cargo = getVal(row, 'cargo', 'role', 'funcao', 'função', 'cargo operacional');
-        const nivel = getVal(row, 'nivel', 'nível', 'level', 'senioridade');
-        const dataAdmissaoRaw = getVal(row, 'data admissao', 'data_admissao', 'admissao', 'admissão', 'admission', 'data de admissao', 'data de admissão', 'dt admissao', 'dt_admissao');
-        const aniversarioRaw = getVal(row, 'aniversario', 'aniversário', 'birthday', 'nascimento', 'data nascimento', 'data de nascimento', 'dt nascimento', 'aniversario do colaborador');
-        const ultimaPromocaoRaw = getVal(row, 'ultima promocao', 'última promoção', 'promocao', 'promoção', 'promotion', 'dt promocao');
+        const cargo = getVal(row,
+          'cargo', 'cargo operacional', 'role', 'funcao', 'função',
+          'tipo de usuario', 'tipo usuario', 'tipo_usuario', 'tipodeusuario'
+        );
+        const nivelRaw = getVal(row,
+          'nivel', 'nível', 'level', 'senioridade', 'cargo operacional',
+          'cargo', 'nivel operacional'
+        );
+        const nivel = mapNivel(nivelRaw);
+
+        // Date fields
+        const dataAdmissaoRaw = getVal(row,
+          'data de admissao', 'data admissao', 'data_admissao', 'admissao', 'admissão',
+          'admission', 'data de admissão', 'dt admissao', 'dt_admissao', 'dataadmissao'
+        );
+        const aniversarioRaw = getVal(row,
+          'data de nascimento', 'aniversario', 'aniversário', 'birthday', 'nascimento',
+          'data nascimento', 'dt nascimento', 'aniversario do colaborador', 'datanascimento'
+        );
+        const ultimaPromocaoRaw = getVal(row,
+          'ultima promocao', 'última promoção', 'ultima promoção', 'promocao', 'promoção',
+          'promotion', 'dt promocao', 'data promocao', 'data promoção'
+        );
 
         const dataAdmissao = parseDate(dataAdmissaoRaw);
         const aniversario = parseDate(aniversarioRaw);
@@ -1027,11 +1082,12 @@ function GestaoContent() {
         const analista: Omit<AnalistaRecord, 'id' | 'created_at' | 'updated_at'> = {
           nome,
           email: email || undefined,
+          telefone: telefone || undefined,
           squad: squad || undefined,
           equipe: squad || undefined,
           coordenador: coordenador || undefined,
           cargo_operacional: cargo || 'Analista',
-          nivel: nivel || 'Junior',
+          nivel: nivel || 'Júnior',
           status: 'ativo',
           aniversario: aniversario || undefined,
           tempo_empresa: tempoEmpresa.texto || undefined,
@@ -1052,7 +1108,7 @@ function GestaoContent() {
       setImportAnalistasResult({ success, errors });
       reload();
     } catch (err: any) {
-      setImportAnalistasResult({ success: 0, errors: [err.message] });
+      setImportAnalistasResult({ success: 0, errors: [`Erro ao processar arquivo: ${err.message}`] });
     } finally {
       setImportingAnalistas(false);
       if (importAnalistasRef.current) importAnalistasRef.current.value = '';

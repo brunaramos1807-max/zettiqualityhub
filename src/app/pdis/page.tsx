@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { fetchCycleScores, fetchAllPeriodos, fetchPDIRecords, savePDIRecord, updatePDIRecord, deletePDIRecord, type PDIRecord } from '@/lib/services/dataService';
-import { BookOpen, Plus, TrendingUp, CheckCircle, X, AlertTriangle, Clock, RefreshCw, Loader2, Trash2, Edit2 } from 'lucide-react';
+import { BookOpen, Plus, TrendingUp, CheckCircle, X, AlertTriangle, RefreshCw, Loader2, Trash2, Edit2, Paperclip, Upload, FileText } from 'lucide-react';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -10,7 +10,19 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
   'Atrasado': { label: 'Atrasado', color: '#F59E0B', bg: 'rgba(245,158,11,0.1)' },
   'Concluído': { label: 'Concluído', color: '#22C55E', bg: 'rgba(34,197,94,0.1)' },
   'Crítico': { label: 'Crítico', color: '#EF4444', bg: 'rgba(239,68,68,0.1)' },
+  'Parcial': { label: 'Parcial', color: '#A78BFA', bg: 'rgba(167,139,250,0.1)' },
+  'Aderido': { label: 'Aderido', color: '#10B981', bg: 'rgba(16,185,129,0.1)' },
+  'Em reavaliação': { label: 'Em Reavaliação', color: '#F97316', bg: 'rgba(249,115,22,0.1)' },
+  'Não aderido': { label: 'Não Aderido', color: '#DC2626', bg: 'rgba(220,38,38,0.1)' },
 };
+
+interface AttachmentItem {
+  name: string;
+  url: string;
+  type: string;
+  size: number;
+  uploadedAt: string;
+}
 
 function PDIsContent() {
   const { session } = useSystemAuth();
@@ -24,6 +36,10 @@ function PDIsContent() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
   const [form, setForm] = useState({
     analista: '', squad: '', coordenador: '', periodo: '',
     objetivo: '', prazo: '', observacoes: '', status_pdi: 'Em andamento' as PDIRecord['status_pdi'],
@@ -40,7 +56,6 @@ function PDIsContent() {
       fetchAllPeriodos(),
     ]);
     setPdis(pdiList);
-    // Build analyst list from real scores
     const map: Record<string, { name: string; squad: string; coordenador: string; qa: number; iepc: number; count: number }> = {};
     scores.forEach((s: any) => {
       if (!map[s.analista]) {
@@ -80,6 +95,36 @@ function PDIsContent() {
     }));
   };
 
+  const handleFileAttach = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingFile(true);
+    try {
+      // Store file as base64 data URL for local attachment
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const url = ev.target?.result as string;
+        const newAttachment: AttachmentItem = {
+          name: file.name,
+          url,
+          type: file.type,
+          size: file.size,
+          uploadedAt: new Date().toISOString(),
+        };
+        setAttachments((prev) => [...prev, newAttachment]);
+        setUploadingFile(false);
+      };
+      reader.readAsDataURL(file);
+    } catch {
+      setUploadingFile(false);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleAdd = async () => {
     if (!form.analista || !form.objetivo || !form.prazo) return;
     setSaving(true);
@@ -92,13 +137,12 @@ function PDIsContent() {
       status_pdi: form.status_pdi,
       acoes: [],
       metas: [{ descricao: form.objetivo, prazo: form.prazo, status: 'pendente' }],
-      evidencias: [],
+      evidencias: attachments.map((a) => a.name),
       feedback: form.observacoes || '',
       nc_reincidentes: [],
       qa_score: analyst?.qa || 0,
       iepc_score: analyst?.iepc || 0,
       source: 'manual',
-      // Legacy compat fields
       objetivo: form.objetivo,
       prazo: form.prazo,
       observacoes: form.observacoes,
@@ -110,6 +154,7 @@ function PDIsContent() {
       await savePDIRecord(pdiData);
     }
     setForm({ analista: '', squad: '', coordenador: '', periodo: '', objetivo: '', prazo: '', observacoes: '', status_pdi: 'Em andamento' });
+    setAttachments([]);
     setShowForm(false);
     setEditingId(null);
     setSaving(false);
@@ -127,6 +172,7 @@ function PDIsContent() {
       observacoes: pdi.observacoes || pdi.feedback || '',
       status_pdi: pdi.status_pdi,
     });
+    setAttachments([]);
     setEditingId(pdi.id);
     setShowForm(true);
   };
@@ -146,9 +192,13 @@ function PDIsContent() {
   const stats = {
     total: pdis.length,
     em_andamento: pdis.filter((p) => p.status_pdi === 'Em andamento').length,
+    aderido: pdis.filter((p) => p.status_pdi === 'Aderido').length,
+    parcial: pdis.filter((p) => p.status_pdi === 'Parcial').length,
+    reavaliacao: pdis.filter((p) => p.status_pdi === 'Em reavaliação').length,
+    nao_aderido: pdis.filter((p) => p.status_pdi === 'Não aderido').length,
+    concluido: pdis.filter((p) => p.status_pdi === 'Concluído').length,
     atrasado: pdis.filter((p) => p.status_pdi === 'Atrasado').length,
     critico: pdis.filter((p) => p.status_pdi === 'Crítico').length,
-    concluido: pdis.filter((p) => p.status_pdi === 'Concluído').length,
   };
 
   return (
@@ -156,14 +206,14 @@ function PDIsContent() {
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-white">PDIs</h1>
-          <p className="text-sm mt-0.5" style={{ color: '#94A3B8' }}>Planos de Desenvolvimento Individual — dados persistidos globalmente</p>
+          <p className="text-sm mt-0.5" style={{ color: '#94A3B8' }}>Planos de Desenvolvimento Individual</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={loadData} className="p-2 rounded-lg transition-colors" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>
             <RefreshCw size={14} />
           </button>
           {canEdit && (
-            <button onClick={() => { setEditingId(null); setForm({ analista: '', squad: '', coordenador: '', periodo: '', objetivo: '', prazo: '', observacoes: '', status_pdi: 'Em andamento' }); setShowForm(true); }}
+            <button onClick={() => { setEditingId(null); setAttachments([]); setForm({ analista: '', squad: '', coordenador: '', periodo: '', objetivo: '', prazo: '', observacoes: '', status_pdi: 'Em andamento' }); setShowForm(true); }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ backgroundColor: '#1E40AF' }}>
               <Plus size={13} /> Novo PDI
             </button>
@@ -172,13 +222,12 @@ function PDIsContent() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
           { label: 'Total PDIs', value: stats.total, color: '#38BDF8', icon: <BookOpen size={16} /> },
-          { label: 'Em Andamento', value: stats.em_andamento, color: '#38BDF8', icon: <TrendingUp size={16} /> },
-          { label: 'Atrasados', value: stats.atrasado, color: '#F59E0B', icon: <Clock size={16} /> },
-          { label: 'Críticos', value: stats.critico, color: '#EF4444', icon: <AlertTriangle size={16} /> },
-          { label: 'Concluídos', value: stats.concluido, color: '#22C55E', icon: <CheckCircle size={16} /> },
+          { label: 'Aderidos', value: stats.aderido, color: '#10B981', icon: <CheckCircle size={16} /> },
+          { label: 'Em Reavaliação', value: stats.reavaliacao, color: '#F97316', icon: <TrendingUp size={16} /> },
+          { label: 'Não Aderidos', value: stats.nao_aderido, color: '#DC2626', icon: <AlertTriangle size={16} /> },
         ].map((s) => (
           <div key={s.label} className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
             <div className="flex items-center justify-between mb-3">
@@ -188,6 +237,22 @@ function PDIsContent() {
             <p className="text-2xl font-bold text-white">{s.value}</p>
           </div>
         ))}
+      </div>
+
+      {/* Status breakdown */}
+      <div className="rounded-xl p-4 mb-6" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <p className="text-xs font-semibold text-white mb-3">Distribuição por Status</p>
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(STATUS_CONFIG).map(([key, cfg]) => {
+            const count = pdis.filter((p) => p.status_pdi === key).length;
+            return (
+              <div key={key} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium" style={{ backgroundColor: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}30` }}>
+                <span>{cfg.label}</span>
+                <span className="font-bold">{count}</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Filters */}
@@ -213,16 +278,16 @@ function PDIsContent() {
             const objetivo = pdi.objetivo || pdi.metas?.[0]?.descricao || '—';
             const prazo = pdi.prazo || pdi.metas?.[0]?.prazo || '—';
             return (
-              <div key={pdi.id} className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div key={pdi.id} className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: `1px solid ${statusCfg.color}20`, boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }}>
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <span className="text-sm font-semibold text-white">{pdi.analista}</span>
                       <span className="text-xs" style={{ color: '#94A3B8' }}>· {pdi.squad}</span>
                       {pdi.coordenador && <span className="text-xs" style={{ color: '#64748B' }}>· {pdi.coordenador}</span>}
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: statusCfg.bg, color: statusCfg.color }}>{statusCfg.label}</span>
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: statusCfg.bg, color: statusCfg.color }}>{statusCfg.label}</span>
                     </div>
-                    <p className="text-sm" style={{ color: 'rgba(255,255,255,0.7)' }}>{objetivo}</p>
+                    <p className="text-sm leading-relaxed mb-2" style={{ color: 'rgba(255,255,255,0.75)' }}>{objetivo}</p>
                     <div className="flex items-center gap-3 mt-1 flex-wrap">
                       <p className="text-xs" style={{ color: '#94A3B8' }}>Prazo: {prazo}</p>
                       <p className="text-xs" style={{ color: '#94A3B8' }}>Ciclo: {pdi.periodo}</p>
@@ -230,7 +295,17 @@ function PDIsContent() {
                       {pdi.iepc_score > 0 && <p className="text-xs" style={{ color: '#06B6D4' }}>IEPC: {pdi.iepc_score.toFixed(1)}%</p>}
                     </div>
                     {(pdi.observacoes || pdi.feedback) && (
-                      <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>{pdi.observacoes || pdi.feedback}</p>
+                      <p className="text-xs mt-2 leading-relaxed p-2 rounded-lg" style={{ color: '#94A3B8', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        {pdi.observacoes || pdi.feedback}
+                      </p>
+                    )}
+                    {pdi.evidencias && pdi.evidencias.length > 0 && (
+                      <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                        <Paperclip size={11} style={{ color: '#64748B' }} />
+                        {pdi.evidencias.map((ev, i) => (
+                          <span key={i} className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: 'rgba(56,189,248,0.08)', color: '#38BDF8' }}>{ev}</span>
+                        ))}
+                      </div>
                     )}
                   </div>
                   {canEdit && (
@@ -268,12 +343,12 @@ function PDIsContent() {
       {/* Add/Edit Form Modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.85)' }}>
-          <div className="w-full max-w-lg rounded-2xl overflow-hidden" style={{ backgroundColor: '#0A1628', border: '1px solid rgba(56,189,248,0.2)' }}>
+          <div className="w-full max-w-2xl rounded-2xl overflow-hidden max-h-[90vh] flex flex-col" style={{ backgroundColor: '#0A1628', border: '1px solid rgba(56,189,248,0.2)' }}>
             <div className="flex items-center justify-between p-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
               <h3 className="font-bold text-white">{editingId ? 'Editar PDI' : 'Novo PDI'}</h3>
-              <button onClick={() => { setShowForm(false); setEditingId(null); }} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#94A3B8' }}><X size={16} /></button>
+              <button onClick={() => { setShowForm(false); setEditingId(null); setAttachments([]); }} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#94A3B8' }}><X size={16} /></button>
             </div>
-            <div className="p-5 space-y-4">
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-white mb-1.5">Analista *</label>
@@ -312,27 +387,57 @@ function PDIsContent() {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-white mb-1.5">Objetivo / Plano de Ação *</label>
-                <textarea value={form.objetivo} onChange={(e) => setForm((f) => ({ ...f, objetivo: e.target.value }))} placeholder="Descreva o objetivo do PDI..." rows={3}
-                  className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none resize-none"
-                  style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }} />
+                <textarea value={form.objetivo} onChange={(e) => setForm((f) => ({ ...f, objetivo: e.target.value }))} placeholder="Descreva detalhadamente o objetivo do PDI, ações esperadas e critérios de sucesso..." rows={5}
+                  className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none resize-y"
+                  style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', minHeight: '100px' }} />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-white mb-1.5">Prazo *</label>
-                  <input type="date" value={form.prazo} onChange={(e) => setForm((f) => ({ ...f, prazo: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none"
-                    style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', colorScheme: 'dark' }} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-white mb-1.5">Observações</label>
-                  <input value={form.observacoes} onChange={(e) => setForm((f) => ({ ...f, observacoes: e.target.value }))} placeholder="Observações..."
-                    className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none"
-                    style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }} />
-                </div>
+              <div>
+                <label className="block text-xs font-semibold text-white mb-1.5">Observações / Feedback</label>
+                <textarea value={form.observacoes} onChange={(e) => setForm((f) => ({ ...f, observacoes: e.target.value }))} placeholder="Adicione observações, feedback do coordenador, contexto adicional..." rows={4}
+                  className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none resize-y"
+                  style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', minHeight: '80px' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-white mb-1.5">Prazo *</label>
+                <input type="date" value={form.prazo} onChange={(e) => setForm((f) => ({ ...f, prazo: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none"
+                  style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', colorScheme: 'dark' }} />
+              </div>
+
+              {/* File Attachments */}
+              <div>
+                <label className="block text-xs font-semibold text-white mb-1.5 flex items-center gap-1.5">
+                  <Paperclip size={12} /> Anexos
+                </label>
+                <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileAttach} accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.txt" />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingFile}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all disabled:opacity-50 w-full justify-center"
+                  style={{ backgroundColor: 'rgba(56,189,248,0.06)', border: '1px dashed rgba(56,189,248,0.3)', color: '#38BDF8' }}
+                >
+                  {uploadingFile ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                  {uploadingFile ? 'Carregando...' : 'Clique para anexar arquivo (PDF, DOC, XLS, imagem)'}
+                </button>
+                {attachments.length > 0 && (
+                  <div className="mt-2 space-y-1.5">
+                    {attachments.map((att, i) => (
+                      <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                        <FileText size={12} style={{ color: '#38BDF8' }} />
+                        <span className="text-xs text-white flex-1 truncate">{att.name}</span>
+                        <span className="text-xs" style={{ color: '#64748B' }}>{(att.size / 1024).toFixed(0)} KB</span>
+                        <button onClick={() => removeAttachment(i)} className="p-0.5 rounded hover:bg-red-500/10" style={{ color: '#94A3B8' }}>
+                          <X size={11} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex gap-3 p-5" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-              <button onClick={() => { setShowForm(false); setEditingId(null); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
+              <button onClick={() => { setShowForm(false); setEditingId(null); setAttachments([]); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
               <button onClick={handleAdd} disabled={saving || !form.analista || !form.objetivo || !form.prazo}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
                 style={{ backgroundColor: '#1E40AF' }}>

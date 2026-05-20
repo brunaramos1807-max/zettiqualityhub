@@ -1036,6 +1036,7 @@ export interface AnalistaRecord {
   id: string;
   nome: string;
   email?: string;
+  telefone?: string;
   squad?: string;
   equipe?: string;
   coordenador?: string;
