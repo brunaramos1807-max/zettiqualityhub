@@ -127,24 +127,24 @@ export default function EnterpriseSidebar({ collapsed = false, onToggle }: Enter
       {/* Logo */}
       <div
         className="flex items-center gap-3 px-4 py-4 flex-shrink-0"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', minHeight: '64px' }}
+        style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', minHeight: '72px' }}
       >
         <div
-          className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center"
+          className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center"
           style={{ backgroundColor: '#1E40AF' }}
         >
           <AppImage
             src="/assets/images/ChatGPT_Image_18_de_mai._de_2026_16_36_10-1779133005009.png"
             alt="QualiVisão logo"
-            width={32}
-            height={32}
+            width={40}
+            height={40}
             className="w-full h-full object-cover"
           />
         </div>
         {!collapsed && (
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold text-white tracking-widest leading-tight">QUALIVISÃO</p>
-            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px' }}>Enterprise Platform</p>
+            <p className="font-extrabold text-white tracking-widest leading-tight" style={{ fontSize: '15px', letterSpacing: '0.12em' }}>QUALIVISÃO</p>
+            <p className="font-medium" style={{ color: 'rgba(255,255,255,0.65)', fontSize: '11px', letterSpacing: '0.04em' }}>Enterprise Platform</p>
           </div>
         )}
         <button
