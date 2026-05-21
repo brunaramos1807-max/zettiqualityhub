@@ -111,7 +111,49 @@ interface UserProfileData {
   full_name: string | null;
 }
 
+// ─── Profile cache (sessionStorage) ─────────────────────────────────────────
+const PROFILE_CACHE_KEY = 'zetti_user_profile_cache';
+const PERMS_CACHE_KEY = 'zetti_user_perms_cache';
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function readCache<T>(key: string): T | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > CACHE_TTL_MS) {
+      sessionStorage.removeItem(key);
+      return null;
+    }
+    return data as T;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(key: string, data: unknown): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(key, JSON.stringify({ data, ts: Date.now() }));
+  } catch {
+    // sessionStorage full or unavailable — ignore
+  }
+}
+
+function clearProfileCache(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.removeItem(PROFILE_CACHE_KEY);
+    sessionStorage.removeItem(PERMS_CACHE_KEY);
+  } catch { /* ignore */ }
+}
+
 async function fetchFullUserProfile(userId: string, email: string): Promise<UserProfileData> {
+  const cacheKey = `${PROFILE_CACHE_KEY}_${userId}`;
+  const cached = readCache<UserProfileData>(cacheKey);
+  if (cached) return cached;
+
   const empty: UserProfileData = {
     role: null, squad: null, squads: [], cargo_id: null,
     cargo_nome: null, is_admin_master: false, full_name: null,
@@ -120,25 +162,18 @@ async function fetchFullUserProfile(userId: string, email: string): Promise<User
     const supabase = createClient();
     if (!supabase) return empty;
 
-    // Try user_profiles first
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('role, squad, squads, equipes, cargo_id, full_name')
-      .eq('id', userId)
-      .maybeSingle();
+    // Run both queries in parallel
+    const [profileResult, preRegResult] = await Promise.all([
+      supabase.from('user_profiles').select('role, squad, squads, equipes, cargo_id, full_name').eq('id', userId).maybeSingle(),
+      supabase.from('pre_registered_users').select('role, squad, squads, cargo_id, full_name').eq('email', email.toLowerCase()).maybeSingle(),
+    ]);
 
-    // Also try pre_registered_users by email as fallback
-    const { data: preReg } = await supabase
-      .from('pre_registered_users')
-      .select('role, squad, squads, cargo_id, full_name')
-      .eq('email', email.toLowerCase())
-      .maybeSingle();
-
-    const source = profile || preReg;
+    const source = profileResult.data || preRegResult.data;
     if (!source) {
-      // Admin email fallback
       if (ADMIN_EMAILS.includes(email.toLowerCase())) {
-        return { role: 'Admin', squad: null, squads: [], cargo_id: null, cargo_nome: 'Admin Master', is_admin_master: true, full_name: null };
+        const result: UserProfileData = { role: 'Admin', squad: null, squads: [], cargo_id: null, cargo_nome: 'Admin Master', is_admin_master: true, full_name: null };
+        writeCache(cacheKey, result);
+        return result;
       }
       return empty;
     }
@@ -150,7 +185,7 @@ async function fetchFullUserProfile(userId: string, email: string): Promise<User
       : squad ? [squad] : [];
     const cargo_id = source.cargo_id || null;
 
-    // Fetch cargo details
+    // Fetch cargo details only if needed
     let cargo_nome: string | null = null;
     let is_admin_master = false;
     if (cargo_id) {
@@ -165,29 +200,22 @@ async function fetchFullUserProfile(userId: string, email: string): Promise<User
       }
     }
 
-    // Admin email always gets admin master
-    if (ADMIN_EMAILS.includes(email.toLowerCase())) {
-      is_admin_master = true;
-    }
-    if (ADMIN_ROLES.includes(role || '')) {
-      is_admin_master = true;
-    }
+    if (ADMIN_EMAILS.includes(email.toLowerCase())) is_admin_master = true;
+    if (ADMIN_ROLES.includes(role || '')) is_admin_master = true;
 
-    return {
-      role,
-      squad,
-      squads,
-      cargo_id,
-      cargo_nome,
-      is_admin_master,
-      full_name: source.full_name || null,
-    };
+    const result: UserProfileData = { role, squad, squads, cargo_id, cargo_nome, is_admin_master, full_name: source.full_name || null };
+    writeCache(cacheKey, result);
+    return result;
   } catch {
     return empty;
   }
 }
 
 async function fetchModulePermissions(userId: string): Promise<ModulePermission[]> {
+  const cacheKey = `${PERMS_CACHE_KEY}_${userId}`;
+  const cached = readCache<ModulePermission[]>(cacheKey);
+  if (cached) return cached;
+
   try {
     const supabase = createClient();
     if (!supabase) return [];
@@ -195,7 +223,9 @@ async function fetchModulePermissions(userId: string): Promise<ModulePermission[
       .from('user_permissions')
       .select('*')
       .eq('user_profile_id', userId);
-    return (data || []) as ModulePermission[];
+    const result = (data || []) as ModulePermission[];
+    if (result.length > 0) writeCache(cacheKey, result);
+    return result;
   } catch {
     return [];
   }
@@ -504,6 +534,7 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
 
   const logout = async () => {
     logoutUser();
+    clearProfileCache();
     setSession(null);
     setUserRole(null);
     setUserSquad(null);

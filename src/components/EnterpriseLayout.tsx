@@ -1,9 +1,11 @@
 'use client';
 import React, { useState } from 'react';
-import EnterpriseSidebar from '@/components/EnterpriseSidebar';
-import EnterpriseTopbar from '@/components/EnterpriseTopbar';
-import AppFooter from '@/components/AppFooter';
+import dynamic from 'next/dynamic';
 import RouteGuard from '@/components/RouteGuard';
+
+const EnterpriseSidebar = dynamic(() => import('@/components/EnterpriseSidebar'), { ssr: false });
+const EnterpriseTopbar = dynamic(() => import('@/components/EnterpriseTopbar'), { ssr: false });
+const AppFooter = dynamic(() => import('@/components/AppFooter'), { ssr: false });
 
 interface EnterpriseLayoutProps {
   children: React.ReactNode;
