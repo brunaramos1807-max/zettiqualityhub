@@ -155,78 +155,143 @@ export function parseQAScoresCSV(rows: Record<string, any>[], fallbackPeriodo?: 
       return undefined;
     };
 
-    const rowPeriodo = String(get('Período', 'Periodo', 'período', 'periodo') ?? '').trim();
+    // Period: accept Período, Periodo, competencia, ciclo, mes/ano combo
+    const rowPeriodo = String(get('Período', 'Periodo', 'período', 'periodo', 'competencia', 'ciclo') ?? '').trim();
 
     const qtdRaw = get(
       'Qtd de Atendimentos Avaliados', 'Qtd Atendimentos Avaliados',
-      'Quantidade de Atendimentos Avaliados'
+      'Quantidade de Atendimentos Avaliados',
+      'qtd_atendimentos', 'qtd_protocolos'
     );
     const qtdNum = parseNum(qtdRaw);
 
     const tipoDemanda = String(get('Tipo de Demanda', 'Tipo Demanda') ?? '').trim();
 
+    // Analista: accept old "Analista" or new "analista_nome" / "analista"
+    const analista = String(get('Analista', 'analista_nome', 'analista') ?? '').trim();
+
+    // Squad / coordenador
+    const squad = String(get('Squad', 'squad') ?? '').trim();
+    const coordenador = String(get('Coordenador', 'coordenador') ?? '').trim();
+    const auditor = String(get('Auditor', 'auditor') ?? '').trim();
+
+    // Data: accept old "Data do Registro" or new "data_avaliacao"
+    const dataRegistro = String(get('Data do Registro', 'data_avaliacao', 'data_registro') ?? '').trim();
+
+    // Nota Final QA: accept old verbose name or new short name
+    const notaFinalQA = parseNum(get(
+      'Nota Final QA (0-100)',
+      'nota_final_qa',
+      'nota final qa'
+    ));
+
+    // IEPC total: accept old verbose name or new short "iepc"
+    const iepcTotal = parseNum(get(
+      'IEPC - Índice de Experiência Percebida pelo Cliente (0-100)',
+      'IEPC - Indice de Experiencia Percebida pelo Cliente (0-100)',
+      'IEPC',
+      'iepc'
+    ));
+
+    // Total NCs
+    const totalNCs = parseNum(get(
+      'Total de Não Conformidades', 'Total de Nao Conformidades', 'Total NCs',
+      'total_nao_conformidades', 'total_ncs'
+    ));
+
+    // Pontos deduzidos NC
+    const pontosDeduzidosNC = parseNum(get(
+      'Pontos Deduzidos por NC', 'Pontos Deduzidos',
+      'pontos_deduzidos_nc'
+    ));
+
+    // QA Pillars — accept old verbose names OR new short names
+    const p1 = parseNum(get(
+      'QA P1 | Gestão do Fluxo e Rastreabilidade do Atendimento - Pontos',
+      'QA P1 | Gestao do Fluxo e Rastreabilidade do Atendimento - Pontos',
+      'qa_atendimento_pontos'
+    ));
+    const p2 = parseNum(get(
+      'QA P2 | Gestão da Tratativa da Demanda - Pontos',
+      'QA P2 | Gestao da Tratativa da Demanda - Pontos',
+      'qa_solucao_pontos'
+    ));
+    const p3 = parseNum(get(
+      'QA P3 | Análise e Assertividade Técnica da Demanda - Pontos',
+      'QA P3 | Analise e Assertividade Tecnica da Demanda - Pontos',
+      'qa_precisao_pontos'
+    ));
+    const p4 = parseNum(get(
+      'QA P4 | Qualidade da Comunicação no Atendimento - Pontos',
+      'QA P4 | Qualidade da Comunicacao no Atendimento - Pontos',
+      'qa_comunicacao_pontos'
+    ));
+    const p5 = parseNum(get(
+      'QA P5 | Conduta Relacional no Atendimento - Pontos',
+      'qa_relacionamento_pontos'
+    ));
+
+    // IEPC dimensions — accept old verbose names OR new short names
+    const e1 = parseNum(get(
+      'IEPC E1 – Resolução Percebida - Pontos',
+      'IEPC E1 - Resolução Percebida - Pontos',
+      'IEPC E1 – Resolucao Percebida - Pontos',
+      'IEPC E1 - Resolucao Percebida - Pontos',
+      'iepc_resolucaoPercebida_pontos',
+      'iepc_resolucaopercebida_pontos'
+    ));
+    const e2 = parseNum(get(
+      'IEPC E2 – Compreensão e Segurança - Pontos',
+      'IEPC E2 - Compreensão e Segurança - Pontos',
+      'IEPC E2 – Compreensao e Seguranca - Pontos',
+      'IEPC E2 - Compreensao e Seguranca - Pontos',
+      'iepc_clarezaConfianca_pontos',
+      'iepc_clarezaconfianca_pontos'
+    ));
+    const e3 = parseNum(get(
+      'IEPC E3 – Esforço do Cliente - Pontos',
+      'IEPC E3 - Esforço do Cliente - Pontos',
+      'IEPC E3 – Esforco do Cliente - Pontos',
+      'IEPC E3 - Esforco do Cliente - Pontos',
+      'iepc_esforcoCliente_pontos',
+      'iepc_esforcocliente_pontos'
+    ));
+    const e4 = parseNum(get(
+      'IEPC E4 – Tempo e Fluidez - Pontos',
+      'IEPC E4 - Tempo e Fluidez - Pontos',
+      'iepc_tempoFluidez_pontos',
+      'iepc_tempofluidez_pontos'
+    ));
+    const e5 = parseNum(get(
+      'IEPC E5 – Experiência Relacional - Pontos',
+      'IEPC E5 - Experiência Relacional - Pontos',
+      'IEPC E5 – Experiencia Relacional - Pontos',
+      'IEPC E5 - Experiencia Relacional - Pontos',
+      'iepc_experienciaRelacional_pontos',
+      'iepc_experienciarelacional_pontos'
+    ));
+
     return {
       periodo: rowPeriodo || fallbackPeriodo || '',
-      data_registro: String(get('Data do Registro') ?? '').trim(),
-      analista: String(get('Analista') ?? '').trim(),
-      squad: String(get('Squad') ?? '').trim(),
-      coordenador: String(get('Coordenador') ?? '').trim(),
-      auditor: String(get('Auditor') ?? '').trim(),
-      nota_final_qa: parseNum(get('Nota Final QA (0-100)')),
-      iepc_total: parseNum(get(
-        'IEPC - Índice de Experiência Percebida pelo Cliente (0-100)',
-        'IEPC - Indice de Experiencia Percebida pelo Cliente (0-100)',
-        'IEPC'
-      )),
-      total_ncs: parseNum(get('Total de Não Conformidades', 'Total de Nao Conformidades', 'Total NCs')),
-      pontos_deduzidos_nc: parseNum(get('Pontos Deduzidos por NC', 'Pontos Deduzidos')),
-      p1: parseNum(get(
-        'QA P1 | Gestão do Fluxo e Rastreabilidade do Atendimento - Pontos',
-        'QA P1 | Gestao do Fluxo e Rastreabilidade do Atendimento - Pontos'
-      )),
-      p2: parseNum(get(
-        'QA P2 | Gestão da Tratativa da Demanda - Pontos',
-        'QA P2 | Gestao da Tratativa da Demanda - Pontos'
-      )),
-      p3: parseNum(get(
-        'QA P3 | Análise e Assertividade Técnica da Demanda - Pontos',
-        'QA P3 | Analise e Assertividade Tecnica da Demanda - Pontos'
-      )),
-      p4: parseNum(get(
-        'QA P4 | Qualidade da Comunicação no Atendimento - Pontos',
-        'QA P4 | Qualidade da Comunicacao no Atendimento - Pontos'
-      )),
-      p5: parseNum(get(
-        'QA P5 | Conduta Relacional no Atendimento - Pontos'
-      )),
-      e1: parseNum(get(
-        'IEPC E1 – Resolução Percebida - Pontos',
-        'IEPC E1 - Resolução Percebida - Pontos',
-        'IEPC E1 – Resolucao Percebida - Pontos',
-        'IEPC E1 - Resolucao Percebida - Pontos'
-      )),
-      e2: parseNum(get(
-        'IEPC E2 – Compreensão e Segurança - Pontos',
-        'IEPC E2 - Compreensão e Segurança - Pontos',
-        'IEPC E2 – Compreensao e Seguranca - Pontos',
-        'IEPC E2 - Compreensao e Seguranca - Pontos'
-      )),
-      e3: parseNum(get(
-        'IEPC E3 – Esforço do Cliente - Pontos',
-        'IEPC E3 - Esforço do Cliente - Pontos',
-        'IEPC E3 – Esforco do Cliente - Pontos',
-        'IEPC E3 - Esforco do Cliente - Pontos'
-      )),
-      e4: parseNum(get(
-        'IEPC E4 – Tempo e Fluidez - Pontos',
-        'IEPC E4 - Tempo e Fluidez - Pontos'
-      )),
-      e5: parseNum(get(
-        'IEPC E5 – Experiência Relacional - Pontos',
-        'IEPC E5 - Experiência Relacional - Pontos',
-        'IEPC E5 – Experiencia Relacional - Pontos',
-        'IEPC E5 - Experiencia Relacional - Pontos'
-      )),
+      data_registro: dataRegistro,
+      analista,
+      squad,
+      coordenador,
+      auditor: auditor || undefined,
+      nota_final_qa: notaFinalQA,
+      iepc_total: iepcTotal,
+      total_ncs: totalNCs,
+      pontos_deduzidos_nc: pontosDeduzidosNC,
+      p1,
+      p2,
+      p3,
+      p4,
+      p5,
+      e1,
+      e2,
+      e3,
+      e4,
+      e5,
       tipo_demanda: tipoDemanda || undefined,
       qtd_atendimentos_avaliados: qtdNum > 0 ? qtdNum : undefined,
     };

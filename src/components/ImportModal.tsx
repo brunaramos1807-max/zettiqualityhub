@@ -72,8 +72,46 @@ function normalizeStr(s: string): string {
 function validateColumns(rows: Record<string, any>[], type: FileType): { valid: boolean; missing: string[]; warnings: string[] } {
   if (rows.length === 0) return { valid: false, missing: [], warnings: ['Arquivo vazio — nenhuma linha encontrada.'] };
   const fileColumns = Object.keys(rows[0]).map(cleanColumnKey);
+
+  if (type === 'scores') {
+    // Accept either old verbose column names OR new short column names
+    const hasAnalista = fileColumns.some((fc) =>
+      normalizeStr(fc) === normalizeStr('Analista') ||
+      normalizeStr(fc) === normalizeStr('analista_nome') ||
+      normalizeStr(fc) === normalizeStr('analista')
+    );
+    const hasSquad = fileColumns.some((fc) =>
+      normalizeStr(fc) === normalizeStr('Squad') ||
+      normalizeStr(fc) === normalizeStr('squad')
+    );
+    const hasQA = fileColumns.some((fc) =>
+      normalizeStr(fc) === normalizeStr('Nota Final QA (0-100)') ||
+      normalizeStr(fc) === normalizeStr('nota_final_qa') ||
+      normalizeStr(fc) === normalizeStr('nota final qa')
+    );
+    const hasIEPC = fileColumns.some((fc) =>
+      normalizeStr(fc).includes('iepc') ||
+      normalizeStr(fc) === normalizeStr('Nota Final QA (0-100)')
+    );
+    const missing: string[] = [];
+    if (!hasAnalista) missing.push('Analista / analista_nome');
+    if (!hasSquad) missing.push('Squad / squad');
+    if (!hasQA) missing.push('Nota Final QA (0-100) / nota_final_qa');
+    if (!hasIEPC) missing.push('IEPC (coluna iepc ou similar)');
+    const warnings: string[] = [];
+    const hasPeriod = fileColumns.some((fc) =>
+      normalizeStr(fc) === 'periodo' ||
+      normalizeStr(fc) === 'period' ||
+      normalizeStr(fc) === 'competencia' ||
+      normalizeStr(fc) === 'ciclo'
+    );
+    if (!hasPeriod) warnings.push('Coluna "Período" não encontrada — o período será definido pelo campo acima.');
+    if (missing.length > 0) return { valid: false, missing, warnings };
+    return { valid: true, missing: [], warnings };
+  }
+
+  // For ncs and elogios: use original logic
   const required = REQUIRED_COLUMNS[type];
-  // Use accent-normalized comparison so ã/a, ç/c etc. don't cause false negatives
   const missing = required.filter(
     (col) => !fileColumns.some((fc) => normalizeStr(fc) === normalizeStr(col))
   );
