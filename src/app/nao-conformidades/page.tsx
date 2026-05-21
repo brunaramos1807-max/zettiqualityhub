@@ -3,21 +3,34 @@ import React, { useState, useMemo, useEffect } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import ImportModal from '@/components/ImportModal';
 import { fetchNCRecords, fetchAllPeriodos } from '@/lib/services/dataService';
-import { AlertTriangle, Search, BarChart2, RefreshCw, TrendingUp, Filter, ChevronRight, Shield, Activity, Layers } from 'lucide-react';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend,
-} from 'recharts';
+import { AlertTriangle, Search, BarChart2, RefreshCw, TrendingUp, Filter, ChevronRight, Shield, Activity, Layers, X, Eye } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend, PieChart, Pie, Cell, AreaChart, Area,  } from 'recharts';
 
 const NC_TYPES = [
-  { key: 'Postura e Ética Profissional', color: '#7C3AED', short: 'Postura', icon: '🤝' },
-  { key: 'Acuracidade e Rigor Técnico', color: '#EF4444', short: 'Técnico', icon: '🎯' },
-  { key: 'Conformidade de Registro e Rastreabilidade', color: '#F59E0B', short: 'Registro', icon: '📋' },
-  { key: 'Integridade do Fluxo Operacional', color: '#38BDF8', short: 'Fluxo', icon: '⚙️' },
-  { key: 'Segurança da Informação', color: '#22C55E', short: 'Segurança', icon: '🔒' },
+  { key: 'NC-1', fullName: 'NC-1 — Postura e Ética Profissional', short: 'Postura e Ética', color: '#7C3AED', icon: '🤝', criticidade: 'Alta' },
+  { key: 'NC-2', fullName: 'NC-2 — Acuracidade e Rigor Técnico', short: 'Rigor Técnico', color: '#EF4444', icon: '🎯', criticidade: 'Alta' },
+  { key: 'NC-3', fullName: 'NC-3 — Registro e Rastreabilidade', short: 'Rastreabilidade', color: '#F59E0B', icon: '📋', criticidade: 'Média' },
+  { key: 'NC-4', fullName: 'NC-4 — Integridade do Fluxo Operacional', short: 'Fluxo Operacional', color: '#38BDF8', icon: '⚙️', criticidade: 'Alta' },
+  { key: 'NC-5', fullName: 'NC-5 — Segurança da Informação', short: 'Segurança', color: '#22C55E', icon: '🔒', criticidade: 'Crítica' },
 ];
 
-const NC_STATUS_OPTIONS = ['Identificada', 'Em tratativa', 'Resolvida', 'Reincidente'];
+// Map legacy names to new NC codes
+const NC_NAME_MAP: Record<string, string> = {
+  'Postura e Ética Profissional': 'NC-1',
+  'Acuracidade e Rigor Técnico': 'NC-2',
+  'Conformidade de Registro e Rastreabilidade': 'NC-3',
+  'Registro e Rastreabilidade': 'NC-3',
+  'Integridade do Fluxo Operacional': 'NC-4',
+  'Segurança da Informação': 'NC-5',
+  'Fluxo': 'NC-4',
+  'Técnico': 'NC-2',
+  'Registro': 'NC-3',
+};
+
+function resolveNCType(tipo: string): string {
+  if (NC_TYPES.find((t) => t.key === tipo)) return tipo;
+  return NC_NAME_MAP[tipo] || tipo;
+}
 
 interface NCRecord {
   id: string;
@@ -32,17 +45,66 @@ interface NCRecord {
   status?: string;
 }
 
+interface NCDetailModal {
+  nc: NCRecord;
+  typeInfo: typeof NC_TYPES[0] | undefined;
+}
+
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
     <div className="rounded-xl p-3 text-xs shadow-xl" style={{ backgroundColor: '#1E293B', border: '1px solid rgba(255,255,255,0.1)' }}>
       <p className="font-semibold text-white mb-1">{label}</p>
-      {payload.map((p: any) => (
-        <p key={p.dataKey} style={{ color: p.color }}>{p.name}: {p.value}</p>
+      {payload.map((p: any, i: number) => (
+        <p key={i} style={{ color: p.color }}>{p.name}: <span className="font-bold text-white">{p.value}</span></p>
       ))}
     </div>
   );
 };
+
+function NCDetailModal({ data, onClose }: { data: NCDetailModal; onClose: () => void }) {
+  const { nc, typeInfo } = data;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}>
+      <div className="w-full max-w-lg rounded-2xl overflow-hidden" style={{ backgroundColor: '#0A1628', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 25px 80px rgba(0,0,0,0.6)' }}>
+        <div className="flex items-center justify-between p-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: `linear-gradient(135deg, ${typeInfo?.color || '#EF4444'}15, transparent)` }}>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: typeInfo?.color || '#EF4444' }}>{typeInfo?.fullName || nc.tipo_nc}</p>
+            <h2 className="text-lg font-bold text-white">{nc.analista}</h2>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/5" style={{ color: '#94A3B8' }}><X size={16} /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: 'Squad', value: nc.squad },
+              { label: 'Coordenador', value: nc.coordenador || '—' },
+              { label: 'Período', value: nc.periodo },
+              { label: 'Criticidade', value: typeInfo?.criticidade || '—' },
+              { label: 'Pts Deduzidos', value: nc.pontos_deduzidos ? `-${nc.pontos_deduzidos}` : '—' },
+              { label: 'Protocolo', value: nc.protocolo_referencia || '—' },
+            ].map((item) => (
+              <div key={item.label} className="rounded-xl p-3" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <p className="text-xs mb-1" style={{ color: '#64748B' }}>{item.label}</p>
+                <p className="text-sm font-semibold text-white">{item.value}</p>
+              </div>
+            ))}
+          </div>
+          {nc.descricao && (
+            <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <p className="text-xs mb-2" style={{ color: '#64748B' }}>Descrição / Evidência</p>
+              <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.7)' }}>{nc.descricao}</p>
+            </div>
+          )}
+          <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.15)' }}>
+            <p className="text-xs font-semibold mb-1" style={{ color: '#F87171' }}>Recomendação</p>
+            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>Revisar protocolo de {typeInfo?.short || nc.tipo_nc}. Considerar vinculação a PDI para acompanhamento contínuo.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function NCContent() {
   const [importOpen, setImportOpen] = useState(false);
@@ -54,13 +116,17 @@ function NCContent() {
   const [filterType, setFilterType] = useState('all');
   const [filterPeriodo, setFilterPeriodo] = useState('all');
   const [filterAnalista, setFilterAnalista] = useState('all');
+  const [filterCoordenador, setFilterCoordenador] = useState('all');
+  const [filterReincidente, setFilterReincidente] = useState(false);
   const [activeView, setActiveView] = useState<'table' | 'charts'>('charts');
+  const [detailModal, setDetailModal] = useState<NCDetailModal | null>(null);
 
   const loadData = async () => {
     setLoading(true);
     try {
       const [data, pList] = await Promise.all([fetchNCRecords(), fetchAllPeriodos()]);
-      setNcs(data as NCRecord[]);
+      const mapped = (data as NCRecord[]).map((n) => ({ ...n, tipo_nc: resolveNCType(n.tipo_nc) }));
+      setNcs(mapped);
       setPeriodos(pList);
     } catch { /* ignore */ }
     setLoading(false);
@@ -70,6 +136,21 @@ function NCContent() {
 
   const squads = useMemo(() => ['all', ...Array.from(new Set(ncs.map((n) => n.squad).filter(Boolean)))], [ncs]);
   const analistas = useMemo(() => ['all', ...Array.from(new Set(ncs.map((n) => n.analista).filter(Boolean))).sort()], [ncs]);
+  const coordenadores = useMemo(() => ['all', ...Array.from(new Set(ncs.map((n) => n.coordenador).filter(Boolean))).sort()], [ncs]);
+
+  // Detect reincidentes: analistas with 2+ NCs of same type
+  const reincidenteSet = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {};
+    ncs.forEach((n) => {
+      if (!map[n.analista]) map[n.analista] = {};
+      map[n.analista][n.tipo_nc] = (map[n.analista][n.tipo_nc] || 0) + 1;
+    });
+    const set = new Set<string>();
+    Object.entries(map).forEach(([analista, types]) => {
+      if (Object.values(types).some((c) => c >= 2)) set.add(analista);
+    });
+    return set;
+  }, [ncs]);
 
   const filtered = useMemo(() => {
     let list = ncs;
@@ -77,9 +158,11 @@ function NCContent() {
     if (filterSquad !== 'all') list = list.filter((n) => n.squad === filterSquad);
     if (filterType !== 'all') list = list.filter((n) => n.tipo_nc === filterType);
     if (filterAnalista !== 'all') list = list.filter((n) => n.analista === filterAnalista);
+    if (filterCoordenador !== 'all') list = list.filter((n) => n.coordenador === filterCoordenador);
+    if (filterReincidente) list = list.filter((n) => reincidenteSet.has(n.analista));
     if (search) list = list.filter((n) => n.analista.toLowerCase().includes(search.toLowerCase()) || (n.descricao || '').toLowerCase().includes(search.toLowerCase()));
     return list;
-  }, [ncs, filterSquad, filterType, filterPeriodo, filterAnalista, search]);
+  }, [ncs, filterSquad, filterType, filterPeriodo, filterAnalista, filterCoordenador, filterReincidente, search, reincidenteSet]);
 
   const byType = useMemo(() => {
     const map: Record<string, number> = {};
@@ -88,52 +171,54 @@ function NCContent() {
   }, [filtered]);
 
   const topAnalysts = useMemo(() => {
-    const map: Record<string, { name: string; squad: string; count: number }> = {};
+    const map: Record<string, { name: string; squad: string; count: number; reincidente: boolean }> = {};
     filtered.forEach((n) => {
-      if (!map[n.analista]) map[n.analista] = { name: n.analista, squad: n.squad, count: 0 };
+      if (!map[n.analista]) map[n.analista] = { name: n.analista, squad: n.squad, count: 0, reincidente: reincidenteSet.has(n.analista) };
       map[n.analista].count++;
     });
     return Object.values(map).sort((a, b) => b.count - a.count).slice(0, 8);
+  }, [filtered, reincidenteSet]);
+
+  const barChartData = useMemo(() => topAnalysts.slice(0, 10).map((a) => ({ name: a.name.split(' ')[0], fullName: a.name, ncs: a.count, squad: a.squad })), [topAnalysts]);
+
+  const radarData = useMemo(() => NC_TYPES.map((t) => ({ pilar: t.short, count: byType[t.key] || 0, fullKey: t.fullName })), [byType]);
+
+  const donutData = NC_TYPES.map((t) => ({ name: t.short, value: byType[t.key] || 0, color: t.color })).filter((d) => d.value > 0);
+
+  const byPeriodData = useMemo(() => {
+    const map: Record<string, number> = {};
+    ncs.forEach((n) => { map[n.periodo] = (map[n.periodo] || 0) + 1; });
+    return Object.entries(map).sort((a, b) => a[0].localeCompare(b[0])).map(([periodo, count]) => ({ periodo, count }));
+  }, [ncs]);
+
+  const bySquadData = useMemo(() => {
+    const map: Record<string, number> = {};
+    filtered.forEach((n) => { map[n.squad] = (map[n.squad] || 0) + 1; });
+    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([squad, count]) => ({ squad: squad.length > 12 ? squad.slice(0, 12) + '…' : squad, count }));
   }, [filtered]);
 
-  // Bar chart data: NCs by analyst (top 10)
-  const barChartData = useMemo(() =>
-    topAnalysts.slice(0, 10).map((a) => ({
-      name: a.name.split(' ')[0],
-      fullName: a.name,
-      ncs: a.count,
-      squad: a.squad,
-    })),
-    [topAnalysts]
-  );
+  const reincidenciaData = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {};
+    filtered.forEach((n) => {
+      if (!map[n.analista]) map[n.analista] = {};
+      map[n.analista][n.tipo_nc] = (map[n.analista][n.tipo_nc] || 0) + 1;
+    });
+    return Object.entries(map)
+      .map(([analista, types]) => ({ analista: analista.split(' ')[0], reincidencias: Object.values(types).filter((c) => c >= 2).length }))
+      .filter((a) => a.reincidencias > 0)
+      .sort((a, b) => b.reincidencias - a.reincidencias)
+      .slice(0, 8);
+  }, [filtered]);
 
-  // Radar chart data: by pilar
-  const radarData = useMemo(() =>
-    NC_TYPES.map((t) => ({
-      pilar: t.short,
-      count: byType[t.key] || 0,
-      fullKey: t.key,
-    })),
-    [byType]
-  );
-
-  // NC flow stages
   const flowStages = useMemo(() => {
     const total = filtered.length;
     return [
       { label: 'Identificadas', count: total, color: '#EF4444', pct: 100 },
       { label: 'Em Tratativa', count: Math.round(total * 0.7), color: '#F59E0B', pct: 70 },
       { label: 'Resolvidas', count: Math.round(total * 0.4), color: '#22C55E', pct: 40 },
-      { label: 'Reincidentes', count: Math.round(total * 0.15), color: '#7C3AED', pct: 15 },
+      { label: 'Reincidentes', count: reincidenteSet.size, color: '#7C3AED', pct: total > 0 ? (reincidenteSet.size / total) * 100 : 0 },
     ];
-  }, [filtered]);
-
-  // NC by period chart
-  const byPeriodData = useMemo(() => {
-    const map: Record<string, number> = {};
-    ncs.forEach((n) => { map[n.periodo] = (map[n.periodo] || 0) + 1; });
-    return Object.entries(map).sort((a, b) => a[0].localeCompare(b[0])).map(([periodo, count]) => ({ periodo, count }));
-  }, [ncs]);
+  }, [filtered, reincidenteSet]);
 
   return (
     <div className="p-6 max-w-screen-2xl mx-auto w-full">
@@ -141,7 +226,7 @@ function NCContent() {
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-white">Não Conformidades</h1>
-          <p className="text-sm mt-0.5" style={{ color: '#94A3B8' }}>Central de gestão e análise de NCs</p>
+          <p className="text-sm mt-0.5" style={{ color: '#94A3B8' }}>Central de gestão e análise de NCs — nomenclatura padronizada</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={loadData} className="p-2 rounded-lg transition-colors" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>
@@ -159,18 +244,31 @@ function NCContent() {
           { label: 'Total NCs', value: filtered.length, color: '#EF4444', icon: <AlertTriangle size={16} />, bg: 'rgba(239,68,68,0.08)' },
           { label: 'Analistas com NC', value: new Set(filtered.map((n) => n.analista)).size, color: '#F59E0B', icon: <BarChart2 size={16} />, bg: 'rgba(245,158,11,0.08)' },
           { label: 'Squads Afetados', value: new Set(filtered.map((n) => n.squad)).size, color: '#38BDF8', icon: <TrendingUp size={16} />, bg: 'rgba(56,189,248,0.08)' },
-          { label: 'Tipos de NC', value: Object.keys(byType).length, color: '#22C55E', icon: <Layers size={16} />, bg: 'rgba(34,197,94,0.08)' },
+          { label: 'Reincidentes', value: reincidenteSet.size, color: '#7C3AED', icon: <Layers size={16} />, bg: 'rgba(124,58,237,0.08)' },
         ].map((s) => (
           <div key={s.label} className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-medium" style={{ color: '#94A3B8' }}>{s.label}</span>
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: s.bg, color: s.color }}>
-                {s.icon}
-              </div>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: s.bg, color: s.color }}>{s.icon}</div>
             </div>
             <p className="text-2xl font-bold text-white">{s.value}</p>
           </div>
         ))}
+      </div>
+
+      {/* NC Type Legend */}
+      <div className="rounded-xl p-4 mb-6" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <p className="text-xs font-semibold text-white mb-3">Nomenclatura Padronizada de NCs</p>
+        <div className="flex flex-wrap gap-2">
+          {NC_TYPES.map((t) => (
+            <div key={t.key} className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ backgroundColor: `${t.color}10`, border: `1px solid ${t.color}25` }}>
+              <span>{t.icon}</span>
+              <span className="text-xs font-bold" style={{ color: t.color }}>{t.key}</span>
+              <span className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>{t.short}</span>
+              <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: `${t.color}20`, color: t.color, fontSize: 9 }}>{t.criticidade}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Filters */}
@@ -179,33 +277,37 @@ function NCContent() {
           <Filter size={13} style={{ color: '#94A3B8' }} />
           <span className="text-xs font-semibold text-white">Filtros</span>
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-2">
           <div className="relative flex-1 min-w-40">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94A3B8' }} />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar analista ou descrição..."
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar analista ou descrição..."
               className="w-full pl-8 pr-3 py-2 rounded-lg text-xs text-white outline-none"
-              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
-            />
+              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }} />
           </div>
           <select value={filterPeriodo} onChange={(e) => setFilterPeriodo(e.target.value)} className="px-3 py-2 rounded-lg text-xs text-white outline-none" style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
             <option value="all">Todos os Ciclos</option>
             {periodos.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
+          <select value={filterSquad} onChange={(e) => setFilterSquad(e.target.value)} className="px-3 py-2 rounded-lg text-xs text-white outline-none" style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            {squads.map((s) => <option key={s} value={s}>{s === 'all' ? 'Todos os Squads' : s}</option>)}
+          </select>
+          <select value={filterCoordenador} onChange={(e) => setFilterCoordenador(e.target.value)} className="px-3 py-2 rounded-lg text-xs text-white outline-none" style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <option value="all">Todos Coordenadores</option>
+            {coordenadores.filter((c) => c !== 'all').map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
           <select value={filterAnalista} onChange={(e) => setFilterAnalista(e.target.value)} className="px-3 py-2 rounded-lg text-xs text-white outline-none" style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
             <option value="all">Todos os Analistas</option>
             {analistas.filter((a) => a !== 'all').map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
-          <select value={filterSquad} onChange={(e) => setFilterSquad(e.target.value)} className="px-3 py-2 rounded-lg text-xs text-white outline-none" style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            {squads.map((s) => <option key={s} value={s}>{s === 'all' ? 'Todos os Squads' : s}</option>)}
-          </select>
           <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="px-3 py-2 rounded-lg text-xs text-white outline-none" style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
             <option value="all">Todos os Tipos</option>
-            {NC_TYPES.map((t) => <option key={t.key} value={t.key}>{t.short}</option>)}
+            {NC_TYPES.map((t) => <option key={t.key} value={t.key}>{t.key} — {t.short}</option>)}
           </select>
+          <button onClick={() => setFilterReincidente((v) => !v)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all"
+            style={{ backgroundColor: filterReincidente ? 'rgba(124,58,237,0.15)' : 'rgba(255,255,255,0.04)', color: filterReincidente ? '#A78BFA' : '#94A3B8', border: `1px solid ${filterReincidente ? 'rgba(124,58,237,0.3)' : 'rgba(255,255,255,0.08)'}` }}>
+            <Layers size={12} /> Reincidentes
+          </button>
         </div>
       </div>
 
@@ -226,13 +328,11 @@ function NCContent() {
         </div>
       ) : activeView === 'charts' ? (
         <div className="space-y-6">
-          {/* Summary Panel + Flow */}
+          {/* Row 1: Summary + Flow + Ranking */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Summary Panel */}
             <div className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                <Shield size={14} style={{ color: '#38BDF8' }} /> Painel Resumido
-              </h3>
+              <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2"><Shield size={14} style={{ color: '#38BDF8' }} /> Painel por Tipo NC</h3>
               <div className="space-y-3">
                 {NC_TYPES.map((t) => {
                   const count = byType[t.key] || 0;
@@ -240,8 +340,10 @@ function NCContent() {
                   return (
                     <div key={t.key}>
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs flex items-center gap-1" style={{ color: '#94A3B8' }}>
-                          <span>{t.icon}</span> {t.short}
+                        <span className="text-xs flex items-center gap-1.5" style={{ color: '#94A3B8' }}>
+                          <span>{t.icon}</span>
+                          <span className="font-semibold" style={{ color: t.color }}>{t.key}</span>
+                          <span>{t.short}</span>
                         </span>
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-white">{count}</span>
@@ -259,15 +361,11 @@ function NCContent() {
 
             {/* NC Flow */}
             <div className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                <Activity size={14} style={{ color: '#22C55E' }} /> Fluxo de NCs
-              </h3>
+              <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2"><Activity size={14} style={{ color: '#22C55E' }} /> Fluxo Corretivo</h3>
               <div className="space-y-3">
                 {flowStages.map((stage, i) => (
                   <div key={stage.label} className="flex items-center gap-3">
-                    <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ backgroundColor: stage.color }}>
-                      {i + 1}
-                    </div>
+                    <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ backgroundColor: stage.color }}>{i + 1}</div>
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-medium text-white">{stage.label}</span>
@@ -277,17 +375,15 @@ function NCContent() {
                         <div className="h-full rounded-full" style={{ width: `${stage.pct}%`, backgroundColor: stage.color }} />
                       </div>
                     </div>
-                    {i < flowStages.length - 1 && (
-                      <ChevronRight size={12} style={{ color: 'rgba(255,255,255,0.2)' }} />
-                    )}
+                    {i < flowStages.length - 1 && <ChevronRight size={12} style={{ color: 'rgba(255,255,255,0.2)' }} />}
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Top Analysts */}
+            {/* Ranking */}
             <div className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <h3 className="text-sm font-semibold text-white mb-4">Ranking NCs</h3>
+              <h3 className="text-sm font-semibold text-white mb-4">Ranking NCs por Analista</h3>
               <div className="space-y-2">
                 {topAnalysts.slice(0, 6).map((a, i) => (
                   <div key={a.name} className="flex items-center gap-3 py-1.5 rounded-lg px-2" style={{ backgroundColor: i === 0 ? 'rgba(239,68,68,0.06)' : 'transparent' }}>
@@ -296,7 +392,10 @@ function NCContent() {
                       <p className="text-xs font-medium text-white truncate">{a.name}</p>
                       <p className="text-xs" style={{ color: '#94A3B8', fontSize: '10px' }}>{a.squad}</p>
                     </div>
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: 'rgba(239,68,68,0.12)', color: '#EF4444' }}>{a.count}</span>
+                    <div className="flex items-center gap-1">
+                      {a.reincidente && <span className="text-xs px-1 py-0.5 rounded" style={{ backgroundColor: 'rgba(124,58,237,0.15)', color: '#A78BFA', fontSize: 9 }}>R</span>}
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: 'rgba(239,68,68,0.12)', color: '#EF4444' }}>{a.count}</span>
+                    </div>
                   </div>
                 ))}
                 {topAnalysts.length === 0 && <p className="text-xs" style={{ color: '#94A3B8' }}>Nenhum dado</p>}
@@ -304,11 +403,10 @@ function NCContent() {
             </div>
           </div>
 
-          {/* Charts Row */}
+          {/* Row 2: Bar + Radar */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Bar Chart: NCs by Analyst */}
             <div className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <h3 className="text-sm font-semibold text-white mb-4">Quantidade de NCs por Analista</h3>
+              <h3 className="text-sm font-semibold text-white mb-4">NCs por Analista</h3>
               {barChartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={barChartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
@@ -319,16 +417,11 @@ function NCContent() {
                     <Bar dataKey="ncs" name="NCs" fill="#EF4444" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
-              ) : (
-                <div className="flex items-center justify-center h-48">
-                  <p className="text-xs" style={{ color: '#94A3B8' }}>Nenhum dado disponível</p>
-                </div>
-              )}
+              ) : <div className="flex items-center justify-center h-48"><p className="text-xs" style={{ color: '#94A3B8' }}>Sem dados</p></div>}
             </div>
 
-            {/* Radar Chart: by Pilar */}
             <div className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <h3 className="text-sm font-semibold text-white mb-4">Radar por Pilar</h3>
+              <h3 className="text-sm font-semibold text-white mb-4">Radar por Tipo NC</h3>
               {radarData.some((d) => d.count > 0) ? (
                 <ResponsiveContainer width="100%" height={220}>
                   <RadarChart data={radarData}>
@@ -339,26 +432,93 @@ function NCContent() {
                     <Legend wrapperStyle={{ color: '#94A3B8', fontSize: 11 }} />
                   </RadarChart>
                 </ResponsiveContainer>
-              ) : (
-                <div className="flex items-center justify-center h-48">
-                  <p className="text-xs" style={{ color: '#94A3B8' }}>Nenhum dado disponível</p>
-                </div>
-              )}
+              ) : <div className="flex items-center justify-center h-48"><p className="text-xs" style={{ color: '#94A3B8' }}>Sem dados</p></div>}
             </div>
           </div>
 
-          {/* NCs by Period */}
+          {/* Row 3: Donut + Squad + Reincidência */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Donut */}
+            <div className="rounded-xl p-5 flex flex-col" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <h3 className="text-sm font-semibold text-white mb-4">Distribuição por Tipo</h3>
+              <div className="flex-1 flex items-center justify-center">
+                <div className="relative">
+                  <ResponsiveContainer width={180} height={180}>
+                    <PieChart>
+                      <Pie data={donutData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} dataKey="value" strokeWidth={0}>
+                        {donutData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                      </Pie>
+                      <Tooltip content={<CustomTooltip />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <p className="text-xl font-bold text-white">{filtered.length}</p>
+                    <p className="text-xs" style={{ color: '#64748B' }}>Total</p>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-1 mt-2">
+                {donutData.map((d) => (
+                  <div key={d.name} className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: d.color }} />
+                    <span className="text-xs flex-1 truncate" style={{ color: '#94A3B8' }}>{d.name}</span>
+                    <span className="text-xs font-bold text-white">{d.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* NCs by Squad */}
+            <div className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <h3 className="text-sm font-semibold text-white mb-4">NCs por Squad</h3>
+              {bySquadData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={bySquadData} layout="vertical" margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" horizontal={false} />
+                    <XAxis type="number" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 10 }} />
+                    <YAxis type="category" dataKey="squad" tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 10 }} width={80} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="count" name="NCs" fill="#F59E0B" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <div className="flex items-center justify-center h-48"><p className="text-xs" style={{ color: '#94A3B8' }}>Sem dados</p></div>}
+            </div>
+
+            {/* Reincidência */}
+            <div className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <h3 className="text-sm font-semibold text-white mb-4">Analytics de Reincidência</h3>
+              {reincidenciaData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={reincidenciaData} margin={{ top: 0, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                    <XAxis dataKey="analista" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 10 }} />
+                    <YAxis tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 10 }} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="reincidencias" name="Reincidências" fill="#7C3AED" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <div className="flex items-center justify-center h-48"><p className="text-xs" style={{ color: '#94A3B8' }}>Sem reincidências</p></div>}
+            </div>
+          </div>
+
+          {/* Row 4: Trend */}
           {byPeriodData.length > 1 && (
             <div className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <h3 className="text-sm font-semibold text-white mb-4">Evolução de NCs por Ciclo</h3>
+              <h3 className="text-sm font-semibold text-white mb-4">Tendência de NCs por Ciclo</h3>
               <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={byPeriodData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                <AreaChart data={byPeriodData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                  <defs>
+                    <linearGradient id="ncGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#EF4444" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#EF4444" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                   <XAxis dataKey="periodo" tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }} />
                   <YAxis tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="count" name="NCs" fill="#F59E0B" radius={[4, 4, 0, 0]} />
-                </BarChart>
+                  <Area type="monotone" dataKey="count" name="NCs" stroke="#EF4444" fill="url(#ncGrad)" strokeWidth={2} dot={{ fill: '#EF4444', r: 3 }} />
+                </AreaChart>
               </ResponsiveContainer>
             </div>
           )}
@@ -370,7 +530,7 @@ function NCContent() {
             <table className="w-full text-xs">
               <thead className="sticky top-0" style={{ backgroundColor: '#0F1B31' }}>
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                  {['Analista', 'Squad', 'Tipo', 'Descrição', 'Período', 'Pts Ded.'].map((h) => (
+                  {['Analista', 'Squad', 'Tipo NC', 'Descrição', 'Período', 'Pts Ded.', ''].map((h) => (
                     <th key={h} className="text-left px-4 py-3 font-semibold" style={{ color: '#94A3B8' }}>{h}</th>
                   ))}
                 </tr>
@@ -380,11 +540,16 @@ function NCContent() {
                   const typeInfo = NC_TYPES.find((t) => t.key === nc.tipo_nc);
                   return (
                     <tr key={nc.id} className="hover:bg-white/[0.02]" style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                      <td className="px-4 py-2.5 font-medium text-white">{nc.analista}</td>
+                      <td className="px-4 py-2.5 font-medium text-white">
+                        <div className="flex items-center gap-1.5">
+                          {reincidenteSet.has(nc.analista) && <span className="text-xs px-1 py-0.5 rounded" style={{ backgroundColor: 'rgba(124,58,237,0.15)', color: '#A78BFA', fontSize: 9 }}>R</span>}
+                          {nc.analista}
+                        </div>
+                      </td>
                       <td className="px-4 py-2.5" style={{ color: '#94A3B8' }}>{nc.squad}</td>
                       <td className="px-4 py-2.5">
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: `${typeInfo?.color || '#64748B'}15`, color: typeInfo?.color || '#64748B' }}>
-                          {typeInfo?.icon} {typeInfo?.short || nc.tipo_nc}
+                          {typeInfo?.icon} {typeInfo?.fullName || nc.tipo_nc}
                         </span>
                       </td>
                       <td className="px-4 py-2.5 max-w-xs truncate" style={{ color: 'rgba(255,255,255,0.6)' }}>{nc.descricao || '—'}</td>
@@ -392,11 +557,16 @@ function NCContent() {
                       <td className="px-4 py-2.5 font-medium" style={{ color: nc.pontos_deduzidos ? '#EF4444' : '#94A3B8' }}>
                         {nc.pontos_deduzidos ? `-${nc.pontos_deduzidos}` : '—'}
                       </td>
+                      <td className="px-4 py-2.5">
+                        <button onClick={() => setDetailModal({ nc, typeInfo })} className="p-1.5 rounded-lg hover:bg-white/5 transition-colors" style={{ color: '#64748B' }}>
+                          <Eye size={13} />
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
                 {filtered.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-12 text-center" style={{ color: '#94A3B8' }}>Nenhuma NC encontrada</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-12 text-center" style={{ color: '#94A3B8' }}>Nenhuma NC encontrada</td></tr>
                 )}
               </tbody>
             </table>
@@ -410,6 +580,7 @@ function NCContent() {
       )}
 
       <ImportModal isOpen={importOpen} onClose={() => setImportOpen(false)} />
+      {detailModal && <NCDetailModal data={detailModal} onClose={() => setDetailModal(null)} />}
     </div>
   );
 }

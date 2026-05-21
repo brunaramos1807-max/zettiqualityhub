@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { LayoutDashboard, TrendingUp, BarChart3, RefreshCw, ClipboardCheck, Upload, AlertTriangle, Star, BookOpen, Sliders, History, ScrollText, FileText, Users, Settings, ChevronLeft, ChevronRight, LogOut, Activity, UserSquare2, Shield } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, BarChart3, RefreshCw, ClipboardCheck, Upload, AlertTriangle, Star, BookOpen, Sliders, History, ScrollText, FileText, Users, Settings, ChevronLeft, ChevronRight, LogOut, Activity, UserSquare2, Shield, Zap } from 'lucide-react';
 
 interface NavItem {
   id: string;
@@ -42,6 +42,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'QUALIDADE',
     items: [
+      { id: 'qa-iepc', label: 'QA & IEPC 360°', href: '/qa-iepc', icon: <Zap size={16} /> },
       { id: 'ncs', label: 'Não Conformidades', href: '/nao-conformidades', icon: <AlertTriangle size={16} /> },
       { id: 'elogios', label: 'Elogios', href: '/mural-elogios', icon: <Star size={16} /> },
       { id: 'pdis', label: 'PDIs', href: '/pdis', icon: <BookOpen size={16} /> },
@@ -75,6 +76,7 @@ function getActiveId(pathname: string): string {
   if (pathname.startsWith('/ciclos')) return 'ciclos';
   if (pathname.startsWith('/auditoria')) return 'auditoria';
   if (pathname.startsWith('/importacoes')) return 'importacoes';
+  if (pathname.startsWith('/qa-iepc')) return 'qa-iepc';
   if (pathname.startsWith('/nao-conformidades')) return 'ncs';
   if (pathname.startsWith('/mural-elogios')) return 'elogios';
   if (pathname.startsWith('/pdis')) return 'pdis';
