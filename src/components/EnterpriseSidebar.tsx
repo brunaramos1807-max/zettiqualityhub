@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { LayoutDashboard, TrendingUp, BarChart3, RefreshCw, ClipboardCheck, Upload, AlertTriangle, Star, BookOpen, Sliders, History, ScrollText, FileText, Settings, ChevronLeft, ChevronRight, LogOut, Activity, UserSquare2, Shield, Zap } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, BarChart3, RefreshCw, ClipboardCheck, Upload, AlertTriangle, Star, BookOpen, Sliders, History, ScrollText, FileText, Settings, ChevronLeft, ChevronRight, LogOut, Activity, UserSquare2, Shield, Zap, MessageSquare, Users, GitBranch } from 'lucide-react';
 
 interface NavItem {
   id: string;
@@ -50,6 +50,15 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
+    title: 'FEEDBACK',
+    items: [
+      { id: 'feedback', label: 'Feedback', href: '/feedback', icon: <MessageSquare size={16} /> },
+      { id: 'feedback-historico', label: 'Histórico', href: '/feedback/historico', icon: <History size={16} /> },
+      { id: 'people-analytics', label: 'People Analytics', href: '/feedback/people-analytics', icon: <Users size={16} /> },
+      { id: 'feedback-pdi', label: 'Plano de Desenvolvimento', href: '/feedback/pdi', icon: <GitBranch size={16} /> },
+    ],
+  },
+  {
     title: 'GOVERNANÇA',
     items: [
       { id: 'historico', label: 'Histórico', href: '/historico', icon: <History size={16} /> },
@@ -81,6 +90,10 @@ function getActiveId(pathname: string): string {
   if (pathname.startsWith('/mural-elogios')) return 'elogios';
   if (pathname.startsWith('/pdis')) return 'pdis';
   if (pathname.startsWith('/calibragem')) return 'calibragem';
+  if (pathname.startsWith('/feedback/historico')) return 'feedback-historico';
+  if (pathname.startsWith('/feedback/people-analytics')) return 'people-analytics';
+  if (pathname.startsWith('/feedback/pdi')) return 'feedback-pdi';
+  if (pathname.startsWith('/feedback')) return 'feedback';
   if (pathname.startsWith('/historico')) return 'historico';
   if (pathname.startsWith('/logs')) return 'logs';
   if (pathname.startsWith('/documentos')) return 'documentos';
