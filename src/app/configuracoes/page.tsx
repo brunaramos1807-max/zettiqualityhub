@@ -995,6 +995,10 @@ function ConfiguracoesContent() {
     try {
       const supabase = createClient();
       if (!supabase) return;
+
+      // Sync auth users in background (non-blocking)
+      fetch('/api/admin/sync-auth-users').catch(() => {});
+
       const [usersRes, preRegRes, cargosRes, modulesRes, permsRes, logsRes] = await Promise.all([
         supabase.from('user_profiles').select('*').order('created_at', { ascending: false }),
         supabase.from('pre_registered_users').select('*').order('created_at', { ascending: false }),

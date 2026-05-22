@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { LayoutDashboard, TrendingUp, BarChart3, RefreshCw, ClipboardCheck, Upload, AlertTriangle, Star, BookOpen, Sliders, History, ScrollText, FileText, Users, Settings, ChevronLeft, ChevronRight, LogOut, Activity, UserSquare2, Shield, Zap } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, BarChart3, RefreshCw, ClipboardCheck, Upload, AlertTriangle, Star, BookOpen, Sliders, History, ScrollText, FileText, Settings, ChevronLeft, ChevronRight, LogOut, Activity, UserSquare2, Shield, Zap } from 'lucide-react';
 
 interface NavItem {
   id: string;
@@ -60,8 +60,8 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'ADMIN',
     items: [
+      { id: 'gestao', label: 'Gestão', href: '/gestao', icon: <BarChart3 size={16} /> },
       { id: 'analistas', label: 'Analistas', href: '/analistas', icon: <UserSquare2 size={16} /> },
-      { id: 'gestao', label: 'Gestão', href: '/gestao', icon: <Users size={16} />, adminOnly: true },
       { id: 'configuracoes', label: 'Configurações', href: '/configuracoes', icon: <Settings size={16} />, adminOnly: true },
       { id: 'admin-diagnostico', label: 'Logs & Diagnóstico', href: '/admin-diagnostico', icon: <Shield size={16} />, adminOnly: true },
     ],
