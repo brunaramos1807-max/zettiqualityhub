@@ -84,20 +84,62 @@ function ImportacoesContent() {
     const supabase = createClient();
     if (supabase) {
       try {
-        const { data, error } = await supabase
+        // Load CSV/manual imports from import_cycles
+        const { data: cycleData, error: cycleError } = await supabase
           .from('import_cycles')
-          .select('id, periodo, file_name, record_count, imported_at')
+          .select('id, periodo, file_name, record_count, imported_at, data_type, metadata')
           .order('imported_at', { ascending: false });
-        if (!error && data && data.length > 0) {
-          const supabaseRecords: ImportRecord[] = data.map((d: any) => ({
-            id: d.id,
-            fileName: d.file_name || 'Importação',
-            tipo: 'Qualidade',
-            modo: 'Ciclo Completo',
-            periodo: d.periodo,
-            data: d.imported_at || new Date().toISOString(),
-            rows: d.record_count || 0,
-          }));
+
+        // Load integration records grouped by periodo from cycle_scores
+        const { data: integrationData } = await supabase
+          .from('cycle_scores')
+          .select('periodo, source, created_at')
+          .eq('source', 'integration')
+          .order('created_at', { ascending: false });
+
+        const supabaseRecords: ImportRecord[] = [];
+
+        if (!cycleError && cycleData && cycleData.length > 0) {
+          cycleData.forEach((d: any) => {
+            supabaseRecords.push({
+              id: d.id,
+              fileName: d.file_name || 'Importação',
+              tipo: 'Qualidade',
+              modo: d.data_type === 'integration' ? 'Integração API' : 'Ciclo Completo',
+              periodo: d.periodo,
+              data: d.imported_at || new Date().toISOString(),
+              rows: d.record_count || 0,
+            });
+          });
+        }
+
+        // Add integration-sourced periods not already in import_cycles
+        if (integrationData && integrationData.length > 0) {
+          const periodMap: Record<string, { count: number; date: string }> = {};
+          integrationData.forEach((r: any) => {
+            if (!periodMap[r.periodo]) {
+              periodMap[r.periodo] = { count: 0, date: r.created_at };
+            }
+            periodMap[r.periodo].count++;
+          });
+
+          Object.entries(periodMap).forEach(([periodo, info]) => {
+            const alreadyExists = supabaseRecords.some((sr) => sr.periodo === periodo);
+            if (!alreadyExists) {
+              supabaseRecords.push({
+                id: `integration-${periodo}`,
+                fileName: `Integração API — ${periodo}`,
+                tipo: 'Qualidade',
+                modo: 'Integração API',
+                periodo,
+                data: info.date,
+                rows: info.count,
+              });
+            }
+          });
+        }
+
+        if (supabaseRecords.length > 0) {
           // Merge with localStorage records (for manual entries not yet in Supabase)
           const lsRecords = loadImportRecords();
           const lsOnly = lsRecords.filter(
@@ -232,14 +274,35 @@ function ImportacoesContent() {
     setDeleteConfirm(record.id);
   };
 
-  const confirmDelete = (record: ImportRecord) => {
-    // Remove from import records list
+  const confirmDelete = async (record: ImportRecord) => {
+    // Remove from import records list (localStorage)
     deleteImportRecord(record.id);
-    // Also remove period data from localStorage if no other imports for same period
-    const remaining = loadImportRecords().filter((r) => r.id !== record.id && r.periodo === record.periodo);
-    if (remaining.length === 0) {
-      deletePeriodData(record.periodo);
+
+    // If it's an integration record, delete from Supabase cycle_scores/nc_records/pdi_records
+    if (record.modo === 'Integração API' || record.id.startsWith('integration-')) {
+      const supabase = createClient();
+      if (supabase) {
+        try {
+          await supabase.from('cycle_scores').delete().eq('periodo', record.periodo).eq('source', 'integration');
+          await supabase.from('nc_records').delete().eq('periodo', record.periodo).eq('source', 'integration');
+          await supabase.from('pdi_records').delete().eq('periodo', record.periodo).eq('source', 'integration');
+          // Also remove the import_cycles record if it exists
+          await supabase.from('import_cycles').delete().eq('periodo', record.periodo);
+          toast.success(`Dados de integração do ciclo ${record.periodo} excluídos`);
+        } catch (err: any) {
+          toast.error('Erro ao excluir dados: ' + err.message);
+          setDeleteConfirm(null);
+          return;
+        }
+      }
+    } else {
+      // Remove period data from localStorage if no other imports for same period
+      const remaining = loadImportRecords().filter((r) => r.id !== record.id && r.periodo === record.periodo);
+      if (remaining.length === 0) {
+        deletePeriodData(record.periodo);
+      }
     }
+
     setDeleteConfirm(null);
     loadImports();
     toast.success(`Importação "${record.fileName}" excluída`);

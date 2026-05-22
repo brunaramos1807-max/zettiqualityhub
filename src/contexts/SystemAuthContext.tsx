@@ -365,6 +365,29 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
     [startInactivityTimer, applyProfile],
   );
 
+  // ─── Whitelist check: verify user is pre-registered before granting access ──
+  const checkWhitelist = useCallback(async (email: string): Promise<boolean> => {
+    const lowerEmail = email.toLowerCase();
+    // Admin emails always allowed
+    if (ADMIN_EMAILS.includes(lowerEmail)) return true;
+    try {
+      const supabase = createClient();
+      if (!supabase) return false;
+      const { data, error } = await supabase
+        .from('pre_registered_users')
+        .select('id, is_active')
+        .eq('email', lowerEmail)
+        .maybeSingle();
+      if (error) {
+        console.warn('[AUTH] whitelist check error:', error.message);
+        return false;
+      }
+      return !!(data && data.is_active !== false);
+    } catch {
+      return false;
+    }
+  }, []);
+
   const refreshProfile = useCallback(async () => {
     if (!session) return;
     const supabase = createClient();
@@ -383,11 +406,24 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
       if (supabase) {
         const { data: { session: supaSession } } = await supabase.auth.getSession();
         if (supaSession?.user) {
+          // ── Whitelist check for existing session ──────────────────────────
+          const allowed = await checkWhitelist(supaSession.user.email || '');
+          if (!allowed) {
+            await supabase.auth.signOut();
+            setLoading(false);
+            return;
+          }
           await applySupabaseUser(supaSession.user);
           setLoading(false);
 
           const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
             if (event === 'SIGNED_IN' && newSession?.user) {
+              // ── Whitelist check on every sign-in event ───────────────────
+              const ok = await checkWhitelist(newSession.user.email || '');
+              if (!ok) {
+                await supabase.auth.signOut();
+                return;
+              }
               await applySupabaseUser(newSession.user);
             } else if (event === 'SIGNED_OUT') {
               setSession(null);
@@ -450,6 +486,13 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
         // Listen for auth state changes (handles Google OAuth redirect)
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
           if (event === 'SIGNED_IN' && newSession?.user) {
+            // ── Whitelist check ──────────────────────────────────────────────
+            const ok = await checkWhitelist(newSession.user.email || '');
+            if (!ok) {
+              await supabase.auth.signOut();
+              setLoading(false);
+              return;
+            }
             await applySupabaseUser(newSession.user);
           } else if (event === 'SIGNED_OUT') {
             setSession(null);

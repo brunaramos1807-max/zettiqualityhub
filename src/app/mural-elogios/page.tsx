@@ -13,6 +13,7 @@ interface ElogioItem {
   squad: string;
   cliente?: string;
   protocolo?: string;
+  atendimento?: string;
   elogio: string;
   destaque: boolean;
   periodo?: string;
@@ -417,12 +418,20 @@ function MuralContent() {
                     <div className="rounded-lg p-3 mb-3" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
                       <p className="text-sm leading-relaxed italic" style={{ color: 'rgba(255,255,255,0.75)' }}>"{elogio.elogio}"</p>
                     </div>
-                    {(elogio.cliente || elogio.protocolo) && (
-                      <div className="flex items-center gap-3 flex-wrap">
-                        {elogio.cliente && <p className="text-xs" style={{ color: '#94A3B8' }}><span style={{ color: '#64748B' }}>Cliente:</span> {elogio.cliente}</p>}
-                        {elogio.protocolo && <p className="text-xs" style={{ color: '#94A3B8' }}><span style={{ color: '#64748B' }}>Protocolo:</span> {elogio.protocolo}</p>}
-                      </div>
-                    )}
+                    <div className="flex items-center gap-3 flex-wrap mt-1">
+                      {elogio.cliente ? (
+                        <p className="text-xs" style={{ color: '#94A3B8' }}><span style={{ color: '#64748B' }}>Cliente:</span> {elogio.cliente}</p>
+                      ) : null}
+                      {elogio.protocolo ? (
+                        <p className="text-xs" style={{ color: '#94A3B8' }}><span style={{ color: '#64748B' }}>Protocolo:</span> {elogio.protocolo}</p>
+                      ) : null}
+                      {elogio.atendimento ? (
+                        <p className="text-xs" style={{ color: '#94A3B8' }}><span style={{ color: '#64748B' }}>Atendimento:</span> {elogio.atendimento}</p>
+                      ) : null}
+                      {!elogio.cliente && !elogio.protocolo && !elogio.atendimento && (
+                        <p className="text-xs" style={{ color: '#475569' }}>Sem dados de atendimento</p>
+                      )}
+                    </div>
                     {elogio.destaque && (
                       <div className="mt-2 flex items-center gap-1">
                         <Star size={10} fill="#F59E0B" style={{ color: '#F59E0B' }} />
