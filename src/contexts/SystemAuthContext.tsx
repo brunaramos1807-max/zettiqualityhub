@@ -112,8 +112,8 @@ interface UserProfileData {
 }
 
 // ─── Profile cache (sessionStorage) ─────────────────────────────────────────
-const PROFILE_CACHE_KEY = 'zetti_user_profile_cache';
-const PERMS_CACHE_KEY = 'zetti_user_perms_cache';
+const PROFILE_CACHE_KEY = 'zetti_user_profile_cache_v2';
+const PERMS_CACHE_KEY = 'zetti_user_perms_cache_v2';
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 function readCache<T>(key: string): T | null {
@@ -282,7 +282,7 @@ function buildDefaultPermissions(role: UserRole | null, isAdminMaster: boolean):
   // Default: minimal access — only executive panel
   return ALL_MODULES.map((m) => ({
     module_name: m,
-    can_view: ['painel_executivo','evolucao'].includes(m),
+    can_view: ['painel_executivo','evolucao','ciclo_atual','nao_conformidades','elogios','pdis','historico','analytics'].includes(m),
     can_edit: false, can_delete: false, can_import: false,
     can_export: false, can_close_cycle: false, can_reopen_cycle: false,
     can_approve: false, can_admin: false,
@@ -555,8 +555,8 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
     if (perm) return perm.can_view;
     // Fallback: coordinators and gestors can view most modules
     if (COORDINATOR_ROLES.includes(userRole || '') || GESTOR_ROLES.includes(userRole || '')) return true;
-    // Minimum fallback: executive panel always accessible
-    return module === 'painel_executivo';
+    // Minimum fallback: these modules are always accessible to any authenticated user
+    return ['painel_executivo','ciclo_atual','evolucao','nao_conformidades','elogios','pdis','historico','analytics'].includes(module);
   }, [isAdminMaster, userRole, modulePermissions]);
 
   const canEditModule = useCallback((module: string): boolean => {
