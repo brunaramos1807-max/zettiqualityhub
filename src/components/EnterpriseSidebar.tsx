@@ -60,8 +60,8 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'ADMIN',
     items: [
+      { id: 'analistas', label: 'Analistas', href: '/analistas', icon: <UserSquare2 size={16} /> },
       { id: 'gestao', label: 'Gestão', href: '/gestao', icon: <Users size={16} />, adminOnly: true },
-      { id: 'analistas', label: 'Analistas', href: '/configuracoes?tab=analistas', icon: <UserSquare2 size={16} />, adminOnly: true },
       { id: 'configuracoes', label: 'Configurações', href: '/configuracoes', icon: <Settings size={16} />, adminOnly: true },
       { id: 'admin-diagnostico', label: 'Logs & Diagnóstico', href: '/admin-diagnostico', icon: <Shield size={16} />, adminOnly: true },
     ],
@@ -84,6 +84,7 @@ function getActiveId(pathname: string): string {
   if (pathname.startsWith('/historico')) return 'historico';
   if (pathname.startsWith('/logs')) return 'logs';
   if (pathname.startsWith('/documentos')) return 'documentos';
+  if (pathname.startsWith('/analistas')) return 'analistas';
   if (pathname.startsWith('/gestao')) return 'gestao';
   if (pathname.startsWith('/admin-diagnostico')) return 'admin-diagnostico';
   if (pathname.startsWith('/configuracoes')) return 'configuracoes';

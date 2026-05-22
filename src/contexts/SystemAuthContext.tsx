@@ -162,13 +162,15 @@ async function fetchFullUserProfile(userId: string, email: string): Promise<User
     const supabase = createClient();
     if (!supabase) return empty;
 
-    // Run both queries in parallel
-    const [profileResult, preRegResult] = await Promise.all([
+    // Run all three queries in parallel: by UUID, by email in user_profiles, and pre_registered_users
+    const [profileByIdResult, profileByEmailResult, preRegResult] = await Promise.all([
       supabase.from('user_profiles').select('role, squad, squads, equipes, cargo_id, full_name').eq('id', userId).maybeSingle(),
-      supabase.from('pre_registered_users').select('role, squad, squads, cargo_id, full_name').eq('email', email.toLowerCase()).maybeSingle(),
+      supabase.from('user_profiles').select('role, squad, squads, equipes, cargo_id, full_name').eq('email', email.toLowerCase()).maybeSingle(),
+      supabase.from('pre_registered_users').select('role, squad, squads, cargo_id, full_name, is_active').eq('email', email.toLowerCase()).maybeSingle(),
     ]);
 
-    const source = profileResult.data || preRegResult.data;
+    // Priority: profile by UUID > profile by email > pre_registered_users
+    const source = profileByIdResult.data || profileByEmailResult.data || preRegResult.data;
     if (!source) {
       if (ADMIN_EMAILS.includes(email.toLowerCase())) {
         const result: UserProfileData = { role: 'Admin', squad: null, squads: [], cargo_id: null, cargo_nome: 'Admin Master', is_admin_master: true, full_name: null };
@@ -373,18 +375,37 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
     try {
       const supabase = createClient();
       if (!supabase) return false;
-      const { data, error } = await supabase
-        .from('pre_registered_users')
-        .select('id, is_active')
-        .eq('email', lowerEmail)
-        .maybeSingle();
-      if (error) {
-        console.warn('[AUTH] whitelist check error:', error.message);
-        return false;
+
+      // Check both pre_registered_users AND user_profiles (by email) in parallel
+      const [preRegResult, profileResult] = await Promise.all([
+        supabase
+          .from('pre_registered_users')
+          .select('id, is_active')
+          .eq('email', lowerEmail)
+          .maybeSingle(),
+        supabase
+          .from('user_profiles')
+          .select('id, is_active')
+          .eq('email', lowerEmail)
+          .maybeSingle(),
+      ]);
+
+      // Allow if found in pre_registered_users (active) OR already has a user_profile
+      const inPreReg = !!(preRegResult.data && preRegResult.data.is_active !== false);
+      const inProfiles = !!(profileResult.data && profileResult.data.is_active !== false);
+
+      if (preRegResult.error) {
+        console.warn('[AUTH] pre_registered_users whitelist check error:', preRegResult.error.message);
       }
-      return !!(data && data.is_active !== false);
-    } catch {
-      return false;
+      if (profileResult.error) {
+        console.warn('[AUTH] user_profiles whitelist check error:', profileResult.error.message);
+      }
+
+      return inPreReg || inProfiles;
+    } catch (err: any) {
+      console.warn('[AUTH] whitelist check exception:', err.message);
+      // On network error, allow through (fail-open) to avoid locking out users
+      return true;
     }
   }, []);
 

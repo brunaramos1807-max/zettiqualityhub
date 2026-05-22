@@ -1107,7 +1107,10 @@ export async function deletePDIRecord(id: string): Promise<{ success: boolean; e
 
 export interface AnalistaRecord {
   id: string;
+  analista_id?: string; // ANL-0001 format — auto-generated, never changes
   nome: string;
+  nome_completo?: string;
+  nome_curto?: string;
   email?: string;
   telefone?: string;
   squad?: string;
@@ -1142,46 +1145,81 @@ export async function fetchAnalistas(filters?: { squad?: string; status?: string
   return [];
 }
 
-export async function upsertAnalista(analista: Omit<AnalistaRecord, 'id' | 'created_at' | 'updated_at'>): Promise<{ success: boolean; error?: string }> {
+export async function upsertAnalista(analista: Omit<AnalistaRecord, 'id' | 'created_at' | 'updated_at'>): Promise<{ success: boolean; error?: string; data?: AnalistaRecord }> {
   try {
     const { createClient } = await import('@/lib/supabase/client');
     const supabase = createClient();
     if (supabase) {
-      // If email is present, upsert by email; otherwise upsert by nome
+      const now = new Date().toISOString();
+      // Ensure nome_completo is populated
+      const payload = {
+        ...analista,
+        nome_completo: analista.nome_completo || analista.nome,
+        nome_curto: analista.nome_curto || analista.nome,
+        updated_at: now,
+      };
+
+      // Upsert strategy: email > nome_completo > nome
       if (analista.email && analista.email.trim()) {
-        const { error } = await supabase.from('analistas').upsert(
-          { ...analista, updated_at: new Date().toISOString() },
-          { onConflict: 'email' }
-        );
-        if (error) {
-          // Fallback: try insert ignoring conflict
-          const { error: insertErr } = await supabase.from('analistas').insert(
-            { ...analista, updated_at: new Date().toISOString() }
-          );
-          if (insertErr) return { success: false, error: insertErr.message };
-        }
-      } else {
-        // No email — check if nome already exists, then update or insert
+        // Check if exists by email
         const { data: existing } = await supabase
           .from('analistas')
-          .select('id')
-          .eq('nome', analista.nome)
+          .select('id, analista_id')
+          .eq('email', analista.email.trim().toLowerCase())
           .maybeSingle();
 
         if (existing?.id) {
-          const { error } = await supabase
+          // Update — preserve analista_id
+          const { data, error } = await supabase
             .from('analistas')
-            .update({ ...analista, email: null, updated_at: new Date().toISOString() })
-            .eq('id', existing.id);
+            .update({ ...payload, analista_id: existing.analista_id || payload.analista_id })
+            .eq('id', existing.id)
+            .select()
+            .single();
           if (error) return { success: false, error: error.message };
+          dispatchDataChanged({ tipo: 'analista_updated' });
+          return { success: true, data: data as AnalistaRecord };
         } else {
-          const { error } = await supabase
+          // Insert new
+          const { data, error } = await supabase
             .from('analistas')
-            .insert({ ...analista, email: null, updated_at: new Date().toISOString() });
+            .insert({ ...payload, email: analista.email.trim().toLowerCase() })
+            .select()
+            .single();
           if (error) return { success: false, error: error.message };
+          dispatchDataChanged({ tipo: 'analista_created' });
+          return { success: true, data: data as AnalistaRecord };
+        }
+      } else {
+        // No email — match by nome_completo or nome
+        const matchName = analista.nome_completo || analista.nome;
+        const { data: existing } = await supabase
+          .from('analistas')
+          .select('id, analista_id')
+          .or(`nome_completo.eq.${matchName},nome.eq.${matchName}`)
+          .maybeSingle();
+
+        if (existing?.id) {
+          const { data, error } = await supabase
+            .from('analistas')
+            .update({ ...payload, email: null, analista_id: existing.analista_id || payload.analista_id })
+            .eq('id', existing.id)
+            .select()
+            .single();
+          if (error) return { success: false, error: error.message };
+          dispatchDataChanged({ tipo: 'analista_updated' });
+          return { success: true, data: data as AnalistaRecord };
+        } else {
+          const { data, error } = await supabase
+            .from('analistas')
+            .insert({ ...payload, email: null })
+            .select()
+            .single();
+          if (error) return { success: false, error: error.message };
+          dispatchDataChanged({ tipo: 'analista_created' });
+          return { success: true, data: data as AnalistaRecord };
         }
       }
-      return { success: true };
     }
   } catch (err: any) {
     return { success: false, error: err.message };

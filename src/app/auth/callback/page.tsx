@@ -140,26 +140,34 @@ async function checkAndEnsureProfile(supabase: any, user: any): Promise<boolean>
   const isAdmin = adminEmails.includes(email);
 
   if (!isAdmin) {
-    // Check pre_registered_users table
-    const { data: preReg, error: preRegError } = await supabase
-      .from('pre_registered_users')
-      .select('id, email, full_name, role, cargo_id, squad, squads, is_active, status_usuario, nivel')
-      .eq('email', email)
-      .maybeSingle();
+    // Check pre_registered_users AND user_profiles (by email) in parallel
+    const [preRegResult, profileByEmailResult] = await Promise.all([
+      supabase
+        .from('pre_registered_users')
+        .select('id, email, full_name, role, cargo_id, squad, squads, is_active, status_usuario, nivel')
+        .eq('email', email)
+        .maybeSingle(),
+      supabase
+        .from('user_profiles')
+        .select('id, email, full_name, role, cargo_id, squad, squads, is_active')
+        .eq('email', email)
+        .maybeSingle(),
+    ]);
 
-    if (preRegError) {
-      console.error('pre_registered_users check error:', preRegError.message);
-      // On DB error, block access to be safe
+    const preReg = preRegResult.data;
+    const existingProfile = profileByEmailResult.data;
+
+    // Allow if: in pre_registered_users (active) OR already has a profile by email
+    const inPreReg = !!(preReg && preReg.is_active !== false);
+    const inProfiles = !!(existingProfile && existingProfile.is_active !== false);
+
+    if (!inPreReg && !inProfiles) {
+      // Not registered anywhere — block
       return false;
     }
 
-    if (!preReg || preReg.is_active === false) {
-      // Not pre-registered or inactive — block
-      return false;
-    }
-
-    // User is pre-registered — ensure profile exists
-    await ensureUserProfile(supabase, user, preReg);
+    // User is allowed — ensure profile exists
+    await ensureUserProfile(supabase, user, preReg || existingProfile);
     return true;
   }
 
