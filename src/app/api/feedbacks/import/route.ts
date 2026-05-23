@@ -13,6 +13,53 @@ function hashPayload(payload: unknown): string {
   return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
 
+// Normalize full or simple JSON to internal format
+function normalize(body: Record<string, unknown>) {
+  const analista = body.analista as Record<string, unknown> | undefined;
+  const cicloObj = body.ciclo as Record<string, unknown> | undefined;
+  const scores = body.scores as Record<string, unknown> | undefined;
+
+  const email = (analista?.email || body.analista_email) as string;
+  const ciclo = (typeof cicloObj === 'object' && cicloObj?.nome ? cicloObj.nome : body.ciclo) as string;
+  const qa = Number(scores?.qa ?? body.qa_score ?? 0);
+  const iepc = Number(scores?.iepc ?? body.iepc_score ?? 0);
+  const aderencia = scores?.aderencia != null ? Number(scores.aderencia) : (body.aderencia_score != null ? Number(body.aderencia_score) : null);
+
+  // Normalize pilares
+  const rawQaPilares = (body.qa_pilares || body.pilares_qa || []) as Record<string, unknown>[];
+  const rawIepcPilares = (body.iepc_pilares || body.pilares_iepc || []) as Record<string, unknown>[];
+  const pilares_qa = rawQaPilares.map((p) => ({ nome: p.nome, pontuacao: p.nota ?? p.pontuacao, max: p.maximo ?? p.max, variacao: p.variacao }));
+  const pilares_iepc = rawIepcPilares.map((p) => ({ nome: p.nome, pontuacao: p.nota ?? p.pontuacao, max: p.maximo ?? p.max, variacao: p.variacao }));
+
+  // Analytics
+  const analytics = body.analytics as Record<string, unknown> | undefined;
+
+  return {
+    email,
+    ciclo,
+    qa,
+    iepc,
+    aderencia,
+    pilares_qa,
+    pilares_iepc,
+    coordenador: (analista?.coordenador || body.coordenador) as string | undefined,
+    equipe: (analista?.equipe || body.equipe) as string | undefined,
+    resumo_ciclo: body.resumo_ciclo as string | null || null,
+    pontos_fortes: (body.pontos_fortes || []) as unknown[],
+    oportunidades: (body.oportunidades || []) as unknown[],
+    tendencias: (body.tendencias || {}) as Record<string, unknown>,
+    conquistas: (body.conquistas || []) as unknown[],
+    posicao_squad: analytics?.ranking_squad != null ? Number(analytics.ranking_squad) : (body.posicao_squad != null ? Number(body.posicao_squad) : null),
+    total_squad: analytics?.total_analistas != null ? Number(analytics.total_analistas) : (body.total_squad != null ? Number(body.total_squad) : null),
+    ciclos_consecutivos_evolucao: analytics?.ciclos_consecutivos_evolucao != null ? Number(analytics.ciclos_consecutivos_evolucao) : (body.ciclos_consecutivos_evolucao != null ? Number(body.ciclos_consecutivos_evolucao) : 0),
+    atendimentos: (body.atendimentos || []) as Record<string, unknown>[],
+    coaching: (body.coaching || []) as Record<string, unknown>[],
+    pdi: (body.pdi || []) as Record<string, unknown>[],
+    historico: (body.historico || []) as Record<string, unknown>[],
+    external_id: body.external_id as string | null || null,
+  };
+}
+
 export async function POST(req: NextRequest) {
   // Auth
   const authHeader = req.headers.get('authorization');
@@ -28,13 +75,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  // Required fields
-  const required = ['analista_email', 'ciclo', 'qa_score', 'iepc_score'];
-  for (const field of required) {
-    if (!body[field]) {
-      return NextResponse.json({ error: `Campo obrigatório ausente: ${field}` }, { status: 422 });
-    }
-  }
+  const n = normalize(body);
+
+  if (!n.email) return NextResponse.json({ error: 'Campo obrigatório ausente: analista_email ou analista.email' }, { status: 422 });
+  if (!n.ciclo) return NextResponse.json({ error: 'Campo obrigatório ausente: ciclo ou ciclo.nome' }, { status: 422 });
+  if (!n.qa) return NextResponse.json({ error: 'Campo obrigatório ausente: qa_score ou scores.qa' }, { status: 422 });
 
   const payloadHash = hashPayload(body);
 
@@ -54,17 +99,12 @@ export async function POST(req: NextRequest) {
   const { data: analista } = await supabaseAdmin
     .from('analistas')
     .select('id, nome, equipe, coordenador')
-    .eq('email', body.analista_email)
+    .eq('email', n.email)
     .maybeSingle();
 
   if (!analista) {
-    await supabaseAdmin.from('feedback_import_logs').insert({
-      origem: 'api_lovable',
-      payload_hash: payloadHash,
-      status: 'error',
-      error_message: `Analista não encontrado: ${body.analista_email}`,
-    });
-    return NextResponse.json({ error: `Analista não encontrado: ${body.analista_email}` }, { status: 404 });
+    await supabaseAdmin.from('feedback_import_logs').insert({ origem: 'api_lovable', payload_hash: payloadHash, status: 'error', error_message: `Analista não encontrado: ${n.email}` });
+    return NextResponse.json({ error: `Analista não encontrado: ${n.email}` }, { status: 404 });
   }
 
   // Check duplicate ciclo for analista
@@ -72,7 +112,7 @@ export async function POST(req: NextRequest) {
     .from('feedbacks')
     .select('id')
     .eq('analista_id', analista.id)
-    .eq('ciclo', body.ciclo as string)
+    .eq('ciclo', n.ciclo)
     .maybeSingle();
 
   if (existingFeedback) {
@@ -82,27 +122,27 @@ export async function POST(req: NextRequest) {
   // Build feedback record
   const feedbackData = {
     analista_id: analista.id,
-    ciclo: body.ciclo,
+    ciclo: n.ciclo,
     periodo_inicio: body.periodo_inicio || null,
     periodo_fim: body.periodo_fim || null,
-    coordenador: body.coordenador || analista.coordenador,
-    equipe: body.equipe || analista.equipe,
-    qa_score: Number(body.qa_score),
-    iepc_score: Number(body.iepc_score),
-    aderencia_score: body.aderencia_score ? Number(body.aderencia_score) : null,
-    posicao_squad: body.posicao_squad ? Number(body.posicao_squad) : null,
-    total_squad: body.total_squad ? Number(body.total_squad) : null,
-    ciclos_consecutivos_evolucao: body.ciclos_consecutivos_evolucao ? Number(body.ciclos_consecutivos_evolucao) : 0,
-    pilares_qa: body.pilares_qa || [],
-    pilares_iepc: body.pilares_iepc || [],
-    pontos_fortes: body.pontos_fortes || [],
-    oportunidades: body.oportunidades || [],
-    resumo_ciclo: body.resumo_ciclo || null,
-    tendencias: body.tendencias || {},
-    conquistas: body.conquistas || [],
+    coordenador: n.coordenador || analista.coordenador,
+    equipe: n.equipe || analista.equipe,
+    qa_score: n.qa,
+    iepc_score: n.iepc,
+    aderencia_score: n.aderencia,
+    posicao_squad: n.posicao_squad,
+    total_squad: n.total_squad,
+    ciclos_consecutivos_evolucao: n.ciclos_consecutivos_evolucao,
+    pilares_qa: n.pilares_qa,
+    pilares_iepc: n.pilares_iepc,
+    pontos_fortes: n.pontos_fortes,
+    oportunidades: n.oportunidades,
+    resumo_ciclo: n.resumo_ciclo,
+    tendencias: n.tendencias,
+    conquistas: n.conquistas,
     status: 'generated' as const,
     origem: 'api_lovable',
-    external_id: body.external_id as string || null,
+    external_id: n.external_id,
     snapshot_json_completo: body,
   };
 
@@ -123,44 +163,58 @@ export async function POST(req: NextRequest) {
   }
 
   // Insert atendimentos
-  if (Array.isArray(body.atendimentos) && body.atendimentos.length > 0) {
-    const atendimentos = (body.atendimentos as Record<string, unknown>[]).map((a) => ({
-      feedback_id: feedback.id,
-      protocolo: a.protocolo,
-      cliente: a.cliente,
-      assunto: a.assunto,
-      nota_qa: a.nota_qa ? Number(a.nota_qa) : null,
-      nota_iepc: a.nota_iepc ? Number(a.nota_iepc) : null,
-      classificacao: a.classificacao || null,
-      observacao: a.observacao || null,
-    }));
-    await supabaseAdmin.from('feedback_atendimentos').insert(atendimentos);
+  if (n.atendimentos.length > 0) {
+    await supabaseAdmin.from('feedback_atendimentos').insert(
+      n.atendimentos.map((a) => ({
+        feedback_id: feedback.id,
+        protocolo: a.protocolo,
+        cliente: a.cliente,
+        assunto: a.assunto,
+        nota_qa: a.nota != null ? Number(a.nota) : (a.nota_qa != null ? Number(a.nota_qa) : null),
+        nota_iepc: a.nota_iepc != null ? Number(a.nota_iepc) : null,
+        classificacao: a.classificacao || null,
+        observacao: a.sintese || a.observacao || null,
+      }))
+    );
   }
 
   // Insert coaching
-  if (Array.isArray(body.coaching) && body.coaching.length > 0) {
-    const coaching = (body.coaching as Record<string, unknown>[]).map((c) => ({
-      feedback_id: feedback.id,
-      o_que_foi_dito: c.o_que_foi_dito,
-      como_poderia_ser: c.como_poderia_ser,
-      dica_de_ouro: c.dica_de_ouro,
-      contexto: c.contexto,
-    }));
-    await supabaseAdmin.from('feedback_coaching').insert(coaching);
+  if (n.coaching.length > 0) {
+    await supabaseAdmin.from('feedback_coaching').insert(
+      n.coaching.map((c) => ({
+        feedback_id: feedback.id,
+        o_que_foi_dito: c.o_que_foi_dito,
+        como_poderia_ser: c.como_poderia_ser,
+        dica_de_ouro: c.dica_de_ouro,
+        contexto: c.categoria || c.contexto || null,
+      }))
+    );
   }
 
   // Insert PDI
-  if (Array.isArray(body.pdi) && body.pdi.length > 0) {
-    const pdi = (body.pdi as Record<string, unknown>[]).map((p) => ({
-      feedback_id: feedback.id,
+  if (n.pdi.length > 0) {
+    await supabaseAdmin.from('feedback_pdi').insert(
+      n.pdi.map((p) => ({
+        feedback_id: feedback.id,
+        analista_id: analista.id,
+        objetivo: p.objetivo,
+        acao_desenvolvimento: p.acao || p.acao_desenvolvimento,
+        prazo: p.prazo || null,
+        progresso: p.progresso != null ? Number(p.progresso) : 0,
+        status: p.status || 'pendente',
+      }))
+    );
+  }
+
+  // Insert historico
+  if (n.historico.length > 0) {
+    const histRows = n.historico.map((h) => ({
       analista_id: analista.id,
-      objetivo: p.objetivo,
-      acao_desenvolvimento: p.acao_desenvolvimento,
-      prazo: p.prazo || null,
-      progresso: p.progresso ? Number(p.progresso) : 0,
-      status: p.status || 'pendente',
+      ciclo: h.ciclo,
+      qa_score: h.qa != null ? Number(h.qa) : (h.qa_score != null ? Number(h.qa_score) : null),
+      iepc_score: h.iepc != null ? Number(h.iepc) : (h.iepc_score != null ? Number(h.iepc_score) : null),
     }));
-    await supabaseAdmin.from('feedback_pdi').insert(pdi);
+    await supabaseAdmin.from('feedback_historico').upsert(histRows, { onConflict: 'analista_id,ciclo', ignoreDuplicates: true });
   }
 
   // Log success
