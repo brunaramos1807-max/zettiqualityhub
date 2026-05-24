@@ -4,7 +4,12 @@ import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
 import { useParams, useRouter } from 'next/navigation';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { ArrowLeft, Download, Star, TrendingUp, Users, MessageSquare, BarChart2, CheckCircle, AlertCircle, Eye, X, Maximize2, Minimize2, ChevronDown, ChevronUp } from 'lucide-react';
+import {
+  ArrowLeft, Download, Star, TrendingUp, Users, MessageSquare, BarChart2,
+  CheckCircle, AlertCircle, Eye, X, Maximize2, Minimize2, ChevronDown, ChevronUp,
+  Award, Target, Clock, Shield,
+  GitBranch,
+} from 'lucide-react';
 import Link from 'next/link';
 
 interface Feedback {
@@ -26,6 +31,9 @@ interface Feedback {
   pontos_fortes: PontoItem[];
   oportunidades: PontoItem[];
   resumo_ciclo: string | null;
+  evolucao_tecnica?: string | null;
+  evolucao_comportamental?: string | null;
+  risco_operacional?: string | null;
   tendencias: Record<string, unknown>;
   conquistas: ConquistaItem[];
   status: string;
@@ -43,32 +51,24 @@ interface AnalistaInfo {
   coordenador: string | null;
   data_admissao: string | null;
   analista_id: string | null;
+  foto_url?: string | null;
 }
 
 interface PilarItem { nome: string; pontuacao: number; max: number; variacao?: number; observacao?: string }
 interface PontoItem { titulo: string; descricao: string }
 interface ConquistaItem { titulo: string; valor: string; periodo?: string; icone?: string }
 interface AtendimentoItem {
-  id: string;
-  protocolo: string;
-  cliente: string;
-  assunto: string;
-  nota_qa: number;
-  nota_iepc: number;
-  classificacao: string;
-  observacao?: string;
-  sup?: string;
-  duracao?: string;
-  solucao?: string;
-  sintese?: string;
-  comportamento?: string;
-  criterios?: string[];
-  evidencias?: string;
-  ncs?: string[];
-  tags?: string[];
+  id: string; protocolo: string; cliente: string; assunto: string;
+  nota_qa: number; nota_iepc: number; classificacao: string; observacao?: string;
+  sup?: string; duracao?: string; canal?: string; solucao?: string; sintese?: string;
+  comportamento?: string; criterios?: string[]; evidencias?: string; ncs?: string[]; tags?: string[];
 }
 interface CoachingItem { id: string; o_que_foi_dito: string; como_poderia_ser: string; dica_de_ouro: string }
-interface PdiItem { id: string; objetivo: string; acao_desenvolvimento: string; prazo: string; progresso: number; status: string }
+interface PdiItem {
+  id: string; objetivo: string; acao_desenvolvimento: string; prazo: string;
+  progresso: number; status: string; responsavel?: string; ciclo_origem?: string;
+  evidencia?: string; ultima_atualizacao?: string;
+}
 interface HistoricoItem { ciclo: string; qa_score: number; iepc_score: number }
 
 const PILAR_COLORS = ['#38BDF8', '#22C55E', '#A78BFA', '#FB923C', '#FBBF24'];
@@ -80,12 +80,14 @@ const CLASSIFICACAO_COLORS: Record<string, string> = {
   critico: '#EF4444',
 };
 
-const PDI_STATUS_COLORS: Record<string, string> = {
-  pendente: 'bg-gray-500/20 text-gray-300',
-  em_andamento: 'bg-blue-500/20 text-blue-300',
-  concluido: 'bg-green-500/20 text-green-300',
-  nao_iniciado: 'bg-gray-500/20 text-gray-400',
-  cancelado: 'bg-red-500/20 text-red-300',
+const PDI_STATUS_COLORS: Record<string, { bg: string; text: string; label: string }> = {
+  nao_iniciado: { bg: 'rgba(100,116,139,0.15)', text: '#94A3B8', label: 'Não Iniciado' },
+  em_andamento: { bg: 'rgba(56,189,248,0.15)', text: '#38BDF8', label: 'Em Andamento' },
+  parcial: { bg: 'rgba(234,179,8,0.15)', text: '#EAB308', label: 'Parcial' },
+  concluido: { bg: 'rgba(34,197,94,0.15)', text: '#22C55E', label: 'Concluído' },
+  atrasado: { bg: 'rgba(239,68,68,0.15)', text: '#EF4444', label: 'Atrasado' },
+  pendente: { bg: 'rgba(100,116,139,0.15)', text: '#94A3B8', label: 'Pendente' },
+  cancelado: { bg: 'rgba(239,68,68,0.12)', text: '#F87171', label: 'Cancelado' },
 };
 
 function tempoDeEmpresa(dataAdmissao: string | null): string {
@@ -93,32 +95,42 @@ function tempoDeEmpresa(dataAdmissao: string | null): string {
   const diff = Date.now() - new Date(dataAdmissao).getTime();
   const years = Math.floor(diff / (1000 * 60 * 60 * 24 * 365));
   const months = Math.floor((diff % (1000 * 60 * 60 * 24 * 365)) / (1000 * 60 * 60 * 24 * 30));
-  if (years > 0) return `${years} anos e ${months} meses`;
-  return `${months} meses`;
+  if (years > 0) return `${years} ano${years !== 1 ? 's' : ''} e ${months} mês${months !== 1 ? 'es' : ''}`;
+  return `${months} mês${months !== 1 ? 'es' : ''}`;
 }
 
-function CircleProgress({ value, color = '#22C55E' }: { value: number; color?: string }) {
-  const r = 36;
+function CircleProgress({ value, color = '#22C55E', size = 90 }: { value: number; color?: string; size?: number }) {
+  const r = size * 0.4;
   const circ = 2 * Math.PI * r;
   const offset = circ - (value / 100) * circ;
+  const cx = size / 2;
+  const cy = size / 2;
   return (
-    <svg width="90" height="90" viewBox="0 0 90 90">
-      <circle cx="45" cy="45" r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="7" />
-      <circle cx="45" cy="45" r={r} fill="none" stroke={color} strokeWidth="7"
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="7" />
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="7"
         strokeDasharray={circ} strokeDashoffset={offset}
-        strokeLinecap="round" transform="rotate(-90 45 45)" />
-      <text x="45" y="50" textAnchor="middle" fill="white" fontSize="16" fontWeight="bold">{value}%</text>
+        strokeLinecap="round" transform={`rotate(-90 ${cx} ${cy})`} />
+      <text x={cx} y={cy + 5} textAnchor="middle" fill="white" fontSize={size * 0.18} fontWeight="bold">{value}%</text>
     </svg>
   );
 }
 
-// ─── Atendimento Detail Modal ─────────────────────────────────────────────────
+function SectionTitle({ icon, title, color = 'rgba(255,255,255,0.4)' }: { icon: React.ReactNode; title: string; color?: string }) {
+  return (
+    <div className="flex items-center gap-2 mb-4">
+      <span style={{ color }}>{icon}</span>
+      <h3 className="text-xs font-bold tracking-widest uppercase" style={{ color }}>{title}</h3>
+    </div>
+  );
+}
 
+// ─── Atendimento Detail Modal ─────────────────────────────────────────────────
 function AtendimentoModal({ atendimento, onClose }: { atendimento: AtendimentoItem; onClose: () => void }) {
   const classColor = CLASSIFICACAO_COLORS[atendimento.classificacao] || '#94A3B8';
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)' }}
+      style={{ backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl"
         style={{ backgroundColor: '#0D1117', border: '1px solid rgba(255,255,255,0.1)', maxHeight: '90vh', overflowY: 'auto' }}>
@@ -141,7 +153,6 @@ function AtendimentoModal({ atendimento, onClose }: { atendimento: AtendimentoIt
           </button>
         </div>
         <div className="p-5 space-y-4">
-          {/* Scores */}
           <div className="grid grid-cols-3 gap-3">
             {[
               { label: 'Nota QA', value: atendimento.nota_qa ?? '—', color: '#38BDF8' },
@@ -154,11 +165,10 @@ function AtendimentoModal({ atendimento, onClose }: { atendimento: AtendimentoIt
               </div>
             ))}
           </div>
-
-          {/* Details */}
           {[
-            { label: 'Assunto', value: atendimento.assunto },
+            { label: 'Canal', value: atendimento.canal },
             { label: 'Duração', value: atendimento.duracao },
+            { label: 'Assunto', value: atendimento.assunto },
             { label: 'Solução', value: atendimento.solucao },
             { label: 'Síntese', value: atendimento.sintese },
             { label: 'Comportamento', value: atendimento.comportamento },
@@ -170,23 +180,28 @@ function AtendimentoModal({ atendimento, onClose }: { atendimento: AtendimentoIt
               <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.8)' }}>{d.value}</p>
             </div>
           ))}
-
-          {/* Tags */}
+          {(atendimento.criterios?.length || 0) > 0 && (
+            <div>
+              <p className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: '#8B949E' }}>Critérios Avaliados</p>
+              <div className="flex flex-wrap gap-2">
+                {atendimento.criterios?.map((c, i) => (
+                  <span key={i} className="text-xs px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: 'rgba(56,189,248,0.08)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.15)' }}>{c}</span>
+                ))}
+              </div>
+            </div>
+          )}
           {(atendimento.tags?.length || 0) > 0 && (
             <div>
               <p className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: '#8B949E' }}>Tags</p>
               <div className="flex flex-wrap gap-2">
                 {atendimento.tags?.map((tag, i) => (
                   <span key={i} className="text-xs px-2 py-0.5 rounded-full"
-                    style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}>
-                    {tag}
-                  </span>
+                    style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}>{tag}</span>
                 ))}
               </div>
             </div>
           )}
-
-          {/* NCs */}
           {(atendimento.ncs?.length || 0) > 0 && (
             <div>
               <p className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: '#EF4444' }}>Não Conformidades</p>
@@ -219,7 +234,10 @@ export default function FeedbackViewPage() {
   const [selectedAtendimento, setSelectedAtendimento] = useState<AtendimentoItem | null>(null);
   const [showAllAtendimentos, setShowAllAtendimentos] = useState(false);
 
-  const handlePrint = () => { window.print(); };
+  const handleExportPDF = () => {
+    if (!feedback) return;
+    window.print();
+  };
 
   useEffect(() => {
     const id = params?.id as string;
@@ -227,7 +245,7 @@ export default function FeedbackViewPage() {
     (async () => {
       const { data } = await supabase
         .from('feedbacks')
-        .select(`*, analistas(nome, nome_completo, cargo_operacional, equipe, coordenador, data_admissao, analista_id), feedback_atendimentos(*), feedback_coaching(*), feedback_pdi(*)`)
+        .select(`*, analistas(nome, nome_completo, cargo_operacional, equipe, coordenador, data_admissao, analista_id, foto_url), feedback_atendimentos(*), feedback_coaching(*), feedback_pdi(*)`)
         .eq('id', id)
         .single();
       if (data) {
@@ -238,7 +256,7 @@ export default function FeedbackViewPage() {
             .select('ciclo, qa_score, iepc_score')
             .eq('analista_id', data.analista_id)
             .order('created_at', { ascending: true })
-            .limit(6);
+            .limit(8);
           if (hist) setHistorico(hist as HistoricoItem[]);
         }
       }
@@ -248,13 +266,20 @@ export default function FeedbackViewPage() {
 
   if (loading) return (
     <EnterpriseLayout>
-      <div className="flex items-center justify-center h-64" style={{ color: 'rgba(255,255,255,0.3)' }}>Carregando feedback...</div>
+      <div className="flex items-center justify-center h-64" style={{ color: 'rgba(255,255,255,0.3)' }}>
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm">Carregando feedback...</p>
+        </div>
+      </div>
     </EnterpriseLayout>
   );
 
   if (!feedback) return (
     <EnterpriseLayout>
-      <div className="p-6 text-center" style={{ color: 'rgba(255,255,255,0.4)' }}>Feedback não encontrado. <Link href="/feedback" className="text-sky-400">Voltar</Link></div>
+      <div className="p-6 text-center" style={{ color: 'rgba(255,255,255,0.4)' }}>
+        Feedback não encontrado. <Link href="/feedback" className="text-sky-400">Voltar</Link>
+      </div>
     </EnterpriseLayout>
   );
 
@@ -263,15 +288,15 @@ export default function FeedbackViewPage() {
   const initials = analista?.nome?.split(' ').slice(0, 2).map((n) => n[0]).join('') || '?';
   const tendencias = feedback.tendencias as Record<string, unknown>;
   const atendimentos = feedback.feedback_atendimentos || [];
-  const visibleAtendimentos = showAllAtendimentos ? atendimentos : atendimentos.slice(0, 5);
+  const visibleAtendimentos = showAllAtendimentos ? atendimentos : atendimentos.slice(0, 6);
 
   const content = (
-    <div className={`max-w-5xl mx-auto print:max-w-full ${fullscreen ? 'px-8 py-6' : ''}`}>
+    <div className={`max-w-5xl mx-auto print:max-w-full ${fullscreen ? 'px-6 py-4' : ''}`}>
       {/* Top nav */}
       <div className="flex items-center justify-between px-6 py-4 print:hidden">
         {!fullscreen ? (
-          <button onClick={() => router.back()} className="flex items-center gap-2 text-sm transition-colors hover:text-white" style={{ color: 'rgba(255,255,255,0.5)' }}>
-            <ArrowLeft size={14} /> Voltar
+          <button onClick={() => router.back()} className="flex items-center gap-2 text-sm transition-colors hover:text-white" style={{ color: 'rgba(255,255,255,0.45)' }}>
+            <ArrowLeft size={14} /> Voltar para Analista
           </button>
         ) : <div />}
         <div className="flex items-center gap-2">
@@ -281,207 +306,252 @@ export default function FeedbackViewPage() {
             {fullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
             {fullscreen ? 'Sair' : 'Apresentação'}
           </button>
-          <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-sky-600 hover:bg-sky-500 text-white transition-colors">
-            <Download size={14} /> PDF
+          <button onClick={handleExportPDF}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors"
+            style={{ background: 'linear-gradient(135deg, #1E40AF, #2563EB)' }}>
+            <Download size={14} /> Baixar PDF
           </button>
         </div>
       </div>
 
-      <div className={`px-6 pb-8 space-y-6 ${fullscreen ? 'text-lg' : ''}`}>
-        {/* ── HEADER ── */}
-        <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(135deg, #0c1e3e 0%, #071428 100%)', border: '1px solid rgba(56,189,248,0.15)' }}>
+      <div className={`px-6 pb-10 space-y-5 ${fullscreen ? 'text-base' : ''}`}>
+
+        {/* ══ 1. HEADER EXECUTIVO ══ */}
+        <div className="rounded-2xl overflow-hidden"
+          style={{ background: 'linear-gradient(135deg, #0c1e3e 0%, #071428 60%, #050f20 100%)', border: '1px solid rgba(56,189,248,0.18)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
           <div className="p-6">
-            <div className="flex flex-col md:flex-row md:items-start gap-5">
-              <div className="flex items-start gap-4 flex-1">
-                <div className={`${fullscreen ? 'w-28 h-28 text-3xl' : 'w-20 h-20 text-2xl'} rounded-full flex items-center justify-center font-bold text-white flex-shrink-0`}
-                  style={{ background: 'linear-gradient(135deg, #1E40AF, #0EA5E9)' }}>
-                  {initials}
+            <div className="flex flex-col md:flex-row md:items-start gap-6">
+              {/* Avatar + Info */}
+              <div className="flex items-start gap-5 flex-1">
+                <div className="flex-shrink-0">
+                  {analista?.foto_url ? (
+                    <img src={analista.foto_url} alt={analista.nome} className="rounded-2xl object-cover"
+                      style={{ width: fullscreen ? '110px' : '88px', height: fullscreen ? '110px' : '88px', border: '3px solid rgba(56,189,248,0.3)' }} />
+                  ) : (
+                    <div className={`${fullscreen ? 'w-28 h-28 text-3xl' : 'w-22 h-22 text-2xl'} rounded-2xl flex items-center justify-center font-bold text-white`}
+                      style={{ width: fullscreen ? '110px' : '88px', height: fullscreen ? '110px' : '88px', background: 'linear-gradient(135deg, #1E40AF, #0EA5E9)', border: '3px solid rgba(56,189,248,0.2)', fontSize: fullscreen ? '2rem' : '1.5rem' }}>
+                      {initials}
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <h1 className={`${fullscreen ? 'text-4xl' : 'text-2xl'} font-bold text-white`}>{analista?.nome || 'Analista'}</h1>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3 flex-wrap mb-1">
+                    <h1 className="font-bold text-white" style={{ fontSize: fullscreen ? '2rem' : '1.5rem' }}>{analista?.nome || 'Analista'}</h1>
                     {feedback.posicao_squad === 1 && (
-                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
-                        style={{ backgroundColor: 'rgba(234,179,8,0.15)', color: '#FCD34D', border: '1px solid rgba(234,179,8,0.3)' }}>
+                      <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold"
+                        style={{ backgroundColor: 'rgba(234,179,8,0.18)', color: '#FCD34D', border: '1px solid rgba(234,179,8,0.35)' }}>
                         <Star size={10} fill="currentColor" /> Destaque do Ciclo
                       </span>
                     )}
                   </div>
-                  <p className={`${fullscreen ? 'text-base' : 'text-sm'} mt-0.5`} style={{ color: 'rgba(255,255,255,0.5)' }}>{analista?.cargo_operacional || '—'}</p>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>
-                    <span>Equipe: <span className="text-white">{analista?.equipe || feedback.equipe || '—'}</span></span>
-                    <span>Coordenadora: <span className="text-white">{analista?.coordenador || feedback.coordenador || '—'}</span></span>
+                  <p className="text-sm font-medium mb-2" style={{ color: 'rgba(255,255,255,0.55)' }}>{analista?.cargo_operacional || '—'}</p>
+                  <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                    <span>Equipe: <span className="font-semibold text-white">{analista?.equipe || feedback.equipe || '—'}</span></span>
+                    <span>Coordenadora: <span className="font-semibold text-white">{analista?.coordenador || feedback.coordenador || '—'}</span></span>
                   </div>
-                  <p className="text-xs mt-1 flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                    ⏱ Tempo de empresa: {tempoDeEmpresa(analista?.data_admissao || null)}
+                  <p className="text-xs mt-1.5 flex items-center gap-1.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                    <Clock size={11} /> Tempo de empresa: <span className="font-medium" style={{ color: 'rgba(255,255,255,0.55)' }}>{tempoDeEmpresa(analista?.data_admissao || null)}</span>
                   </p>
                 </div>
               </div>
 
               {/* Score cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:w-auto w-full">
-                <div className="rounded-xl p-4 min-w-[110px]" style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                  <p className="text-xs font-bold tracking-widest mb-2" style={{ color: 'rgba(255,255,255,0.35)' }}>CICLO</p>
-                  <p className={`${fullscreen ? 'text-xl' : 'text-base'} font-bold text-white`}>{feedback.ciclo}</p>
-                  {feedback.periodo_inicio && <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>{feedback.periodo_inicio}</p>}
-                  {feedback.periodo_fim && <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>a {feedback.periodo_fim}</p>}
-                  <span className="mt-2 inline-block px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: 'rgba(34,197,94,0.15)', color: '#86EFAC' }}>Concluído</span>
+                {/* Ciclo */}
+                <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <p className="text-xs font-bold tracking-widest mb-2" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '9px' }}>CICLO</p>
+                  <p className="text-base font-bold text-white">{feedback.ciclo}</p>
+                  {feedback.periodo_inicio && <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px' }}>{feedback.periodo_inicio}</p>}
+                  {feedback.periodo_fim && <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px' }}>a {feedback.periodo_fim}</p>}
+                  <span className="mt-2 inline-block px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: 'rgba(34,197,94,0.15)', color: '#86EFAC', fontSize: '10px' }}>Concluído</span>
                 </div>
-                <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(56,189,248,0.07)', border: '1px solid rgba(56,189,248,0.2)' }}>
-                  <p className="text-xs font-bold tracking-widest mb-1" style={{ color: 'rgba(56,189,248,0.7)' }}>QA</p>
-                  <p className={`${fullscreen ? 'text-5xl' : 'text-4xl'} font-bold text-white leading-none`}>{feedback.qa_score ?? '—'}</p>
-                  <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>/100</p>
+                {/* QA */}
+                <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(56,189,248,0.07)', border: '1px solid rgba(56,189,248,0.22)' }}>
+                  <p className="text-xs font-bold tracking-widest mb-1" style={{ color: 'rgba(56,189,248,0.7)', fontSize: '9px' }}>QA</p>
+                  <p className="font-bold text-white leading-none" style={{ fontSize: fullscreen ? '3rem' : '2.5rem' }}>{feedback.qa_score ?? '—'}</p>
+                  <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px' }}>/100</p>
                   {(tendencias?.variacao_qa as number) !== undefined && (
-                    <p className="text-xs mt-1 text-green-400">↑ {tendencias.variacao_qa as number} pts</p>
+                    <p className="text-xs mt-1 font-semibold text-green-400">↑ {tendencias.variacao_qa as number} pts</p>
                   )}
+                  <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.25)', fontSize: '9px' }}>em relação ao ciclo anterior</p>
                 </div>
-                <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.2)' }}>
-                  <p className="text-xs font-bold tracking-widest mb-1" style={{ color: 'rgba(34,197,94,0.7)' }}>IEPC</p>
-                  <p className={`${fullscreen ? 'text-5xl' : 'text-4xl'} font-bold text-white leading-none`}>{feedback.iepc_score ?? '—'}</p>
-                  <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>%</p>
+                {/* IEPC */}
+                <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.22)' }}>
+                  <p className="text-xs font-bold tracking-widest mb-1" style={{ color: 'rgba(34,197,94,0.7)', fontSize: '9px' }}>IEPC</p>
+                  <p className="font-bold text-white leading-none" style={{ fontSize: fullscreen ? '3rem' : '2.5rem' }}>{feedback.iepc_score ?? '—'}</p>
+                  <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px' }}>%</p>
                   {(tendencias?.variacao_iepc as number) !== undefined && (
-                    <p className="text-xs mt-1 text-green-400">↑ {tendencias.variacao_iepc as number} pts</p>
+                    <p className="text-xs mt-1 font-semibold text-green-400">↑ {tendencias.variacao_iepc as number} pts</p>
                   )}
+                  <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.25)', fontSize: '9px' }}>em relação ao ciclo anterior</p>
                 </div>
+                {/* Aderência */}
                 <div className="rounded-xl p-4 flex flex-col items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                  <p className="text-xs font-bold tracking-widest mb-2" style={{ color: 'rgba(255,255,255,0.35)' }}>ADERÊNCIA</p>
+                  <p className="text-xs font-bold tracking-widest mb-2" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '9px' }}>ADERÊNCIA</p>
                   {feedback.aderencia_score != null
-                    ? <CircleProgress value={feedback.aderencia_score} />
+                    ? <CircleProgress value={feedback.aderencia_score} size={80} />
                     : <p className="text-2xl font-bold text-white">—</p>}
-                  <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.3)' }}>aos critérios</p>
+                  <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.25)', fontSize: '9px' }}>aos critérios</p>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* ── RESUMO DO CICLO ── */}
+        {/* ══ 2. RESUMO EXECUTIVO ══ */}
         {feedback.resumo_ciclo && (
           <div className="rounded-xl p-6" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-            <h3 className="text-xs font-bold tracking-widest mb-3 flex items-center gap-2" style={{ color: 'rgba(255,255,255,0.4)' }}>
-              <BarChart2 size={14} /> RESUMO DO CICLO
-            </h3>
-            <p className={`${fullscreen ? 'text-base' : 'text-sm'} leading-relaxed`} style={{ color: 'rgba(255,255,255,0.8)' }}>{feedback.resumo_ciclo}</p>
-            {(feedback.posicao_squad != null || (feedback.feedback_atendimentos?.length || 0) > 0 || feedback.ciclos_consecutivos_evolucao > 0) && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-                {(tendencias?.variacao_qa !== undefined || tendencias?.variacao_iepc !== undefined) && (
-                  <div className="rounded-lg p-3 text-center" style={{ backgroundColor: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.1)' }}>
-                    <TrendingUp size={18} className="mx-auto mb-1 text-sky-400" />
-                    <p className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.35)' }}>Evolução</p>
-                    {tendencias?.variacao_qa !== undefined && <p className="text-sm font-bold text-sky-400">+{tendencias.variacao_qa as number} pts no QA</p>}
-                    {tendencias?.variacao_iepc !== undefined && <p className="text-xs text-green-400">+{tendencias.variacao_iepc as number} pts no IEPC</p>}
-                  </div>
-                )}
-                {feedback.posicao_squad != null && (
-                  <div className="rounded-lg p-3 text-center" style={{ backgroundColor: 'rgba(234,179,8,0.06)', border: '1px solid rgba(234,179,8,0.1)' }}>
-                    <Users size={18} className="mx-auto mb-1 text-yellow-400" />
-                    <p className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.35)' }}>Posição no Squad</p>
-                    <p className="text-sm font-bold text-yellow-400">Top {feedback.posicao_squad}</p>
-                    <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>entre {feedback.total_squad || '?'} analistas</p>
-                  </div>
-                )}
-                {(feedback.feedback_atendimentos?.length || 0) > 0 && (
-                  <div className="rounded-lg p-3 text-center" style={{ backgroundColor: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.1)' }}>
-                    <MessageSquare size={18} className="mx-auto mb-1 text-purple-400" />
-                    <p className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.35)' }}>Atendimentos</p>
-                    <p className="text-sm font-bold text-purple-400">{feedback.feedback_atendimentos?.length} avaliados</p>
-                  </div>
-                )}
-                {feedback.ciclos_consecutivos_evolucao > 0 && (
-                  <div className="rounded-lg p-3 text-center" style={{ backgroundColor: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.1)' }}>
-                    <TrendingUp size={18} className="mx-auto mb-1 text-green-400" />
-                    <p className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.35)' }}>Tendência</p>
-                    <p className="text-sm font-bold text-green-400">Em evolução</p>
-                    <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>{feedback.ciclos_consecutivos_evolucao} ciclos consecutivos</p>
-                  </div>
-                )}
-              </div>
-            )}
+            <SectionTitle icon={<BarChart2 size={14} />} title="Resumo do Ciclo" />
+            <p className="text-sm leading-relaxed mb-5" style={{ color: 'rgba(255,255,255,0.8)' }}>{feedback.resumo_ciclo}</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {(tendencias?.variacao_qa !== undefined || tendencias?.variacao_iepc !== undefined) && (
+                <div className="rounded-xl p-4 text-center" style={{ backgroundColor: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.12)' }}>
+                  <TrendingUp size={18} className="mx-auto mb-2 text-sky-400" />
+                  <p className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.35)' }}>Evolução</p>
+                  {tendencias?.variacao_qa !== undefined && <p className="text-sm font-bold text-sky-400">+{tendencias.variacao_qa as number} pts no QA</p>}
+                  {tendencias?.variacao_iepc !== undefined && <p className="text-xs text-green-400">+{tendencias.variacao_iepc as number} pts no IEPC</p>}
+                </div>
+              )}
+              {feedback.posicao_squad != null && (
+                <div className="rounded-xl p-4 text-center" style={{ backgroundColor: 'rgba(234,179,8,0.06)', border: '1px solid rgba(234,179,8,0.12)' }}>
+                  <Users size={18} className="mx-auto mb-2 text-yellow-400" />
+                  <p className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.35)' }}>Posição no Squad</p>
+                  <p className="text-sm font-bold text-yellow-400">Top {feedback.posicao_squad}</p>
+                  <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>entre {feedback.total_squad || '?'} analistas</p>
+                </div>
+              )}
+              {(feedback.feedback_atendimentos?.length || 0) > 0 && (
+                <div className="rounded-xl p-4 text-center" style={{ backgroundColor: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.12)' }}>
+                  <MessageSquare size={18} className="mx-auto mb-2 text-purple-400" />
+                  <p className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.35)' }}>Atendimentos</p>
+                  <p className="text-sm font-bold text-purple-400">{feedback.feedback_atendimentos?.length} avaliados</p>
+                  {feedback.qa_score != null && <p className="text-xs text-purple-300">Média: {feedback.qa_score} pts</p>}
+                </div>
+              )}
+              {feedback.ciclos_consecutivos_evolucao > 0 && (
+                <div className="rounded-xl p-4 text-center" style={{ backgroundColor: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.12)' }}>
+                  <TrendingUp size={18} className="mx-auto mb-2 text-green-400" />
+                  <p className="text-xs mb-1" style={{ color: 'rgba(255,255,255,0.35)' }}>Tendência</p>
+                  <p className="text-sm font-bold text-green-400">Em evolução</p>
+                  <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>{feedback.ciclos_consecutivos_evolucao} ciclos consecutivos</p>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        {/* ── PILARES + EVOLUÇÃO ── */}
+        {/* ══ 3. PERFORMANCE POR PILAR + EVOLUÇÃO HISTÓRICA ══ */}
         <div className="grid md:grid-cols-2 gap-5">
+          {/* Pilares */}
           <div className="rounded-xl p-5" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xs font-bold tracking-widest" style={{ color: 'rgba(255,255,255,0.4)' }}>PERFORMANCE POR PILAR</h3>
+              <SectionTitle icon={<Target size={14} />} title="Performance por Pilar" />
               <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
                 {(['qa', 'iepc'] as const).map((tab) => (
-                  <button key={tab} onClick={() => setActiveTab(tab)} className="px-3 py-1 text-xs font-medium transition-colors"
+                  <button key={tab} onClick={() => setActiveTab(tab)} className="px-3 py-1.5 text-xs font-semibold transition-colors"
                     style={{ backgroundColor: activeTab === tab ? 'rgba(56,189,248,0.15)' : 'transparent', color: activeTab === tab ? '#38BDF8' : 'rgba(255,255,255,0.4)' }}>
-                    {tab === 'qa' ? 'QA' : 'IEPC'}
+                    {tab === 'qa' ? 'QA - Qualidade' : 'IEPC - Experiência'}
                   </button>
                 ))}
               </div>
             </div>
-            <div className="space-y-4">
-              {pilares.length === 0 ? (
-                <p className="text-sm text-center py-4" style={{ color: 'rgba(255,255,255,0.25)' }}>Nenhum pilar registrado</p>
-              ) : pilares.map((p, i) => {
-                const pct = p.max > 0 ? (p.pontuacao / p.max) * 100 : 0;
-                const color = PILAR_COLORS[i % PILAR_COLORS.length];
-                return (
-                  <div key={i}>
-                    <div className="flex items-center justify-between text-xs mb-1.5">
-                      <span style={{ color: 'rgba(255,255,255,0.8)' }}>{i + 1}. {p.nome}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-white">{p.pontuacao}/{p.max}</span>
-                        {p.variacao !== undefined && (
-                          <span className={p.variacao >= 0 ? 'text-green-400' : 'text-red-400'}>
-                            {p.variacao >= 0 ? '↑' : '↓'} {Math.abs(p.variacao)} pts
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="h-2.5 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
-                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
-                    </div>
-                    {p.observacao && (
-                      <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.35)' }}>{p.observacao}</p>
-                    )}
+            {pilares.length === 0 ? (
+              <p className="text-sm text-center py-8" style={{ color: 'rgba(255,255,255,0.2)' }}>Nenhum pilar registrado</p>
+            ) : (
+              <>
+                <div className="flex items-center justify-between text-xs mb-3 pb-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.3)' }}>
+                  <span>Pilar</span>
+                  <div className="flex gap-6">
+                    <span>Pontuação</span>
+                    <span>Evolução</span>
                   </div>
-                );
-              })}
-            </div>
+                </div>
+                <div className="space-y-4">
+                  {pilares.map((p, i) => {
+                    const pct = p.max > 0 ? (p.pontuacao / p.max) * 100 : 0;
+                    const color = PILAR_COLORS[i % PILAR_COLORS.length];
+                    return (
+                      <div key={i}>
+                        <div className="flex items-center justify-between text-xs mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold flex-shrink-0"
+                              style={{ backgroundColor: `${color}20`, color }}>
+                              {i + 1}
+                            </div>
+                            <span style={{ color: 'rgba(255,255,255,0.8)' }}>{p.nome}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="font-bold text-white">{p.pontuacao}/{p.max}</span>
+                            {p.variacao !== undefined && (
+                              <span className={`font-semibold ${p.variacao >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {p.variacao >= 0 ? '↑' : '↓'} {Math.abs(p.variacao)} pts
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="h-2.5 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
+                          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+                        </div>
+                        {p.observacao && <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.3)' }}>{p.observacao}</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+                <button className="mt-4 text-xs flex items-center gap-1" style={{ color: 'rgba(56,189,248,0.6)' }}>
+                  Ver detalhamento dos critérios →
+                </button>
+              </>
+            )}
           </div>
 
+          {/* Evolução Histórica */}
           <div className="rounded-xl p-5" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-            <h3 className="text-xs font-bold tracking-widest mb-4" style={{ color: 'rgba(255,255,255,0.4)' }}>EVOLUÇÃO HISTÓRICA</h3>
+            <SectionTitle icon={<TrendingUp size={14} />} title="Evolução Histórica" />
             {historico.length > 1 ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={historico}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                  <XAxis dataKey="ciclo" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 10 }} />
-                  <YAxis domain={[50, 100]} tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 10 }} />
-                  <Tooltip contentStyle={{ backgroundColor: '#0f1f3d', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }} labelStyle={{ color: 'white' }} />
-                  <Legend wrapperStyle={{ fontSize: '11px' }} />
-                  <Line type="monotone" dataKey="qa_score" stroke="#38BDF8" strokeWidth={2} dot={{ fill: '#38BDF8', r: 3 }} name="QA" />
-                  <Line type="monotone" dataKey="iepc_score" stroke="#22C55E" strokeWidth={2} dot={{ fill: '#22C55E', r: 3 }} name="IEPC" />
-                </LineChart>
-              </ResponsiveContainer>
+              <>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={historico} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="ciclo" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 10 }} />
+                    <YAxis domain={[50, 100]} tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 10 }} />
+                    <Tooltip contentStyle={{ backgroundColor: '#0f1f3d', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }} labelStyle={{ color: 'white' }} />
+                    <Legend wrapperStyle={{ fontSize: '11px' }} />
+                    <Line type="monotone" dataKey="qa_score" stroke="#38BDF8" strokeWidth={2.5} dot={{ fill: '#38BDF8', r: 4 }} name="QA" />
+                    <Line type="monotone" dataKey="iepc_score" stroke="#22C55E" strokeWidth={2.5} dot={{ fill: '#22C55E', r: 4 }} name="IEPC" />
+                  </LineChart>
+                </ResponsiveContainer>
+                {(tendencias?.variacao_qa !== undefined || tendencias?.variacao_iepc !== undefined) && (
+                  <p className="text-xs text-center mt-2 font-medium" style={{ color: 'rgba(34,197,94,0.7)' }}>
+                    {tendencias?.variacao_qa !== undefined && `Você evoluiu +${tendencias.variacao_qa} pts no QA`}
+                    {tendencias?.variacao_qa !== undefined && tendencias?.variacao_iepc !== undefined && ' e '}
+                    {tendencias?.variacao_iepc !== undefined && `+${tendencias.variacao_iepc} pts no IEPC`}
+                    {' nos últimos ciclos.'}
+                  </p>
+                )}
+              </>
             ) : (
-              <div className="flex items-center justify-center h-40" style={{ color: 'rgba(255,255,255,0.2)' }}>
+              <div className="flex items-center justify-center h-48" style={{ color: 'rgba(255,255,255,0.2)' }}>
                 <p className="text-sm">Histórico insuficiente</p>
               </div>
             )}
           </div>
         </div>
 
-        {/* ── PONTOS FORTES / OPORTUNIDADES ── */}
+        {/* ══ 4. PONTOS FORTES + OPORTUNIDADES ══ */}
         {((feedback.pontos_fortes?.length || 0) > 0 || (feedback.oportunidades?.length || 0) > 0) && (
-          <div className="grid md:grid-cols-2 gap-4">
+          <div className="grid md:grid-cols-2 gap-5">
             {(feedback.pontos_fortes?.length || 0) > 0 && (
-              <div className="rounded-xl p-5" style={{ backgroundColor: 'rgba(34,197,94,0.04)', border: '1px solid rgba(34,197,94,0.12)' }}>
-                <h3 className="text-xs font-bold tracking-widest mb-4 flex items-center gap-2" style={{ color: 'rgba(34,197,94,0.7)' }}>
-                  🏆 PONTOS FORTES
-                </h3>
+              <div className="rounded-xl p-5" style={{ backgroundColor: 'rgba(34,197,94,0.04)', border: '1px solid rgba(34,197,94,0.14)' }}>
+                <SectionTitle icon={<Award size={14} />} title="Pontos Fortes" color="rgba(34,197,94,0.7)" />
                 <div className="space-y-4">
-                  {(feedback.pontos_fortes || []).map((p, i) => (
+                  {(feedback.pontos_fortes || []).slice(0, 5).map((p, i) => (
                     <div key={i} className="flex gap-3">
-                      <CheckCircle size={16} className="text-green-400 flex-shrink-0 mt-0.5" />
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5" style={{ backgroundColor: 'rgba(34,197,94,0.15)' }}>
+                        <CheckCircle size={14} className="text-green-400" />
+                      </div>
                       <div>
-                        <p className={`${fullscreen ? 'text-base' : 'text-sm'} font-semibold text-white`}>{p.titulo}</p>
-                        <p className={`${fullscreen ? 'text-sm' : 'text-xs'} mt-1 leading-relaxed`} style={{ color: 'rgba(255,255,255,0.55)' }}>{p.descricao}</p>
+                        <p className="text-sm font-semibold text-white">{p.titulo}</p>
+                        <p className="text-xs mt-0.5 leading-relaxed" style={{ color: 'rgba(255,255,255,0.5)' }}>{p.descricao}</p>
                       </div>
                     </div>
                   ))}
@@ -489,17 +559,17 @@ export default function FeedbackViewPage() {
               </div>
             )}
             {(feedback.oportunidades?.length || 0) > 0 && (
-              <div className="rounded-xl p-5" style={{ backgroundColor: 'rgba(251,146,60,0.04)', border: '1px solid rgba(251,146,60,0.12)' }}>
-                <h3 className="text-xs font-bold tracking-widest mb-4 flex items-center gap-2" style={{ color: 'rgba(251,146,60,0.7)' }}>
-                  🎯 OPORTUNIDADES DE EVOLUÇÃO
-                </h3>
+              <div className="rounded-xl p-5" style={{ backgroundColor: 'rgba(251,146,60,0.04)', border: '1px solid rgba(251,146,60,0.14)' }}>
+                <SectionTitle icon={<Target size={14} />} title="Oportunidades de Evolução" color="rgba(251,146,60,0.7)" />
                 <div className="space-y-4">
-                  {(feedback.oportunidades || []).map((o, i) => (
+                  {(feedback.oportunidades || []).slice(0, 5).map((o, i) => (
                     <div key={i} className="flex gap-3">
-                      <AlertCircle size={16} className="text-orange-400 flex-shrink-0 mt-0.5" />
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5" style={{ backgroundColor: 'rgba(251,146,60,0.15)' }}>
+                        <AlertCircle size={14} className="text-orange-400" />
+                      </div>
                       <div>
-                        <p className={`${fullscreen ? 'text-base' : 'text-sm'} font-semibold text-white`}>{o.titulo}</p>
-                        <p className={`${fullscreen ? 'text-sm' : 'text-xs'} mt-1 leading-relaxed`} style={{ color: 'rgba(255,255,255,0.55)' }}>{o.descricao}</p>
+                        <p className="text-sm font-semibold text-white">{o.titulo}</p>
+                        <p className="text-xs mt-0.5 leading-relaxed" style={{ color: 'rgba(255,255,255,0.5)' }}>{o.descricao}</p>
                       </div>
                     </div>
                   ))}
@@ -509,24 +579,52 @@ export default function FeedbackViewPage() {
           </div>
         )}
 
-        {/* ── COACHING ── */}
+        {/* ══ 5. EVOLUÇÃO TÉCNICA + COMPORTAMENTAL ══ */}
+        {(feedback.evolucao_tecnica || feedback.evolucao_comportamental) && (
+          <div className="grid md:grid-cols-2 gap-5">
+            {feedback.evolucao_tecnica && (
+              <div className="rounded-xl p-5" style={{ backgroundColor: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.1)' }}>
+                <SectionTitle icon={<BarChart2 size={14} />} title="Evolução Técnica" color="rgba(56,189,248,0.7)" />
+                <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.75)' }}>{feedback.evolucao_tecnica}</p>
+              </div>
+            )}
+            {feedback.evolucao_comportamental && (
+              <div className="rounded-xl p-5" style={{ backgroundColor: 'rgba(167,139,250,0.04)', border: '1px solid rgba(167,139,250,0.1)' }}>
+                <SectionTitle icon={<Users size={14} />} title="Evolução Comportamental" color="rgba(167,139,250,0.7)" />
+                <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.75)' }}>{feedback.evolucao_comportamental}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ══ 6. RISCO OPERACIONAL ══ */}
+        {feedback.risco_operacional && (
+          <div className="rounded-xl p-5" style={{ backgroundColor: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.12)' }}>
+            <SectionTitle icon={<Shield size={14} />} title="Risco Operacional" color="rgba(239,68,68,0.7)" />
+            <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.75)' }}>{feedback.risco_operacional}</p>
+          </div>
+        )}
+
+        {/* ══ 7. COACHING DE COMUNICAÇÃO ══ */}
         {(feedback.feedback_coaching?.length || 0) > 0 && (
           <div className="rounded-xl p-5" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-            <h3 className="text-xs font-bold tracking-widest mb-5" style={{ color: 'rgba(255,255,255,0.4)' }}>💬 COACHING DE COMUNICAÇÃO</h3>
-            <div className="space-y-6">
+            <SectionTitle icon={<MessageSquare size={14} />} title="Coaching de Comunicação" />
+            <div className="space-y-5">
               {(feedback.feedback_coaching || []).map((c, i) => (
-                <div key={i} className="grid md:grid-cols-3 gap-3">
-                  <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                    <p className="text-xs font-bold mb-2" style={{ color: 'rgba(56,189,248,0.7)' }}>O QUE FOI DITO</p>
-                    <p className={`${fullscreen ? 'text-base' : 'text-sm'} italic leading-relaxed`} style={{ color: 'rgba(255,255,255,0.6)' }}>&ldquo;{c.o_que_foi_dito}&rdquo;</p>
+                <div key={i} className="grid md:grid-cols-3 gap-4">
+                  <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                    <p className="text-xs font-bold mb-3 uppercase tracking-wider" style={{ color: '#38BDF8' }}>O Que Foi Dito</p>
+                    <p className="text-sm italic leading-relaxed" style={{ color: 'rgba(255,255,255,0.65)' }}>&ldquo;{c.o_que_foi_dito}&rdquo;</p>
                   </div>
-                  <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.2)' }}>
-                    <p className="text-xs font-bold mb-2" style={{ color: 'rgba(234,179,8,0.8)' }}>COMO PODERIA SER</p>
-                    <p className={`${fullscreen ? 'text-base' : 'text-sm'} leading-relaxed`} style={{ color: 'rgba(255,255,255,0.85)' }}>{c.como_poderia_ser}</p>
+                  <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.22)' }}>
+                    <p className="text-xs font-bold mb-3 uppercase tracking-wider" style={{ color: '#EAB308' }}>Como Poderia Ser</p>
+                    <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.85)' }}>{c.como_poderia_ser}</p>
                   </div>
-                  <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)' }}>
-                    <p className="text-xs font-bold mb-2" style={{ color: 'rgba(56,189,248,0.7)' }}>⭐ DICA DE OURO</p>
-                    <p className={`${fullscreen ? 'text-base' : 'text-sm'} leading-relaxed`} style={{ color: 'rgba(255,255,255,0.7)' }}>{c.dica_de_ouro}</p>
+                  <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.18)' }}>
+                    <p className="text-xs font-bold mb-3 uppercase tracking-wider flex items-center gap-1" style={{ color: '#38BDF8' }}>
+                      <Star size={11} fill="currentColor" /> Dica de Ouro
+                    </p>
+                    <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.75)' }}>{c.dica_de_ouro}</p>
                   </div>
                 </div>
               ))}
@@ -534,21 +632,19 @@ export default function FeedbackViewPage() {
           </div>
         )}
 
-        {/* ── ATENDIMENTOS AVALIADOS (clickable) ── */}
+        {/* ══ 8. ATENDIMENTOS AVALIADOS ══ */}
         {atendimentos.length > 0 && (
-          <div className="rounded-xl p-5" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xs font-bold tracking-widest" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                📋 ATENDIMENTOS AVALIADOS <span style={{ color: 'rgba(255,255,255,0.25)' }}>({atendimentos.length})</span>
-              </h3>
+          <div className="rounded-xl overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+            <div className="flex items-center justify-between p-5 pb-3">
+              <SectionTitle icon={<Eye size={14} />} title={`Atendimentos Avaliados (${atendimentos.length})`} />
               <span className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>Clique para detalhes</span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', backgroundColor: 'rgba(255,255,255,0.02)' }}>
                     {['Protocolo', 'Cliente', 'Assunto', 'Nota QA', 'IEPC', 'Classificação', ''].map((h) => (
-                      <th key={h} className="text-left pb-3 pr-4 text-xs font-semibold uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.35)' }}>{h}</th>
+                      <th key={h} className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.3)' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -560,22 +656,22 @@ export default function FeedbackViewPage() {
                         className="cursor-pointer transition-colors hover:bg-white/[0.03]"
                         style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
                         onClick={() => setSelectedAtendimento(a)}>
-                        <td className="py-3 pr-4 font-mono text-xs" style={{ color: '#38BDF8' }}>{a.protocolo || '—'}</td>
-                        <td className="py-3 pr-4 font-medium text-white">{a.cliente}</td>
-                        <td className="py-3 pr-4 max-w-[200px]" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                          <span className="block truncate">{a.assunto}</span>
+                        <td className="py-3 px-4 font-mono text-xs font-bold" style={{ color: '#38BDF8' }}>{a.protocolo || '—'}</td>
+                        <td className="py-3 px-4 font-medium text-white text-sm">{a.cliente}</td>
+                        <td className="py-3 px-4 text-sm" style={{ color: 'rgba(255,255,255,0.65)', maxWidth: '220px' }}>
+                          {a.assunto}
                         </td>
-                        <td className="py-3 pr-4 font-bold text-white">{a.nota_qa ?? '—'}</td>
-                        <td className="py-3 pr-4" style={{ color: 'rgba(255,255,255,0.7)' }}>{a.nota_iepc != null ? `${a.nota_iepc}%` : '—'}</td>
-                        <td className="py-3 pr-4">
+                        <td className="py-3 px-4 font-bold text-white">{a.nota_qa ?? '—'}</td>
+                        <td className="py-3 px-4" style={{ color: 'rgba(255,255,255,0.7)' }}>{a.nota_iepc != null ? `${a.nota_iepc}%` : '—'}</td>
+                        <td className="py-3 px-4">
                           {a.classificacao && (
-                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                            <span className="text-xs font-semibold px-2.5 py-1 rounded-full"
                               style={{ backgroundColor: `${classColor}18`, color: classColor, border: `1px solid ${classColor}30` }}>
                               {a.classificacao.charAt(0).toUpperCase() + a.classificacao.slice(1)}
                             </span>
                           )}
                         </td>
-                        <td className="py-3">
+                        <td className="py-3 px-4">
                           <Eye size={14} style={{ color: 'rgba(255,255,255,0.25)' }} />
                         </td>
                       </tr>
@@ -584,73 +680,87 @@ export default function FeedbackViewPage() {
                 </tbody>
               </table>
             </div>
-            {atendimentos.length > 5 && (
-              <button
-                onClick={() => setShowAllAtendimentos((v) => !v)}
-                className="mt-3 flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 w-full justify-center transition-colors">
-                {showAllAtendimentos ? <><ChevronUp size={13} /> Mostrar menos</> : <><ChevronDown size={13} /> Ver todos os {atendimentos.length} atendimentos</>}
-              </button>
+            {atendimentos.length > 6 && (
+              <div className="p-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                <button onClick={() => setShowAllAtendimentos((v) => !v)}
+                  className="flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 w-full justify-center transition-colors">
+                  {showAllAtendimentos ? <><ChevronUp size={13} /> Mostrar menos</> : <><ChevronDown size={13} /> Ver todos os {atendimentos.length} atendimentos</>}
+                </button>
+              </div>
             )}
           </div>
         )}
 
-        {/* ── PDI + CONQUISTAS ── */}
-        <div className="grid md:grid-cols-2 gap-5">
-          {(feedback.feedback_pdi?.length || 0) > 0 && (
-            <div className="rounded-xl p-5" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-              <h3 className="text-xs font-bold tracking-widest mb-4" style={{ color: 'rgba(255,255,255,0.4)' }}>📈 PLANO DE DESENVOLVIMENTO (PDI)</h3>
-              <div className="space-y-4">
-                {(feedback.feedback_pdi || []).map((p) => (
-                  <div key={p.id} className="rounded-lg p-4" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                    <div className="flex items-start justify-between gap-2 mb-3">
-                      <div className="flex-1">
-                        <p className={`${fullscreen ? 'text-base' : 'text-sm'} font-semibold text-white`}>{p.objetivo}</p>
-                        <p className={`${fullscreen ? 'text-sm' : 'text-xs'} mt-1 leading-relaxed`} style={{ color: 'rgba(255,255,255,0.5)' }}>{p.acao_desenvolvimento}</p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        {p.prazo && <span className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>{p.prazo}</span>}
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${PDI_STATUS_COLORS[p.status] || 'bg-gray-500/20 text-gray-300'}`}>
-                          {p.status?.replace('_', ' ')}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
-                        <div className="h-full rounded-full bg-sky-500" style={{ width: `${p.progresso}%` }} />
-                      </div>
-                      <span className="text-xs font-bold text-sky-400">{p.progresso}%</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <Link href="/feedback/pdi" className="mt-3 text-xs text-sky-400 hover:text-sky-300 flex items-center gap-1">Acompanhar PDI completo →</Link>
+        {/* ══ 9. PDI ══ */}
+        {(feedback.feedback_pdi?.length || 0) > 0 && (
+          <div className="rounded-xl p-5" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+            <div className="flex items-center justify-between mb-4">
+              <SectionTitle icon={<GitBranch size={14} />} title="Plano de Desenvolvimento (PDI)" />
+              <Link href="/feedback/pdi" className="text-xs text-sky-400 hover:text-sky-300">Acompanhar PDI completo →</Link>
             </div>
-          )}
-
-          {(feedback.conquistas?.length || 0) > 0 && (
-            <div className="rounded-xl p-5" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-              <h3 className="text-xs font-bold tracking-widest mb-4" style={{ color: 'rgba(255,255,255,0.4)' }}>🏅 CONQUISTAS E EVOLUÇÃO</h3>
-              <div className="space-y-2">
-                {(feedback.conquistas || []).map((c, i) => (
-                  <div key={i} className="flex items-center justify-between py-2.5 px-1" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <span className={`${fullscreen ? 'text-base' : 'text-sm'}`} style={{ color: 'rgba(255,255,255,0.7)' }}>{c.titulo}</span>
-                    <div className="flex items-center gap-2">
-                      <span className={`${fullscreen ? 'text-base' : 'text-sm'} font-bold text-green-400`}>{c.valor}</span>
-                      {c.periodo && <span className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>{c.periodo}</span>}
-                    </div>
-                  </div>
-                ))}
-              </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', backgroundColor: 'rgba(255,255,255,0.02)' }}>
+                    {['Objetivo', 'Ação de Desenvolvimento', 'Prazo', 'Progresso', 'Status'].map((h) => (
+                      <th key={h} className="text-left py-3 px-3 text-xs font-semibold uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.3)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(feedback.feedback_pdi || []).map((p) => {
+                    const st = PDI_STATUS_COLORS[p.status] || PDI_STATUS_COLORS.pendente;
+                    return (
+                      <tr key={p.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <td className="py-3 px-3 font-semibold text-white text-sm">{p.objetivo}</td>
+                        <td className="py-3 px-3 text-sm" style={{ color: 'rgba(255,255,255,0.6)', maxWidth: '200px' }}>{p.acao_desenvolvimento}</td>
+                        <td className="py-3 px-3 text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>{p.prazo}</td>
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-2 min-w-[100px]">
+                            <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
+                              <div className="h-full rounded-full bg-sky-500" style={{ width: `${p.progresso}%` }} />
+                            </div>
+                            <span className="text-xs font-bold text-sky-400 w-8 text-right">{p.progresso}%</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="text-xs px-2.5 py-1 rounded-full font-medium"
+                            style={{ backgroundColor: st.bg, color: st.text }}>{st.label}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* ── RODAPÉ ── */}
-        <div className="rounded-xl p-5" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <div className="flex flex-col md:flex-row items-center justify-between gap-3">
+        {/* ══ 10. CONQUISTAS E EVOLUÇÃO ══ */}
+        {(feedback.conquistas?.length || 0) > 0 && (
+          <div className="rounded-xl p-5" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+            <SectionTitle icon={<Award size={14} />} title="Conquistas e Evolução" />
+            <div className="grid md:grid-cols-2 gap-3">
+              {(feedback.conquistas || []).map((c, i) => (
+                <div key={i} className="flex items-center justify-between py-3 px-4 rounded-xl"
+                  style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <span className="text-sm" style={{ color: 'rgba(255,255,255,0.7)' }}>{c.titulo}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-green-400">{c.valor}</span>
+                    {c.periodo && <span className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>{c.periodo}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ══ 11. FECHAMENTO ══ */}
+        <div className="rounded-xl p-5" style={{ background: 'linear-gradient(135deg, rgba(30,64,175,0.15), rgba(7,20,40,0.8))', border: '1px solid rgba(56,189,248,0.12)' }}>
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold text-orange-400">Desenvolvimento e evolução contínua.</p>
-              <p className="text-xs text-sky-400">Você está no caminho certo!</p>
+              <p className="text-sm font-bold text-orange-400">Desenvolvimento e evolução contínua.</p>
+              <p className="text-sm font-semibold text-sky-400">Você está no caminho certo!</p>
             </div>
             <div className="text-center">
               <p className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>Documento confidencial • Uso interno</p>
@@ -658,7 +768,7 @@ export default function FeedbackViewPage() {
             </div>
             <div className="text-right">
               <p className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>Ciclo: {feedback.ciclo} • Versão 1.0</p>
-              <p className="text-xs font-bold mt-1" style={{ color: 'rgba(56,189,248,0.7)' }}>QualiVisão</p>
+              <p className="text-sm font-extrabold mt-1 tracking-widest" style={{ color: 'rgba(56,189,248,0.7)' }}>QualiVisão</p>
             </div>
           </div>
         </div>
@@ -687,7 +797,8 @@ export default function FeedbackViewPage() {
           aside, nav, header { display: none !important; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .max-w-5xl { max-width: 100% !important; }
-          @page { margin: 10mm; size: A4; }
+          @page { margin: 12mm; size: A4; }
+          .space-y-5 > * + * { page-break-inside: avoid; }
         }
       `}</style>
     </>

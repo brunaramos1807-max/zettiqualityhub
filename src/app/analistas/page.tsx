@@ -51,6 +51,7 @@ interface AnalistaFormState {
   aniversario: string;
   ultima_promocao: string;
   observacoes: string;
+  foto_url: string;
 }
 
 const EMPTY_FORM: AnalistaFormState = {
@@ -58,6 +59,7 @@ const EMPTY_FORM: AnalistaFormState = {
   cargo_operacional: 'Analista', nivel: 'Júnior',
   coordenador: '', squad: '', status: 'ativo',
   data_admissao: '', aniversario: '', ultima_promocao: '', observacoes: '',
+  foto_url: '',
 };
 
 const CARGO_OPTIONS = ['Analista', 'Analista Sênior', 'Especialista', 'Coordenador', 'Supervisor', 'Gerente'];
@@ -485,6 +487,7 @@ function AnalistaFormModal({ initial, onSave, onClose, saving }: AnalistaFormPro
       aniversario: initial.aniversario || '',
       ultima_promocao: initial.ultima_promocao || '',
       observacoes: initial.observacoes || '',
+      foto_url: (initial as any).foto_url || '',
     };
   });
 
@@ -592,6 +595,24 @@ function AnalistaFormModal({ initial, onSave, onClose, saving }: AnalistaFormPro
             </div>
           </div>
           <div>
+            <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: '#8B949E' }}>Foto / Avatar (URL)</label>
+            <div className="flex items-center gap-3">
+              {form.foto_url ? (
+                <img src={form.foto_url} alt="Preview" className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                  style={{ border: '2px solid rgba(56,189,248,0.3)' }}
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+              ) : (
+                <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
+                  style={{ background: 'linear-gradient(135deg, #1E40AF, #3B82F6)' }}>
+                  {form.nome.substring(0, 1).toUpperCase() || '?'}
+                </div>
+              )}
+              <input type="url" placeholder="https://exemplo.com/foto.jpg" value={form.foto_url}
+                onChange={(e) => set('foto_url', e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+            </div>
+            <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.25)' }}>Cole a URL da foto do analista. Aparecerá no header do feedback.</p>
+          </div>
+          <div>
             <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: '#8B949E' }}>Observações</label>
             <textarea placeholder="Observações sobre o analista..." value={form.observacoes}
               onChange={(e) => set('observacoes', e.target.value)}
@@ -696,7 +717,8 @@ function AnalistasContent() {
       tempo_empresa_calculado: tempoEmpresa.texto || undefined,
       tempo_empresa_meses: tempoEmpresa.meses,
       analista_id: editingAnalista?.analista_id,
-    };
+      foto_url: form.foto_url.trim() || undefined,
+    } as any;
     const result = await upsertAnalista(payload);
     setSaving(false);
     if (result.success) {
@@ -991,12 +1013,19 @@ function AnalistasContent() {
               <div key={analista.id} style={cardStyle} className="transition-all hover:border-white/15">
                 <div className="flex items-center gap-4">
                   {/* Avatar */}
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
-                    style={{ background: analista.status === 'desligado' ? '#374151' : 'linear-gradient(135deg, #1E40AF, #3B82F6)' }}
-                  >
-                    {initials}
-                  </div>
+                  {(analista as any).foto_url ? (
+                    <img src={(analista as any).foto_url} alt={analista.nome}
+                      className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                      style={{ border: '2px solid rgba(56,189,248,0.2)' }}
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  ) : (
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
+                      style={{ background: analista.status === 'desligado' ? '#374151' : 'linear-gradient(135deg, #1E40AF, #3B82F6)' }}
+                    >
+                      {initials}
+                    </div>
+                  )}
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">

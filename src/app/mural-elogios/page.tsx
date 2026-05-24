@@ -128,15 +128,13 @@ function MuralContent() {
   };
 
   const destaqueMes = useMemo(() => {
-    if (periodos.length < 2) return topAnalysts[0];
-    const lastPeriodo = periodos[1]; // periodos[0] is 'all'
     const map: Record<string, { name: string; squad: string; count: number }> = {};
-    filtered.filter((e) => e.periodo === lastPeriodo).forEach((e) => {
+    filtered.forEach((e) => {
       if (!map[e.colaborador]) map[e.colaborador] = { name: e.colaborador, squad: e.squad, count: 0 };
       map[e.colaborador].count++;
     });
     return Object.values(map).sort((a, b) => b.count - a.count)[0];
-  }, [filtered, periodos, topAnalysts]);
+  }, [filtered]);
 
   return (
     <div className="p-6 max-w-screen-2xl mx-auto w-full">
@@ -159,10 +157,10 @@ function MuralContent() {
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
-          { label: 'Total Elogios', value: elogios.length, icon: <Heart size={16} />, color: '#F59E0B', bg: 'rgba(245,158,11,0.08)' },
-          { label: 'Destaques', value: elogios.filter((e) => e.destaque).length, icon: <Star size={16} />, color: '#38BDF8', bg: 'rgba(56,189,248,0.08)' },
-          { label: 'Analistas Reconhecidos', value: new Set(elogios.map((e) => e.colaborador)).size, icon: <Users size={16} />, color: '#22C55E', bg: 'rgba(34,197,94,0.08)' },
-          { label: 'Squads Ativos', value: new Set(elogios.map((e) => e.squad)).size, icon: <TrendingUp size={16} />, color: '#818CF8', bg: 'rgba(129,140,248,0.08)' },
+          { label: 'Total Elogios', value: filtered.length, icon: <Heart size={16} />, color: '#F59E0B', bg: 'rgba(245,158,11,0.08)' },
+          { label: 'Destaques', value: filtered.filter((e) => e.destaque).length, icon: <Star size={16} />, color: '#38BDF8', bg: 'rgba(56,189,248,0.08)' },
+          { label: 'Analistas Reconhecidos', value: new Set(filtered.map((e) => e.colaborador)).size, icon: <Users size={16} />, color: '#22C55E', bg: 'rgba(34,197,94,0.08)' },
+          { label: 'Squads Ativos', value: new Set(filtered.map((e) => e.squad)).size, icon: <TrendingUp size={16} />, color: '#818CF8', bg: 'rgba(129,140,248,0.08)' },
         ].map((s) => (
           <div key={s.label} className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
             <div className="flex items-center justify-between mb-3">
