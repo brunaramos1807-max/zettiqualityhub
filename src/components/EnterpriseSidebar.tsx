@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { LayoutDashboard, TrendingUp, BarChart3, RefreshCw, ClipboardCheck, Upload, AlertTriangle, Star, BookOpen, Sliders, History, ScrollText, FileText, Settings, ChevronLeft, ChevronRight, LogOut, Activity, UserSquare2, Shield, Zap, MessageSquare, Users, GitBranch } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, BarChart3, RefreshCw, ClipboardCheck, Upload, AlertTriangle, Star, Sliders, History, ScrollText, FileText, Settings, ChevronLeft, ChevronRight, LogOut, Activity, UserSquare2, Shield, Zap, MessageSquare, GitBranch } from 'lucide-react';
 
 interface NavItem {
   id: string;
@@ -45,7 +45,6 @@ const NAV_SECTIONS: NavSection[] = [
       { id: 'qa-iepc', label: 'QA & IEPC 360°', href: '/qa-iepc', icon: <Zap size={16} /> },
       { id: 'ncs', label: 'Não Conformidades', href: '/nao-conformidades', icon: <AlertTriangle size={16} /> },
       { id: 'elogios', label: 'Elogios', href: '/mural-elogios', icon: <Star size={16} /> },
-      { id: 'pdis', label: 'PDIs', href: '/pdis', icon: <BookOpen size={16} /> },
       { id: 'calibragem', label: 'Calibragem', href: '/calibragem', icon: <Sliders size={16} /> },
     ],
   },
@@ -53,9 +52,8 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'FEEDBACK',
     items: [
       { id: 'feedback', label: 'Feedback', href: '/feedback', icon: <MessageSquare size={16} /> },
-      { id: 'feedback-historico', label: 'Histórico', href: '/feedback/historico', icon: <History size={16} /> },
-      { id: 'people-analytics', label: 'People Analytics', href: '/feedback/people-analytics', icon: <Users size={16} /> },
       { id: 'feedback-pdi', label: 'Plano de Desenvolvimento', href: '/feedback/pdi', icon: <GitBranch size={16} /> },
+      { id: 'feedback-historico', label: 'Histórico', href: '/feedback/historico', icon: <History size={16} /> },
     ],
   },
   {

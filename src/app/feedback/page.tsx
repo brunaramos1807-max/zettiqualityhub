@@ -112,13 +112,6 @@ export default function FeedbackListPage() {
           </div>
         </div>
 
-        {/* API Info */}
-        <div className="rounded-lg p-3 text-xs flex items-center gap-3" style={{ backgroundColor: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)' }}>
-          <span className="text-sky-400 font-mono">POST /api/feedbacks/import</span>
-          <span style={{ color: 'rgba(255,255,255,0.4)' }}>— Endpoint para integração automática com Lovable</span>
-          <span className="ml-auto text-sky-400">Bearer {'{INTEGRATION_API_TOKEN}'}</span>
-        </div>
-
         {/* Filters */}
         <div className="flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-48">

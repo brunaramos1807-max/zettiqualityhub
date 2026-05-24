@@ -103,6 +103,10 @@ export default function FeedbackViewPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'qa' | 'iepc'>('qa');
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   useEffect(() => {
     const id = params?.id as string;
     if (!id) return;
@@ -153,7 +157,7 @@ export default function FeedbackViewPage() {
           <button onClick={() => router.back()} className="flex items-center gap-2 text-sm transition-colors hover:text-white" style={{ color: 'rgba(255,255,255,0.5)' }}>
             <ArrowLeft size={14} /> Voltar para Analista
           </button>
-          <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-sky-600 hover:bg-sky-500 text-white transition-colors">
+          <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-sky-600 hover:bg-sky-500 text-white transition-colors">
             <Download size={14} /> Baixar PDF
           </button>
         </div>
@@ -536,7 +540,10 @@ export default function FeedbackViewPage() {
         @media print {
           body { background: white !important; color: black !important; }
           .print\\:hidden { display: none !important; }
-          aside, nav { display: none !important; }
+          aside, nav, header { display: none !important; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .max-w-5xl { max-width: 100% !important; }
+          @page { margin: 10mm; size: A4; }
         }
       `}</style>
     </EnterpriseLayout>

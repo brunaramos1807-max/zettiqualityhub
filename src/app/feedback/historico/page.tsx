@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
-import { History, Eye, TrendingUp, TrendingDown } from 'lucide-react';
+import { History, Eye, TrendingUp, TrendingDown, Upload, Trash2, Edit2, Copy, Check, ChevronDown, ChevronUp, Plus } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface HistoricoItem {
@@ -24,44 +24,157 @@ interface AnalistaGroup {
   items: HistoricoItem[];
 }
 
+const ENDPOINT = 'https://qualivisao.tec.br/api/feedbacks/import';
+const TOKEN = 'qualivisao-lovable-token-2026';
+
 export default function FeedbackHistoricoPage() {
   const supabase = createClient();
   const [grupos, setGrupos] = useState<AnalistaGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [expandedAnalista, setExpandedAnalista] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [showApiInfo, setShowApiInfo] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importStatus, setImportStatus] = useState('');
 
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase
-        .from('feedback_historico')
-        .select('*, analistas(nome, equipe)')
-        .order('created_at', { ascending: false });
+  const fetchData = async (q: string) => {
+    setLoading(true);
+    const { data } = await supabase
+      .from('feedback_historico')
+      .select('*, analistas(nome, equipe)')
+      .order('created_at', { ascending: false });
 
-      if (!data) { setLoading(false); return; }
+    if (!data) { setLoading(false); return; }
 
-      const map: Record<string, AnalistaGroup> = {};
-      (data as HistoricoItem[]).forEach((item) => {
-        const nome = item.analistas?.nome || 'Desconhecido';
-        if (!map[nome]) map[nome] = { nome, equipe: item.analistas?.equipe || '—', items: [] };
-        map[nome].items.push(item);
+    const map: Record<string, AnalistaGroup> = {};
+    (data as HistoricoItem[]).forEach((item) => {
+      const nome = item.analistas?.nome || 'Desconhecido';
+      if (!map[nome]) map[nome] = { nome, equipe: item.analistas?.equipe || '—', items: [] };
+      map[nome].items.push(item);
+    });
+
+    let result = Object.values(map).sort((a, b) => a.nome.localeCompare(b.nome));
+    if (q) result = result.filter((g) => g.nome.toLowerCase().includes(q.toLowerCase()));
+    setGrupos(result);
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchData(search); }, [search]);
+
+  const copyText = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(key);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const handleDeleteFeedback = async (feedbackId: string) => {
+    if (!confirm('Excluir este feedback e seu histórico?')) return;
+    await supabase.from('feedbacks').delete().eq('id', feedbackId);
+    fetchData(search);
+  };
+
+  const handleImportFile = async () => {
+    if (!importFile) return;
+    setImportStatus('Importando...');
+    try {
+      const text = await importFile.text();
+      const json = JSON.parse(text);
+      const res = await fetch('/api/feedbacks/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
+        body: JSON.stringify(json),
       });
-
-      let result = Object.values(map).sort((a, b) => a.nome.localeCompare(b.nome));
-      if (search) result = result.filter((g) => g.nome.toLowerCase().includes(search.toLowerCase()));
-      setGrupos(result);
-      setLoading(false);
-    })();
-  }, [search]);
+      let result = await res.json();
+      if (res.ok) {
+        setImportStatus('✅ Importado com sucesso!');
+        setImportFile(null);
+        fetchData(search);
+      } else {
+        setImportStatus(`❌ Erro: ${result.error || 'Falha na importação'}`);
+      }
+    } catch {
+      setImportStatus('❌ JSON inválido');
+    }
+    setTimeout(() => setImportStatus(''), 4000);
+  };
 
   return (
     <EnterpriseLayout>
       <div className="p-6 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <History size={24} className="text-sky-400" /> Histórico de Feedbacks
-          </h1>
-          <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>Evolução histórica por analista</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+              <History size={24} className="text-sky-400" /> Histórico Administrativo
+            </h1>
+            <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>Gestão, importação e acompanhamento de feedbacks</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link href="/feedback/import" className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors" style={{ backgroundColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)' }}>
+              <Upload size={14} /> Importar JSON
+            </Link>
+            <Link href="/feedback/manual" className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors">
+              <Plus size={14} /> Novo Feedback
+            </Link>
+          </div>
+        </div>
+
+        {/* API Integration (admin) */}
+        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(56,189,248,0.15)' }}>
+          <button
+            onClick={() => setShowApiInfo(!showApiInfo)}
+            className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-sky-400 transition-colors hover:bg-sky-400/5"
+            style={{ backgroundColor: 'rgba(56,189,248,0.04)' }}
+          >
+            <span>🔗 Integração API — Credenciais e configuração</span>
+            {showApiInfo ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+          {showApiInfo && (
+            <div className="p-4 space-y-3" style={{ backgroundColor: 'rgba(56,189,248,0.03)', borderTop: '1px solid rgba(56,189,248,0.1)' }}>
+              <div>
+                <p className="text-xs font-semibold mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>ENDPOINT</p>
+                <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <span className="text-xs font-mono text-sky-300 flex-1">{ENDPOINT}</span>
+                  <button onClick={() => copyText(ENDPOINT, 'endpoint')} className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                    {copied === 'endpoint' ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold mb-1" style={{ color: 'rgba(255,255,255,0.4)' }}>BEARER TOKEN</p>
+                <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <span className="text-xs font-mono text-yellow-300 flex-1">{TOKEN}</span>
+                  <button onClick={() => copyText(TOKEN, 'token')} className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                    {copied === 'token' ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+                  </button>
+                </div>
+              </div>
+              <div className="text-xs rounded-lg p-3" style={{ backgroundColor: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.45)' }}>
+                <span className="font-semibold text-white">Método:</span> POST &nbsp;|&nbsp;
+                <span className="font-semibold text-white">Content-Type:</span> application/json &nbsp;|&nbsp;
+                <span className="font-semibold text-white">Idempotência:</span> por email + ciclo
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Quick import */}
+        <div className="rounded-xl p-4 space-y-3" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <p className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.4)' }}>IMPORTAÇÃO RÁPIDA</p>
+          <div className="flex items-center gap-3">
+            <input
+              type="file"
+              accept=".json"
+              onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+              className="text-xs text-white file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-sky-600 file:text-white hover:file:bg-sky-500"
+            />
+            {importFile && (
+              <button onClick={handleImportFile} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-green-600 hover:bg-green-500 text-white transition-colors">
+                Importar
+              </button>
+            )}
+            {importStatus && <span className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>{importStatus}</span>}
+          </div>
         </div>
 
         <input
@@ -124,6 +237,7 @@ export default function FeedbackHistoricoPage() {
                           )}
                         </>
                       )}
+                      {isOpen ? <ChevronUp size={14} style={{ color: 'rgba(255,255,255,0.3)' }} /> : <ChevronDown size={14} style={{ color: 'rgba(255,255,255,0.3)' }} />}
                     </div>
                   </button>
 
@@ -148,11 +262,23 @@ export default function FeedbackHistoricoPage() {
                             <span className="text-white">QA {item.qa_score ?? '—'}</span>
                             <span style={{ color: 'rgba(255,255,255,0.6)' }}>IEPC {item.iepc_score ?? '—'}</span>
                             <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px' }}>{item.posicao_squad ? `#${item.posicao_squad}` : '—'}</span>
-                            {item.feedback_id && (
-                              <Link href={`/feedback/${item.feedback_id}`} className="p-1 rounded hover:bg-white/10" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                                <Eye size={12} />
-                              </Link>
-                            )}
+                            <div className="flex items-center gap-1">
+                              {item.feedback_id && (
+                                <Link href={`/feedback/${item.feedback_id}`} className="p-1 rounded hover:bg-white/10 transition-colors" title="Visualizar" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                                  <Eye size={12} />
+                                </Link>
+                              )}
+                              {item.feedback_id && (
+                                <Link href={`/feedback/manual?id=${item.feedback_id}`} className="p-1 rounded hover:bg-white/10 transition-colors" title="Editar" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                                  <Edit2 size={12} />
+                                </Link>
+                              )}
+                              {item.feedback_id && (
+                                <button onClick={() => handleDeleteFeedback(item.feedback_id!)} className="p-1 rounded hover:bg-red-500/10 transition-colors" title="Excluir" style={{ color: 'rgba(239,68,68,0.5)' }}>
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
+                            </div>
                           </div>
                         ))}
                       </div>
