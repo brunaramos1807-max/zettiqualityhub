@@ -38,7 +38,7 @@ interface Feedback {
 interface AnalistaInfo {
   nome: string;
   nome_completo: string | null;
-  cargo: string | null;
+  cargo_operacional: string | null;
   equipe: string | null;
   coordenador: string | null;
   data_admissao: string | null;
@@ -113,7 +113,7 @@ export default function FeedbackViewPage() {
     (async () => {
       const { data } = await supabase
         .from('feedbacks')
-        .select(`*, analistas(nome, nome_completo, cargo, equipe, coordenador, data_admissao, analista_id), feedback_atendimentos(*), feedback_coaching(*), feedback_pdi(*)`)
+        .select(`*, analistas(nome, nome_completo, cargo_operacional, equipe, coordenador, data_admissao, analista_id), feedback_atendimentos(*), feedback_coaching(*), feedback_pdi(*)`)
         .eq('id', id)
         .single();
       if (data) {
@@ -181,7 +181,7 @@ export default function FeedbackViewPage() {
                         </span>
                       )}
                     </div>
-                    <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>{analista?.cargo || '—'}</p>
+                    <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>{analista?.cargo_operacional || '—'}</p>
                     <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>
                       <span>Equipe: <span className="text-white">{analista?.equipe || feedback.equipe || '—'}</span></span>
                       <span>Coordenadora: <span className="text-white">{analista?.coordenador || feedback.coordenador || '—'}</span></span>
