@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { LayoutDashboard, TrendingUp, BarChart3, RefreshCw, ClipboardCheck, Upload, AlertTriangle, Star, History, FileText, Settings, ChevronLeft, ChevronRight, LogOut, Activity, UserSquare2, Zap, MessageSquare, GitBranch, Users, ChevronDown, ChevronUp, Plug, ScrollText, ShieldAlert,  } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, BarChart3, RefreshCw, ClipboardCheck, Upload, AlertTriangle, Star, History, FileText, Settings, ChevronLeft, ChevronRight, LogOut, Activity, UserSquare2, Zap, MessageSquare, GitBranch, Users, ChevronDown, Plug, ScrollText, ShieldAlert,  } from 'lucide-react';
 
 interface NavItem {
   id: string;
@@ -17,65 +17,65 @@ interface NavItem {
 
 interface NavSection {
   title: string;
-  emoji: string;
+  color: string;
   items: NavItem[];
 }
 
 const NAV_SECTIONS: NavSection[] = [
   {
     title: 'EXECUTIVO',
-    emoji: '◆',
+    color: '#38BDF8',
     items: [
-      { id: 'painel', label: 'Painel Executivo', href: '/', icon: <LayoutDashboard size={15} /> },
-      { id: 'evolucao', label: 'Evolução', href: '/evolucao-geral', icon: <TrendingUp size={15} /> },
-      { id: 'analytics', label: 'Analytics', href: '/cycle-dashboard', icon: <BarChart3 size={15} /> },
+      { id: 'painel', label: 'Painel Executivo', href: '/', icon: <LayoutDashboard size={14} /> },
+      { id: 'evolucao', label: 'Evolução', href: '/evolucao-geral', icon: <TrendingUp size={14} /> },
+      { id: 'analytics', label: 'Analytics', href: '/cycle-dashboard', icon: <BarChart3 size={14} /> },
     ],
   },
   {
     title: 'OPERAÇÃO',
-    emoji: '◆',
+    color: '#A78BFA',
     items: [
-      { id: 'ciclo-atual', label: 'Ciclo Atual', href: '/ciclo-atual', icon: <Activity size={15} /> },
-      { id: 'ciclos', label: 'Ciclos', href: '/ciclos', icon: <RefreshCw size={15} /> },
-      { id: 'auditoria', label: 'Auditoria', href: '/auditoria', icon: <ClipboardCheck size={15} /> },
+      { id: 'ciclo-atual', label: 'Ciclo Atual', href: '/ciclo-atual', icon: <Activity size={14} /> },
+      { id: 'ciclos', label: 'Ciclos', href: '/ciclos', icon: <RefreshCw size={14} /> },
+      { id: 'auditoria', label: 'Auditoria', href: '/auditoria', icon: <ClipboardCheck size={14} /> },
     ],
   },
   {
     title: 'QUALIDADE',
-    emoji: '◆',
+    color: '#22C55E',
     items: [
-      { id: 'qa-iepc', label: 'QA & IEPC 360°', href: '/qa-iepc', icon: <Zap size={15} /> },
-      { id: 'ncs', label: 'Não Conformidades', href: '/nao-conformidades', icon: <AlertTriangle size={15} /> },
-      { id: 'elogios', label: 'Elogios', href: '/mural-elogios', icon: <Star size={15} /> },
+      { id: 'qa-iepc', label: 'QA & IEPC 360°', href: '/qa-iepc', icon: <Zap size={14} /> },
+      { id: 'ncs', label: 'Não Conformidades', href: '/nao-conformidades', icon: <AlertTriangle size={14} /> },
+      { id: 'elogios', label: 'Elogios', href: '/mural-elogios', icon: <Star size={14} /> },
     ],
   },
   {
     title: 'DESENVOLVIMENTO HUMANO',
-    emoji: '◆',
+    color: '#FB923C',
     items: [
-      { id: 'feedback', label: 'Feedback', href: '/feedback', icon: <MessageSquare size={15} /> },
-      { id: 'feedback-pdi', label: 'Plano de Desenvolvimento', href: '/feedback/pdi', icon: <GitBranch size={15} /> },
-      { id: 'gestao', label: 'Gestão de Pessoas', href: '/gestao', icon: <Users size={15} /> },
-      { id: 'advertencias', label: 'Advertências', href: '/advertencias', icon: <ShieldAlert size={15} /> },
+      { id: 'feedback', label: 'Feedback', href: '/feedback', icon: <MessageSquare size={14} /> },
+      { id: 'feedback-pdi', label: 'Plano de Desenvolvimento', href: '/feedback/pdi', icon: <GitBranch size={14} /> },
+      { id: 'gestao', label: 'Gestão de Pessoas', href: '/gestao', icon: <Users size={14} /> },
+      { id: 'advertencias', label: 'Advertências', href: '/advertencias', icon: <ShieldAlert size={14} /> },
     ],
   },
   {
     title: 'GOVERNANÇA',
-    emoji: '◆',
+    color: '#94A3B8',
     items: [
-      { id: 'documentos', label: 'Documentos', href: '/documentos', icon: <FileText size={15} /> },
-      { id: 'historico', label: 'Histórico', href: '/historico', icon: <History size={15} /> },
+      { id: 'documentos', label: 'Documentos', href: '/documentos', icon: <FileText size={14} /> },
+      { id: 'historico', label: 'Histórico', href: '/historico', icon: <History size={14} /> },
     ],
   },
   {
     title: 'ADMIN',
-    emoji: '◆',
+    color: '#64748B',
     items: [
-      { id: 'configuracoes', label: 'Configurações', href: '/configuracoes', icon: <Settings size={15} />, adminOnly: true },
-      { id: 'analistas', label: 'Analistas', href: '/analistas', icon: <UserSquare2 size={15} /> },
-      { id: 'integracoes', label: 'Integrações', href: '/configuracoes', icon: <Plug size={15} />, adminOnly: true },
-      { id: 'importacoes', label: 'Importações', href: '/importacoes', icon: <Upload size={15} /> },
-      { id: 'admin-diagnostico', label: 'Logs & Diagnóstico', href: '/admin-diagnostico', icon: <ScrollText size={15} />, adminOnly: true },
+      { id: 'configuracoes', label: 'Configurações', href: '/configuracoes', icon: <Settings size={14} />, adminOnly: true },
+      { id: 'analistas', label: 'Analistas', href: '/analistas', icon: <UserSquare2 size={14} /> },
+      { id: 'integracoes', label: 'Integrações', href: '/configuracoes', icon: <Plug size={14} />, adminOnly: true },
+      { id: 'importacoes', label: 'Importações', href: '/importacoes', icon: <Upload size={14} /> },
+      { id: 'admin-diagnostico', label: 'Logs & Diagnóstico', href: '/admin-diagnostico', icon: <ScrollText size={14} />, adminOnly: true },
     ],
   },
 ];
@@ -150,26 +150,73 @@ export default function EnterpriseSidebar({ collapsed = false, onToggle }: Enter
   return (
     <aside
       className="flex flex-col h-screen sticky top-0 transition-all duration-300 flex-shrink-0"
-      style={{ width: collapsed ? '64px' : '248px', backgroundColor: '#060E1E', borderRight: '1px solid rgba(255,255,255,0.05)', zIndex: 40 }}
+      style={{
+        width: collapsed ? '64px' : '256px',
+        backgroundColor: '#060E1E',
+        borderRight: '1px solid rgba(255,255,255,0.06)',
+        zIndex: 40,
+      }}
     >
-      {/* Logo */}
-      <div className="flex items-center gap-3 px-4 py-4 flex-shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', minHeight: '68px' }}>
-        <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center" style={{ backgroundColor: '#1E40AF' }}>
-          <AppImage src="/assets/images/ChatGPT_Image_18_de_mai._de_2026_16_36_10-1779133005009.png" alt="QualiVisão logo" width={36} height={36} className="w-full h-full object-cover" />
+      {/* ── Logo / Brand ── */}
+      <div
+        className="flex items-center gap-3 px-4 flex-shrink-0"
+        style={{
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          minHeight: '76px',
+          background: 'linear-gradient(180deg, rgba(30,64,175,0.12) 0%, transparent 100%)',
+        }}
+      >
+        <div
+          className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center"
+          style={{
+            background: 'linear-gradient(135deg, #1E40AF, #0EA5E9)',
+            boxShadow: '0 0 16px rgba(56,189,248,0.25), 0 2px 8px rgba(0,0,0,0.4)',
+          }}
+        >
+          <AppImage
+            src="/assets/images/ChatGPT_Image_18_de_mai._de_2026_16_36_10-1779133005009.png"
+            alt="QualiVisão logo"
+            width={40}
+            height={40}
+            className="w-full h-full object-cover"
+          />
         </div>
         {!collapsed && (
           <div className="min-w-0 flex-1">
-            <p className="font-extrabold text-white tracking-widest leading-tight" style={{ fontSize: '13px', letterSpacing: '0.14em' }}>QUALIVISÃO</p>
-            <p className="font-medium" style={{ color: 'rgba(255,255,255,0.4)', fontSize: '10px', letterSpacing: '0.04em' }}>People Analytics</p>
+            <p
+              className="font-black text-white leading-tight"
+              style={{
+                fontSize: '14px',
+                letterSpacing: '0.18em',
+                textShadow: '0 0 20px rgba(56,189,248,0.4)',
+              }}
+            >
+              QUALIVISÃO
+            </p>
+            <p
+              className="font-semibold"
+              style={{
+                color: 'rgba(56,189,248,0.6)',
+                fontSize: '9.5px',
+                letterSpacing: '0.12em',
+                marginTop: '1px',
+              }}
+            >
+              People Analytics
+            </p>
           </div>
         )}
-        <button onClick={onToggle} className="flex-shrink-0 p-1 rounded-md transition-colors hover:bg-white/5" style={{ color: 'rgba(255,255,255,0.25)' }}>
+        <button
+          onClick={onToggle}
+          className="flex-shrink-0 p-1.5 rounded-lg transition-all hover:bg-white/[0.06]"
+          style={{ color: 'rgba(255,255,255,0.2)' }}
+        >
           {collapsed ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
         </button>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-2 scrollbar-hide">
+      {/* ── Navigation ── */}
+      <nav className="flex-1 overflow-y-auto py-3 scrollbar-hide">
         {NAV_SECTIONS.map((section) => {
           const visibleItems = section.items.filter((item) => !item.adminOnly || isAdmin);
           if (visibleItems.length === 0) return null;
@@ -179,13 +226,20 @@ export default function EnterpriseSidebar({ collapsed = false, onToggle }: Enter
           if (collapsed) {
             return (
               <div key={section.title} className="mb-1">
-                <div className="my-1.5 mx-3 h-px" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }} />
+                <div className="my-2 mx-3 h-px" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }} />
                 {visibleItems.map((item) => {
                   const isActive = activeId === item.id;
                   return (
-                    <Link key={item.id} href={item.href} title={item.label}
-                      className="flex items-center justify-center mx-2 p-2.5 rounded-lg transition-all"
-                      style={{ color: isActive ? '#38BDF8' : 'rgba(255,255,255,0.4)', backgroundColor: isActive ? 'rgba(56,189,248,0.1)' : 'transparent' }}>
+                    <Link
+                      key={item.id}
+                      href={item.href}
+                      title={item.label}
+                      className="flex items-center justify-center mx-2 p-2.5 rounded-lg transition-all mb-0.5"
+                      style={{
+                        color: isActive ? section.color : 'rgba(255,255,255,0.35)',
+                        backgroundColor: isActive ? `${section.color}12` : 'transparent',
+                      }}
+                    >
                       {item.icon}
                     </Link>
                   );
@@ -195,65 +249,116 @@ export default function EnterpriseSidebar({ collapsed = false, onToggle }: Enter
           }
 
           return (
-            <div key={section.title} className="mb-0.5">
-              {/* Section header — accordion toggle */}
+            <div key={section.title} className="mb-1">
+              {/* Section header */}
               <button
                 onClick={() => toggleSection(section.title)}
-                className="w-full flex items-center justify-between px-4 py-2 transition-colors hover:bg-white/[0.02]"
+                className="w-full flex items-center justify-between px-4 py-2.5 transition-all hover:bg-white/[0.02] group"
               >
-                <span className="text-xs font-bold tracking-widest flex items-center gap-1.5"
-                  style={{ color: hasActive ? 'rgba(56,189,248,0.7)' : 'rgba(255,255,255,0.22)', fontSize: '9.5px' }}>
+                <span
+                  className="text-xs font-bold tracking-widest flex items-center gap-2"
+                  style={{
+                    color: hasActive ? section.color : 'rgba(255,255,255,0.2)',
+                    fontSize: '9px',
+                    transition: 'color 0.2s',
+                  }}
+                >
+                  {hasActive && (
+                    <span
+                      className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: section.color, boxShadow: `0 0 6px ${section.color}` }}
+                    />
+                  )}
                   {section.title}
                 </span>
-                {isOpen
-                  ? <ChevronUp size={11} style={{ color: 'rgba(255,255,255,0.2)' }} />
-                  : <ChevronDown size={11} style={{ color: 'rgba(255,255,255,0.2)' }} />}
+                <span style={{ color: 'rgba(255,255,255,0.15)', transition: 'transform 0.2s', transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)' }}>
+                  <ChevronDown size={11} />
+                </span>
               </button>
 
-              {/* Items */}
-              {isOpen && (
-                <div className="pb-1">
+              {/* Items with smooth animation */}
+              <div
+                style={{
+                  maxHeight: isOpen ? `${visibleItems.length * 44}px` : '0px',
+                  overflow: 'hidden',
+                  transition: 'max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                }}
+              >
+                <div className="pb-1.5">
                   {visibleItems.map((item) => {
                     const isActive = activeId === item.id;
                     return (
-                      <Link key={item.id} href={item.href}
-                        className="flex items-center gap-2.5 mx-2 px-3 py-2 rounded-lg transition-all text-sm font-medium"
+                      <Link
+                        key={item.id}
+                        href={item.href}
+                        className="flex items-center gap-2.5 mx-2 px-3 py-2.5 rounded-lg transition-all text-sm font-medium group"
                         style={{
-                          color: isActive ? '#38BDF8' : 'rgba(255,255,255,0.48)',
-                          backgroundColor: isActive ? 'rgba(56,189,248,0.09)' : 'transparent',
-                          borderLeft: isActive ? '2px solid #38BDF8' : '2px solid transparent',
+                          color: isActive ? '#fff' : 'rgba(255,255,255,0.45)',
+                          backgroundColor: isActive ? `${section.color}14` : 'transparent',
+                          borderLeft: isActive ? `2px solid ${section.color}` : '2px solid transparent',
                           fontSize: '13px',
-                        }}>
-                        <span className="flex-shrink-0" style={{ opacity: isActive ? 1 : 0.7 }}>{item.icon}</span>
+                          boxShadow: isActive ? `inset 0 0 20px ${section.color}06` : 'none',
+                        }}
+                      >
+                        <span
+                          className="flex-shrink-0 transition-colors"
+                          style={{ color: isActive ? section.color : 'rgba(255,255,255,0.3)' }}
+                        >
+                          {item.icon}
+                        </span>
                         <span className="truncate">{item.label}</span>
+                        {isActive && (
+                          <span
+                            className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: section.color, boxShadow: `0 0 6px ${section.color}` }}
+                          />
+                        )}
                       </Link>
                     );
                   })}
                 </div>
-              )}
+              </div>
             </div>
           );
         })}
       </nav>
 
-      {/* User section */}
-      <div className="flex-shrink-0 p-3" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+      {/* ── User section ── */}
+      <div className="flex-shrink-0 p-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
         {!collapsed ? (
-          <div className="flex items-center gap-2 p-2 rounded-lg" style={{ backgroundColor: 'rgba(255,255,255,0.03)' }}>
-            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 text-white" style={{ backgroundColor: '#1E40AF' }}>
+          <div
+            className="flex items-center gap-2.5 p-2.5 rounded-xl"
+            style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
+          >
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 text-white"
+              style={{ background: 'linear-gradient(135deg, #1E40AF, #3B82F6)', boxShadow: '0 2px 8px rgba(30,64,175,0.4)' }}
+            >
               {displayAvatar}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-white truncate leading-tight">{displayName}</p>
-              {displayRole && <p className="text-xs truncate" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px' }}>{displayRole}</p>}
+              {displayRole && (
+                <p className="text-xs truncate" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px' }}>{displayRole}</p>
+              )}
             </div>
-            <button onClick={handleSignOut} className="p-1 rounded transition-colors hover:bg-white/5" style={{ color: '#EF4444' }} title="Sair">
+            <button
+              onClick={handleSignOut}
+              className="p-1.5 rounded-lg transition-colors hover:bg-white/5 flex-shrink-0"
+              style={{ color: '#EF4444' }}
+              title="Sair"
+            >
               <LogOut size={13} />
             </button>
           </div>
         ) : (
-          <button onClick={handleSignOut} className="w-full flex items-center justify-center p-2 rounded-lg transition-colors hover:bg-white/5" style={{ color: '#EF4444' }} title="Sair">
-            <LogOut size={16} />
+          <button
+            onClick={handleSignOut}
+            className="w-full flex items-center justify-center p-2 rounded-lg transition-colors hover:bg-white/5"
+            style={{ color: '#EF4444' }}
+            title="Sair"
+          >
+            <LogOut size={14} />
           </button>
         )}
       </div>

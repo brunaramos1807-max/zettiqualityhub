@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
+import { createClient } from '@/lib/supabase/client';
 import {
   fetchAnalistas, upsertAnalista, deleteAnalista, calcTempoEmpresa,
   fetchCycleScores, fetchNCRecords, fetchElogios, fetchPDIRecords,
@@ -462,6 +463,85 @@ function Profile360({ analista, onClose }: Profile360Props) {
   );
 }
 
+// ─── Avatar Upload Field ──────────────────────────────────────────────────────
+function AvatarUploadField({ value, onChange, nome }: { value: string; onChange: (url: string) => void; nome: string }) {
+  const supabase = createClient();
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setUploadError('Selecione uma imagem válida'); return; }
+    if (file.size > 5 * 1024 * 1024) { setUploadError('Imagem deve ter menos de 5MB'); return; }
+
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const ext = file.name.split('.').pop() || 'jpg';
+      const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      const { error: uploadErr } = await supabase.storage
+        .from('analistas-avatar')
+        .upload(fileName, file, { upsert: true, contentType: file.type });
+
+      if (uploadErr) throw uploadErr;
+
+      const { data: urlData } = supabase.storage
+        .from('analistas-avatar')
+        .getPublicUrl(fileName);
+
+      onChange(urlData.publicUrl);
+    } catch (err: any) {
+      setUploadError(err?.message || 'Erro ao fazer upload');
+    }
+    setUploading(false);
+  };
+
+  return (
+    <div>
+      <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: '#8B949E' }}>Foto / Avatar</label>
+      <div className="flex items-center gap-3">
+        {value ? (
+          <img src={value} alt="Preview" className="w-14 h-14 rounded-full object-cover flex-shrink-0"
+            style={{ border: '2px solid rgba(56,189,248,0.35)', boxShadow: '0 0 12px rgba(56,189,248,0.15)' }}
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+        ) : (
+          <div className="w-14 h-14 rounded-full flex items-center justify-center text-lg font-bold text-white flex-shrink-0"
+            style={{ background: 'linear-gradient(135deg, #1E40AF, #3B82F6)' }}>
+            {nome.substring(0, 1).toUpperCase() || '?'}
+          </div>
+        )}
+        <div className="flex-1">
+          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-50"
+            style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.25)' }}
+          >
+            <Upload size={14} />
+            {uploading ? 'Enviando...' : value ? 'Trocar foto' : 'Selecionar foto'}
+          </button>
+          {value && (
+            <button
+              type="button"
+              onClick={() => onChange('')}
+              className="ml-2 text-xs px-2 py-1 rounded transition-colors"
+              style={{ color: 'rgba(255,255,255,0.3)', backgroundColor: 'rgba(255,255,255,0.04)' }}
+            >
+              Remover
+            </button>
+          )}
+          {uploadError && <p className="text-xs mt-1" style={{ color: '#EF4444' }}>{uploadError}</p>}
+          {!uploadError && <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.2)' }}>JPG, PNG ou WebP. Máx 5MB.</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Analista Form Modal ──────────────────────────────────────────────────────
 interface AnalistaFormProps {
   initial?: AnalistaRecord | null;
@@ -594,24 +674,11 @@ function AnalistaFormModal({ initial, onSave, onClose, saving }: AnalistaFormPro
               ))}
             </div>
           </div>
-          <div>
-            <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: '#8B949E' }}>Foto / Avatar (URL)</label>
-            <div className="flex items-center gap-3">
-              {form.foto_url ? (
-                <img src={form.foto_url} alt="Preview" className="w-10 h-10 rounded-full object-cover flex-shrink-0"
-                  style={{ border: '2px solid rgba(56,189,248,0.3)' }}
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-              ) : (
-                <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
-                  style={{ background: 'linear-gradient(135deg, #1E40AF, #3B82F6)' }}>
-                  {form.nome.substring(0, 1).toUpperCase() || '?'}
-                </div>
-              )}
-              <input type="url" placeholder="https://exemplo.com/foto.jpg" value={form.foto_url}
-                onChange={(e) => set('foto_url', e.target.value)} style={{ ...inputStyle, flex: 1 }} />
-            </div>
-            <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.25)' }}>Cole a URL da foto do analista. Aparecerá no header do feedback.</p>
-          </div>
+          <AvatarUploadField
+            value={form.foto_url}
+            onChange={(url) => set('foto_url', url)}
+            nome={form.nome}
+          />
           <div>
             <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: '#8B949E' }}>Observações</label>
             <textarea placeholder="Observações sobre o analista..." value={form.observacoes}
