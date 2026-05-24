@@ -44,12 +44,15 @@ export interface FeedbackPDFData {
   historico?: Array<{ ciclo: string; qa_score: number; iepc_score: number }>;
 }
 
-const DARK_BG = [6, 14, 30] as [number, number, number];
-const BLUE = [30, 64, 175] as [number, number, number];
-const SKY = [56, 189, 248] as [number, number, number];
-const GREEN = [34, 197, 94] as [number, number, number];
-const ORANGE = [251, 146, 60] as [number, number, number];
-const RED = [239, 68, 68] as [number, number, number];
+// ─── Corporate color palette ──────────────────────────────────────────────────
+const DARK_BG = [10, 22, 40] as [number, number, number];
+const DARK_SURFACE = [13, 31, 60] as [number, number, number];
+const BLUE = [42, 82, 152] as [number, number, number];
+const BLUE_LIGHT = [91, 141, 239] as [number, number, number];
+const TEAL = [78, 205, 196] as [number, number, number];
+const GREEN = [82, 183, 136] as [number, number, number];
+const AMBER = [212, 168, 83] as [number, number, number];
+const RED = [192, 57, 43] as [number, number, number];
 const WHITE = [255, 255, 255] as [number, number, number];
 const GRAY = [148, 163, 184] as [number, number, number];
 const LIGHT_BG = [248, 250, 252] as [number, number, number];
@@ -57,45 +60,43 @@ const SECTION_BG = [241, 245, 249] as [number, number, number];
 
 function addPageHeader(doc: jsPDF, title: string, pageNum: number, totalPages: number, ciclo: string) {
   const w = doc.internal.pageSize.getWidth();
-  // Header bar
   doc.setFillColor(...DARK_BG);
-  doc.rect(0, 0, w, 18, 'F');
-  // Blue accent line
+  doc.rect(0, 0, w, 16, 'F');
   doc.setFillColor(...BLUE);
-  doc.rect(0, 18, w, 2, 'F');
+  doc.rect(0, 16, w, 1.5, 'F');
 
   doc.setTextColor(...WHITE);
-  doc.setFontSize(9);
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
-  doc.text('QUALIVISÃO', 12, 11);
+  doc.text('QUALIVISÃO', 10, 9);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
+  doc.setFontSize(7);
   doc.setTextColor(...GRAY);
-  doc.text(`People Analytics  ·  Ciclo ${ciclo}  ·  ${title}`, 12, 16);
+  doc.text(`People Analytics  ·  Ciclo ${ciclo}  ·  ${title}`, 10, 14);
 
   doc.setTextColor(...GRAY);
-  doc.text(`Pág. ${pageNum} / ${totalPages}`, w - 12, 11, { align: 'right' });
-  doc.text('Documento Confidencial · Uso Interno', w - 12, 16, { align: 'right' });
+  doc.text(`Pág. ${pageNum} / ${totalPages}`, w - 10, 9, { align: 'right' });
+  doc.text('Documento Confidencial · Uso Interno', w - 10, 14, { align: 'right' });
 }
 
 function addSectionTitle(doc: jsPDF, title: string, y: number, color: [number, number, number] = BLUE): number {
   doc.setFillColor(...color);
-  doc.rect(12, y, 3, 6, 'F');
+  doc.rect(10, y, 2.5, 5.5, 'F');
   doc.setTextColor(...color);
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
-  doc.text(title.toUpperCase(), 18, y + 5);
-  return y + 12;
+  doc.text(title.toUpperCase(), 15, y + 4.5);
+  return y + 11;
 }
 
 function addTextBlock(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, color: [number, number, number] = [30, 41, 59]): number {
   doc.setTextColor(...color);
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
   const lines = doc.splitTextToSize(text, maxWidth);
   doc.text(lines, x, y);
-  return y + lines.length * 5;
+  return y + lines.length * 4.8;
 }
 
 function scoreBox(doc: jsPDF, x: number, y: number, w: number, h: number, label: string, value: string, color: [number, number, number]) {
@@ -103,111 +104,164 @@ function scoreBox(doc: jsPDF, x: number, y: number, w: number, h: number, label:
   doc.setDrawColor(...color);
   doc.roundedRect(x, y, w, h, 2, 2, 'FD');
   doc.setTextColor(...GRAY);
-  doc.setFontSize(7);
+  doc.setFontSize(6.5);
   doc.setFont('helvetica', 'bold');
-  doc.text(label, x + w / 2, y + 5, { align: 'center' });
+  doc.text(label, x + w / 2, y + 4.5, { align: 'center' });
   doc.setTextColor(...color);
-  doc.setFontSize(16);
+  doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text(value, x + w / 2, y + 15, { align: 'center' });
+  doc.text(value, x + w / 2, y + 13, { align: 'center' });
 }
 
-export function exportFeedbackPDF(data: FeedbackPDFData): void {
+// ─── Load image as base64 ─────────────────────────────────────────────────────
+
+async function loadImageAsBase64(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
+  // Pre-load analyst photo
+  let photoBase64: string | null = null;
+  if (data.analista.fotoUrl) {
+    photoBase64 = await loadImageAsBase64(data.analista.fotoUrl);
+  }
+
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const margin = 12;
+  const margin = 10;
   const contentW = pageW - margin * 2;
   const totalPages = 5;
   let currentPage = 1;
 
   // ══════════════════════════════════════════════════════════
-  // PAGE 1 — Header + Resumo + Indicadores + Evolução
+  // PAGE 1 — Header + Resumo + Indicadores
   // ══════════════════════════════════════════════════════════
   addPageHeader(doc, 'Avaliação Executiva', currentPage, totalPages, data.ciclo);
 
-  // Hero header block
+  // Hero block — compact
+  const heroY = 20;
+  const heroH = 44;
   doc.setFillColor(...DARK_BG);
-  doc.rect(0, 20, pageW, 58, 'F');
-
-  // Try to embed analyst photo
-  let photoLoaded = false;
-  const photoX = margin;
-  const photoY = 24;
-  const photoSize = 28;
-
-  // Analyst info (offset right if photo present)
-  const infoX = data.analista.fotoUrl ? photoX + photoSize + 6 : margin;
-
-  doc.setTextColor(...WHITE);
-  doc.setFontSize(17);
-  doc.setFont('helvetica', 'bold');
-  doc.text(data.analista.nome, infoX, 34);
-
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(...GRAY);
-  doc.text(data.analista.cargo || 'Analista', infoX, 40);
-  doc.text(`Equipe: ${data.analista.equipe || '—'}  ·  Coordenadora: ${data.analista.coordenador || '—'}`, infoX, 46);
-  doc.text(`Tempo de empresa: ${data.analista.tempoEmpresa || '—'}`, infoX, 52);
-
-  // Ciclo badge
+  doc.rect(0, heroY, pageW, heroH, 'F');
   doc.setFillColor(...BLUE);
-  doc.roundedRect(pageW - 52, 24, 40, 12, 2, 2, 'F');
-  doc.setTextColor(...WHITE);
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'bold');
-  doc.text(`CICLO ${data.ciclo}`, pageW - 32, 31, { align: 'center' });
+  doc.rect(0, heroY, 2, heroH, 'F');
 
-  if (data.periodoInicio) {
-    doc.setFontSize(7);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(...GRAY);
-    doc.text(`${data.periodoInicio}${data.periodoFim ? ` a ${data.periodoFim}` : ''}`, pageW - 32, 37, { align: 'center' });
+  // Photo
+  const photoSize = 30;
+  const photoX = margin + 4;
+  const photoY = heroY + 7;
+
+  if (photoBase64) {
+    try {
+      doc.addImage(photoBase64, 'JPEG', photoX, photoY, photoSize, photoSize, undefined, 'FAST');
+      // Photo border
+      doc.setDrawColor(...BLUE_LIGHT);
+      doc.setLineWidth(0.5);
+      doc.rect(photoX, photoY, photoSize, photoSize);
+    } catch {
+      // fallback: initials box
+      doc.setFillColor(26, 58, 110);
+      doc.rect(photoX, photoY, photoSize, photoSize, 'F');
+      doc.setTextColor(...WHITE);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      const initials = data.analista.nome.split(' ').slice(0, 2).map((n) => n[0]).join('');
+      doc.text(initials, photoX + photoSize / 2, photoY + photoSize / 2 + 3, { align: 'center' });
+    }
+  } else {
+    doc.setFillColor(26, 58, 110);
+    doc.rect(photoX, photoY, photoSize, photoSize, 'F');
+    doc.setTextColor(...WHITE);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    const initials = data.analista.nome.split(' ').slice(0, 2).map((n) => n[0]).join('');
+    doc.text(initials, photoX + photoSize / 2, photoY + photoSize / 2 + 3, { align: 'center' });
   }
 
-  // Status badge
-  doc.setFillColor(34, 197, 94);
-  doc.roundedRect(pageW - 52, 40, 40, 8, 2, 2, 'F');
+  // Analyst info
+  const infoX = photoX + photoSize + 6;
+  doc.setTextColor(...WHITE);
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text(data.analista.nome, infoX, heroY + 13);
+
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...GRAY);
+  doc.text(data.analista.cargo || 'Analista de Suporte', infoX, heroY + 19);
+  doc.text(`Equipe: ${data.analista.equipe || '—'}  ·  Coordenadora: ${data.analista.coordenador || '—'}`, infoX, heroY + 25);
+  doc.text(`Tempo de empresa: ${data.analista.tempoEmpresa || '—'}`, infoX, heroY + 31);
+
+  // Ciclo badge (top right)
+  doc.setFillColor(...BLUE);
+  doc.roundedRect(pageW - 42, heroY + 5, 32, 10, 2, 2, 'F');
   doc.setTextColor(...WHITE);
   doc.setFontSize(7);
   doc.setFont('helvetica', 'bold');
-  doc.text('Concluído', pageW - 32, 45, { align: 'center' });
+  doc.text(`CICLO ${data.ciclo}`, pageW - 26, heroY + 11, { align: 'center' });
 
-  // Score boxes
-  const boxY = 64;
-  const boxW = 30;
-  const boxH = 22;
-  const boxGap = 4;
+  if (data.periodoInicio) {
+    doc.setFontSize(6.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...GRAY);
+    doc.text(`${data.periodoInicio}${data.periodoFim ? ` a ${data.periodoFim}` : ''}`, pageW - 26, heroY + 18, { align: 'center' });
+  }
+
+  // Status
+  doc.setFillColor(...GREEN);
+  doc.roundedRect(pageW - 42, heroY + 30, 32, 7, 2, 2, 'F');
+  doc.setTextColor(...WHITE);
+  doc.setFontSize(6.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Concluído', pageW - 26, heroY + 35, { align: 'center' });
+
+  // Score boxes — compact row
+  const boxY = heroY + heroH + 4;
+  const boxW = 28;
+  const boxH = 20;
+  const boxGap = 3;
   const startX = margin;
 
-  scoreBox(doc, startX, boxY, boxW, boxH, 'QA', data.qaScore != null ? `${data.qaScore}` : '—', SKY);
+  scoreBox(doc, startX, boxY, boxW, boxH, 'QA', data.qaScore != null ? `${data.qaScore}` : '—', BLUE_LIGHT);
   scoreBox(doc, startX + boxW + boxGap, boxY, boxW, boxH, 'IEPC', data.iepcScore != null ? `${data.iepcScore}%` : '—', GREEN);
-  scoreBox(doc, startX + (boxW + boxGap) * 2, boxY, boxW, boxH, 'ADERÊNCIA', data.aderenciaScore != null ? `${data.aderenciaScore}%` : '—', [167, 139, 250]);
+  scoreBox(doc, startX + (boxW + boxGap) * 2, boxY, boxW, boxH, 'ADERÊNCIA', data.aderenciaScore != null ? `${data.aderenciaScore}%` : '—', TEAL);
   if (data.posicaoSquad != null) {
-    scoreBox(doc, startX + (boxW + boxGap) * 3, boxY, boxW, boxH, 'POSIÇÃO', `Top ${data.posicaoSquad}`, ORANGE);
+    scoreBox(doc, startX + (boxW + boxGap) * 3, boxY, boxW, boxH, 'POSIÇÃO', `Top ${data.posicaoSquad}`, AMBER);
   }
   if (data.ciclosConsecutivos && data.ciclosConsecutivos > 0) {
-    scoreBox(doc, startX + (boxW + boxGap) * 4, boxY, boxW, boxH, 'CICLOS EVOL.', `${data.ciclosConsecutivos}`, [234, 179, 8]);
+    scoreBox(doc, startX + (boxW + boxGap) * 4, boxY, boxW, boxH, 'CICLOS EVOL.', `${data.ciclosConsecutivos}`, GREEN);
   }
 
-  let y = 94;
+  let y = boxY + boxH + 8;
 
   // Resumo Executivo
   if (data.resumoCiclo) {
+    if (y > pageH - 50) { doc.addPage(); currentPage++; addPageHeader(doc, 'Resumo Executivo', currentPage, totalPages, data.ciclo); y = 24; }
     y = addSectionTitle(doc, 'Resumo Executivo do Ciclo', y, BLUE);
     doc.setFillColor(...SECTION_BG);
-    const resumoLines = doc.splitTextToSize(data.resumoCiclo, contentW - 8);
-    const resumoH = resumoLines.length * 5 + 8;
+    const resumoLines = doc.splitTextToSize(data.resumoCiclo, contentW - 6);
+    const resumoH = resumoLines.length * 4.8 + 6;
     doc.roundedRect(margin, y - 2, contentW, resumoH, 2, 2, 'F');
-    y = addTextBlock(doc, data.resumoCiclo, margin + 4, y + 3, contentW - 8, [30, 41, 59]);
-    y += 8;
+    y = addTextBlock(doc, data.resumoCiclo, margin + 3, y + 2, contentW - 6, [30, 41, 59]);
+    y += 7;
   }
 
   // Performance por Pilar — QA
   if (data.pilares_qa && data.pilares_qa.length > 0) {
-    if (y > pageH - 60) { doc.addPage(); currentPage++; addPageHeader(doc, 'Performance QA', currentPage, totalPages, data.ciclo); y = 28; }
-    y = addSectionTitle(doc, 'Performance por Pilar — QA', y, SKY);
+    if (y > pageH - 55) { doc.addPage(); currentPage++; addPageHeader(doc, 'Performance QA', currentPage, totalPages, data.ciclo); y = 24; }
+    y = addSectionTitle(doc, 'Performance por Pilar — QA', y, BLUE_LIGHT);
     autoTable(doc, {
       startY: y,
       head: [['Pilar', 'Pontuação', 'Máximo', 'Evolução']],
@@ -217,19 +271,19 @@ export function exportFeedbackPDF(data: FeedbackPDFData): void {
         p.max,
         p.variacao !== undefined ? (p.variacao >= 0 ? `+${p.variacao} pts` : `${p.variacao} pts`) : '—',
       ]),
-      styles: { fontSize: 8, cellPadding: 2.5, textColor: [30, 41, 59] },
-      headStyles: { fillColor: BLUE, textColor: WHITE, fontStyle: 'bold', fontSize: 8 },
+      styles: { fontSize: 7.5, cellPadding: 2, textColor: [30, 41, 59] },
+      headStyles: { fillColor: BLUE, textColor: WHITE, fontStyle: 'bold', fontSize: 7.5 },
       alternateRowStyles: { fillColor: SECTION_BG },
       columnStyles: { 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' } },
       margin: { left: margin, right: margin },
     });
-    y = (doc as any).lastAutoTable?.finalY + 8 || y + 40;
+    y = (doc as any).lastAutoTable?.finalY + 7 || y + 35;
   }
 
   // Performance por Pilar — IEPC
   if (data.pilares_iepc && data.pilares_iepc.length > 0) {
-    if (y > pageH - 60) { doc.addPage(); currentPage++; addPageHeader(doc, 'Performance IEPC', currentPage, totalPages, data.ciclo); y = 28; }
-    y = addSectionTitle(doc, 'Performance por Pilar — IEPC', y, GREEN);
+    if (y > pageH - 55) { doc.addPage(); currentPage++; addPageHeader(doc, 'Performance IEPC', currentPage, totalPages, data.ciclo); y = 24; }
+    y = addSectionTitle(doc, 'Performance por Pilar — IEPC', y, TEAL);
     autoTable(doc, {
       startY: y,
       head: [['Pilar', 'Pontuação', 'Máximo', 'Evolução']],
@@ -239,30 +293,30 @@ export function exportFeedbackPDF(data: FeedbackPDFData): void {
         p.max,
         p.variacao !== undefined ? (p.variacao >= 0 ? `+${p.variacao} pts` : `${p.variacao} pts`) : '—',
       ]),
-      styles: { fontSize: 8, cellPadding: 2.5, textColor: [30, 41, 59] },
-      headStyles: { fillColor: GREEN, textColor: WHITE, fontStyle: 'bold', fontSize: 8 },
+      styles: { fontSize: 7.5, cellPadding: 2, textColor: [30, 41, 59] },
+      headStyles: { fillColor: [42, 130, 120], textColor: WHITE, fontStyle: 'bold', fontSize: 7.5 },
       alternateRowStyles: { fillColor: SECTION_BG },
       columnStyles: { 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' } },
       margin: { left: margin, right: margin },
     });
-    y = (doc as any).lastAutoTable?.finalY + 8 || y + 40;
+    y = (doc as any).lastAutoTable?.finalY + 7 || y + 35;
   }
 
   // Histórico
   if (data.historico && data.historico.length > 1) {
-    if (y > pageH - 50) { doc.addPage(); currentPage++; addPageHeader(doc, 'Evolução Histórica', currentPage, totalPages, data.ciclo); y = 28; }
+    if (y > pageH - 45) { doc.addPage(); currentPage++; addPageHeader(doc, 'Evolução Histórica', currentPage, totalPages, data.ciclo); y = 24; }
     y = addSectionTitle(doc, 'Evolução Histórica', y, GREEN);
     autoTable(doc, {
       startY: y,
       head: [['Ciclo', 'QA', 'IEPC']],
       body: data.historico.map((h) => [h.ciclo, h.qa_score, h.iepc_score]),
-      styles: { fontSize: 8, cellPadding: 2.5 },
+      styles: { fontSize: 7.5, cellPadding: 2 },
       headStyles: { fillColor: GREEN, textColor: WHITE, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: SECTION_BG },
       columnStyles: { 1: { halign: 'center' }, 2: { halign: 'center' } },
       margin: { left: margin, right: margin },
     });
-    y = (doc as any).lastAutoTable?.finalY + 8 || y + 30;
+    y = (doc as any).lastAutoTable?.finalY + 7 || y + 28;
   }
 
   // ══════════════════════════════════════════════════════════
@@ -271,157 +325,154 @@ export function exportFeedbackPDF(data: FeedbackPDFData): void {
   doc.addPage();
   currentPage++;
   addPageHeader(doc, 'Evolução & Coaching', currentPage, totalPages, data.ciclo);
-  y = 28;
+  y = 24;
 
   // Pontos Fortes
   if (data.pontosFortes && data.pontosFortes.length > 0) {
     y = addSectionTitle(doc, 'Pontos Fortes', y, GREEN);
     data.pontosFortes.slice(0, 5).forEach((p) => {
-      if (y > pageH - 30) { doc.addPage(); currentPage++; addPageHeader(doc, 'Pontos Fortes', currentPage, totalPages, data.ciclo); y = 28; }
+      if (y > pageH - 28) { doc.addPage(); currentPage++; addPageHeader(doc, 'Pontos Fortes', currentPage, totalPages, data.ciclo); y = 24; }
       doc.setFillColor(240, 253, 244);
       doc.setDrawColor(...GREEN);
-      const lines = doc.splitTextToSize(`${p.titulo}: ${p.descricao}`, contentW - 10);
-      const h = lines.length * 5 + 6;
+      const lines = doc.splitTextToSize(`${p.titulo}: ${p.descricao}`, contentW - 8);
+      const h = lines.length * 4.8 + 5;
       doc.roundedRect(margin, y, contentW, h, 2, 2, 'FD');
       doc.setTextColor(21, 128, 61);
-      doc.setFontSize(8);
+      doc.setFontSize(7.5);
       doc.setFont('helvetica', 'bold');
-      doc.text('✓', margin + 3, y + 5);
+      doc.text('✓', margin + 2.5, y + 4.5);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(30, 41, 59);
-      doc.text(lines, margin + 8, y + 5);
-      y += h + 3;
+      doc.text(lines, margin + 7, y + 4.5);
+      y += h + 2.5;
     });
     y += 4;
   }
 
   // Oportunidades
   if (data.oportunidades && data.oportunidades.length > 0) {
-    if (y > pageH - 40) { doc.addPage(); currentPage++; addPageHeader(doc, 'Oportunidades', currentPage, totalPages, data.ciclo); y = 28; }
-    y = addSectionTitle(doc, 'Oportunidades de Evolução', y, ORANGE);
+    if (y > pageH - 35) { doc.addPage(); currentPage++; addPageHeader(doc, 'Oportunidades', currentPage, totalPages, data.ciclo); y = 24; }
+    y = addSectionTitle(doc, 'Oportunidades de Evolução', y, AMBER);
     data.oportunidades.slice(0, 5).forEach((o) => {
-      if (y > pageH - 30) { doc.addPage(); currentPage++; addPageHeader(doc, 'Oportunidades', currentPage, totalPages, data.ciclo); y = 28; }
-      doc.setFillColor(255, 247, 237);
-      doc.setDrawColor(...ORANGE);
-      const lines = doc.splitTextToSize(`${o.titulo}: ${o.descricao}`, contentW - 10);
-      const h = lines.length * 5 + 6;
+      if (y > pageH - 28) { doc.addPage(); currentPage++; addPageHeader(doc, 'Oportunidades', currentPage, totalPages, data.ciclo); y = 24; }
+      doc.setFillColor(255, 251, 235);
+      doc.setDrawColor(...AMBER);
+      const lines = doc.splitTextToSize(`${o.titulo}: ${o.descricao}`, contentW - 8);
+      const h = lines.length * 4.8 + 5;
       doc.roundedRect(margin, y, contentW, h, 2, 2, 'FD');
       doc.setTextColor(154, 52, 18);
-      doc.setFontSize(8);
+      doc.setFontSize(7.5);
       doc.setFont('helvetica', 'bold');
-      doc.text('→', margin + 3, y + 5);
+      doc.text('→', margin + 2.5, y + 4.5);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(30, 41, 59);
-      doc.text(lines, margin + 8, y + 5);
-      y += h + 3;
+      doc.text(lines, margin + 7, y + 4.5);
+      y += h + 2.5;
     });
     y += 4;
   }
 
   // Evolução Técnica
   if (data.evolucaoTecnica) {
-    if (y > pageH - 60) { doc.addPage(); currentPage++; addPageHeader(doc, 'Evolução Técnica', currentPage, totalPages, data.ciclo); y = 28; }
-    y = addSectionTitle(doc, 'Evolução Técnica', y, SKY);
+    if (y > pageH - 55) { doc.addPage(); currentPage++; addPageHeader(doc, 'Evolução Técnica', currentPage, totalPages, data.ciclo); y = 24; }
+    y = addSectionTitle(doc, 'Evolução Técnica', y, BLUE_LIGHT);
     doc.setFillColor(240, 249, 255);
-    doc.setDrawColor(...SKY);
-    const lines = doc.splitTextToSize(data.evolucaoTecnica, contentW - 8);
-    const h = lines.length * 5 + 8;
-    if (y + h > pageH - 20) { doc.addPage(); currentPage++; addPageHeader(doc, 'Evolução Técnica', currentPage, totalPages, data.ciclo); y = 28; }
+    doc.setDrawColor(...BLUE_LIGHT);
+    const lines = doc.splitTextToSize(data.evolucaoTecnica, contentW - 6);
+    const h = lines.length * 4.8 + 6;
+    if (y + h > pageH - 18) { doc.addPage(); currentPage++; addPageHeader(doc, 'Evolução Técnica', currentPage, totalPages, data.ciclo); y = 24; }
     doc.roundedRect(margin, y, contentW, h, 2, 2, 'FD');
     doc.setTextColor(30, 41, 59);
-    doc.setFontSize(9);
+    doc.setFontSize(8.5);
     doc.setFont('helvetica', 'normal');
-    doc.text(lines, margin + 4, y + 5);
-    y += h + 8;
+    doc.text(lines, margin + 3, y + 4.5);
+    y += h + 7;
   }
 
   // Evolução Comportamental
   if (data.evolucaoComportamental) {
-    if (y > pageH - 60) { doc.addPage(); currentPage++; addPageHeader(doc, 'Evolução Comportamental', currentPage, totalPages, data.ciclo); y = 28; }
-    y = addSectionTitle(doc, 'Evolução Comportamental', y, [167, 139, 250]);
+    if (y > pageH - 55) { doc.addPage(); currentPage++; addPageHeader(doc, 'Evolução Comportamental', currentPage, totalPages, data.ciclo); y = 24; }
+    y = addSectionTitle(doc, 'Evolução Comportamental', y, [139, 126, 200]);
     doc.setFillColor(245, 243, 255);
-    doc.setDrawColor(167, 139, 250);
-    const lines = doc.splitTextToSize(data.evolucaoComportamental, contentW - 8);
-    const h = lines.length * 5 + 8;
-    if (y + h > pageH - 20) { doc.addPage(); currentPage++; addPageHeader(doc, 'Evolução Comportamental', currentPage, totalPages, data.ciclo); y = 28; }
+    doc.setDrawColor(139, 126, 200);
+    const lines = doc.splitTextToSize(data.evolucaoComportamental, contentW - 6);
+    const h = lines.length * 4.8 + 6;
+    if (y + h > pageH - 18) { doc.addPage(); currentPage++; addPageHeader(doc, 'Evolução Comportamental', currentPage, totalPages, data.ciclo); y = 24; }
     doc.roundedRect(margin, y, contentW, h, 2, 2, 'FD');
     doc.setTextColor(30, 41, 59);
-    doc.setFontSize(9);
+    doc.setFontSize(8.5);
     doc.setFont('helvetica', 'normal');
-    doc.text(lines, margin + 4, y + 5);
-    y += h + 8;
+    doc.text(lines, margin + 3, y + 4.5);
+    y += h + 7;
   }
 
   // Risco Operacional
   if (data.riscoOperacional) {
-    if (y > pageH - 50) { doc.addPage(); currentPage++; addPageHeader(doc, 'Risco Operacional', currentPage, totalPages, data.ciclo); y = 28; }
+    if (y > pageH - 45) { doc.addPage(); currentPage++; addPageHeader(doc, 'Risco Operacional', currentPage, totalPages, data.ciclo); y = 24; }
     y = addSectionTitle(doc, 'Risco Operacional', y, RED);
     doc.setFillColor(254, 242, 242);
     doc.setDrawColor(...RED);
-    const lines = doc.splitTextToSize(data.riscoOperacional, contentW - 8);
-    const h = lines.length * 5 + 8;
+    const lines = doc.splitTextToSize(data.riscoOperacional, contentW - 6);
+    const h = lines.length * 4.8 + 6;
     doc.roundedRect(margin, y, contentW, h, 2, 2, 'FD');
     doc.setTextColor(30, 41, 59);
-    doc.setFontSize(9);
+    doc.setFontSize(8.5);
     doc.setFont('helvetica', 'normal');
-    doc.text(lines, margin + 4, y + 5);
-    y += h + 8;
+    doc.text(lines, margin + 3, y + 4.5);
+    y += h + 7;
   }
 
   // Coaching
   if (data.coaching && data.coaching.length > 0) {
-    if (y > pageH - 60) { doc.addPage(); currentPage++; addPageHeader(doc, 'Coaching de Comunicação', currentPage, totalPages, data.ciclo); y = 28; }
+    if (y > pageH - 55) { doc.addPage(); currentPage++; addPageHeader(doc, 'Coaching de Comunicação', currentPage, totalPages, data.ciclo); y = 24; }
     y = addSectionTitle(doc, 'Coaching de Comunicação', y, BLUE);
     data.coaching.forEach((c) => {
-      if (y > pageH - 50) { doc.addPage(); currentPage++; addPageHeader(doc, 'Coaching de Comunicação', currentPage, totalPages, data.ciclo); y = 28; }
+      if (y > pageH - 45) { doc.addPage(); currentPage++; addPageHeader(doc, 'Coaching de Comunicação', currentPage, totalPages, data.ciclo); y = 24; }
 
       const col = (contentW - 4) / 3;
       const l1 = doc.splitTextToSize(`"${c.o_que_foi_dito}"`, col - 4);
       const l2 = doc.splitTextToSize(c.como_poderia_ser, col - 4);
       const l3 = doc.splitTextToSize(c.dica_de_ouro, col - 4);
-      const maxH = Math.max(l1.length, l2.length, l3.length) * 4.5 + 12;
+      const maxH = Math.max(l1.length, l2.length, l3.length) * 4.5 + 11;
 
-      if (y + maxH > pageH - 20) { doc.addPage(); currentPage++; addPageHeader(doc, 'Coaching', currentPage, totalPages, data.ciclo); y = 28; }
+      if (y + maxH > pageH - 18) { doc.addPage(); currentPage++; addPageHeader(doc, 'Coaching', currentPage, totalPages, data.ciclo); y = 24; }
 
-      // O que foi dito
       doc.setFillColor(240, 249, 255);
-      doc.setDrawColor(...SKY);
+      doc.setDrawColor(...BLUE_LIGHT);
       doc.roundedRect(margin, y, col, maxH, 2, 2, 'FD');
       doc.setTextColor(30, 64, 175);
-      doc.setFontSize(7);
+      doc.setFontSize(6.5);
       doc.setFont('helvetica', 'bold');
-      doc.text('O QUE FOI DITO', margin + 2, y + 6);
+      doc.text('O QUE FOI DITO', margin + 2, y + 5.5);
       doc.setFont('helvetica', 'italic');
       doc.setTextColor(30, 41, 59);
-      doc.text(l1, margin + 2, y + 11);
+      doc.text(l1, margin + 2, y + 10);
 
-      // Como poderia ser
       const x2 = margin + col + 2;
       doc.setFillColor(255, 251, 235);
-      doc.setDrawColor(234, 179, 8);
+      doc.setDrawColor(...AMBER);
       doc.roundedRect(x2, y, col, maxH, 2, 2, 'FD');
       doc.setTextColor(161, 98, 7);
-      doc.setFontSize(7);
+      doc.setFontSize(6.5);
       doc.setFont('helvetica', 'bold');
-      doc.text('COMO PODERIA SER', x2 + 2, y + 6);
+      doc.text('COMO PODERIA SER', x2 + 2, y + 5.5);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(30, 41, 59);
-      doc.text(l2, x2 + 2, y + 11);
+      doc.text(l2, x2 + 2, y + 10);
 
-      // Dica de ouro
       const x3 = margin + (col + 2) * 2;
-      doc.setFillColor(240, 249, 255);
-      doc.setDrawColor(...SKY);
+      doc.setFillColor(240, 253, 250);
+      doc.setDrawColor(...TEAL);
       doc.roundedRect(x3, y, col, maxH, 2, 2, 'FD');
-      doc.setTextColor(30, 64, 175);
-      doc.setFontSize(7);
+      doc.setTextColor(42, 130, 120);
+      doc.setFontSize(6.5);
       doc.setFont('helvetica', 'bold');
-      doc.text('★ DICA DE OURO', x3 + 2, y + 6);
+      doc.text('★ DICA DE OURO', x3 + 2, y + 5.5);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(30, 41, 59);
-      doc.text(l3, x3 + 2, y + 11);
+      doc.text(l3, x3 + 2, y + 10);
 
-      y += maxH + 8;
+      y += maxH + 7;
     });
   }
 
@@ -431,7 +482,7 @@ export function exportFeedbackPDF(data: FeedbackPDFData): void {
   doc.addPage();
   currentPage++;
   addPageHeader(doc, 'Atendimentos Avaliados', currentPage, totalPages, data.ciclo);
-  y = 28;
+  y = 24;
 
   if (data.atendimentos && data.atendimentos.length > 0) {
     y = addSectionTitle(doc, `Atendimentos Avaliados (${data.atendimentos.length})`, y, BLUE);
@@ -446,15 +497,15 @@ export function exportFeedbackPDF(data: FeedbackPDFData): void {
         a.nota_iepc != null ? `${a.nota_iepc}%` : '—',
         a.classificacao ? a.classificacao.charAt(0).toUpperCase() + a.classificacao.slice(1) : '—',
       ]),
-      styles: { fontSize: 8, cellPadding: 2.5, overflow: 'linebreak' },
-      headStyles: { fillColor: BLUE, textColor: WHITE, fontStyle: 'bold', fontSize: 8 },
+      styles: { fontSize: 7.5, cellPadding: 2, overflow: 'linebreak' },
+      headStyles: { fillColor: BLUE, textColor: WHITE, fontStyle: 'bold', fontSize: 7.5 },
       alternateRowStyles: { fillColor: SECTION_BG },
       columnStyles: {
         0: { cellWidth: 22, fontStyle: 'bold' },
-        1: { cellWidth: 32 },
+        1: { cellWidth: 30 },
         2: { cellWidth: 'auto' },
-        3: { cellWidth: 14, halign: 'center' },
-        4: { cellWidth: 14, halign: 'center' },
+        3: { cellWidth: 12, halign: 'center' },
+        4: { cellWidth: 12, halign: 'center' },
         5: { cellWidth: 22, halign: 'center' },
       },
       margin: { left: margin, right: margin },
@@ -468,27 +519,27 @@ export function exportFeedbackPDF(data: FeedbackPDFData): void {
         }
       },
     });
-    y = (doc as any).lastAutoTable?.finalY + 8 || y + 60;
+    y = (doc as any).lastAutoTable?.finalY + 7 || y + 55;
 
     const withObs = data.atendimentos.filter((a) => a.observacao);
     if (withObs.length > 0) {
-      if (y > pageH - 40) { doc.addPage(); currentPage++; addPageHeader(doc, 'Observações', currentPage, totalPages, data.ciclo); y = 28; }
+      if (y > pageH - 35) { doc.addPage(); currentPage++; addPageHeader(doc, 'Observações', currentPage, totalPages, data.ciclo); y = 24; }
       y = addSectionTitle(doc, 'Observações dos Atendimentos', y, GRAY);
       withObs.forEach((a) => {
-        if (y > pageH - 30) { doc.addPage(); currentPage++; addPageHeader(doc, 'Observações', currentPage, totalPages, data.ciclo); y = 28; }
-        doc.setFontSize(8);
+        if (y > pageH - 28) { doc.addPage(); currentPage++; addPageHeader(doc, 'Observações', currentPage, totalPages, data.ciclo); y = 24; }
+        doc.setFontSize(7.5);
         doc.setFont('helvetica', 'bold');
-        doc.setTextColor(30, 64, 175);
+        doc.setTextColor(...BLUE);
         doc.text(`${a.protocolo || '—'} — ${a.cliente || '—'}`, margin, y);
-        y += 5;
+        y += 4.5;
         y = addTextBlock(doc, a.observacao!, margin + 2, y, contentW - 4, [30, 41, 59]);
-        y += 4;
+        y += 3.5;
       });
     }
   } else {
     doc.setTextColor(...GRAY);
-    doc.setFontSize(9);
-    doc.text('Nenhum atendimento avaliado neste ciclo.', margin, y + 10);
+    doc.setFontSize(8.5);
+    doc.text('Nenhum atendimento avaliado neste ciclo.', margin, y + 8);
   }
 
   // ══════════════════════════════════════════════════════════
@@ -497,39 +548,37 @@ export function exportFeedbackPDF(data: FeedbackPDFData): void {
   doc.addPage();
   currentPage++;
   addPageHeader(doc, 'Analytics & Conquistas', currentPage, totalPages, data.ciclo);
-  y = 28;
+  y = 24;
 
-  // Conquistas
   if (data.conquistas && data.conquistas.length > 0) {
-    y = addSectionTitle(doc, 'Conquistas e Evolução', y, [234, 179, 8]);
+    y = addSectionTitle(doc, 'Conquistas e Evolução', y, AMBER);
     autoTable(doc, {
       startY: y,
       head: [['Conquista', 'Valor', 'Período']],
       body: data.conquistas.map((c) => [c.titulo, c.valor, c.periodo || '—']),
-      styles: { fontSize: 8, cellPadding: 3 },
+      styles: { fontSize: 7.5, cellPadding: 2.5 },
       headStyles: { fillColor: [161, 98, 7], textColor: WHITE, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [255, 251, 235] },
       columnStyles: { 1: { fontStyle: 'bold', textColor: [21, 128, 61] }, 2: { halign: 'center' } },
       margin: { left: margin, right: margin },
     });
-    y = (doc as any).lastAutoTable?.finalY + 12 || y + 40;
+    y = (doc as any).lastAutoTable?.finalY + 10 || y + 35;
   }
 
-  // Histórico completo
   if (data.historico && data.historico.length > 0) {
-    if (y > pageH - 50) { doc.addPage(); currentPage++; addPageHeader(doc, 'Histórico', currentPage, totalPages, data.ciclo); y = 28; }
+    if (y > pageH - 45) { doc.addPage(); currentPage++; addPageHeader(doc, 'Histórico', currentPage, totalPages, data.ciclo); y = 24; }
     y = addSectionTitle(doc, 'Histórico de Ciclos', y, GREEN);
     autoTable(doc, {
       startY: y,
       head: [['Ciclo', 'QA', 'IEPC']],
       body: data.historico.map((h) => [h.ciclo, h.qa_score, h.iepc_score]),
-      styles: { fontSize: 8, cellPadding: 2.5 },
+      styles: { fontSize: 7.5, cellPadding: 2.5 },
       headStyles: { fillColor: GREEN, textColor: WHITE, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: SECTION_BG },
       columnStyles: { 1: { halign: 'center' }, 2: { halign: 'center' } },
       margin: { left: margin, right: margin },
     });
-    y = (doc as any).lastAutoTable?.finalY + 12 || y + 40;
+    y = (doc as any).lastAutoTable?.finalY + 10 || y + 35;
   }
 
   // ══════════════════════════════════════════════════════════
@@ -538,74 +587,81 @@ export function exportFeedbackPDF(data: FeedbackPDFData): void {
   doc.addPage();
   currentPage++;
   addPageHeader(doc, 'Fechamento Institucional', currentPage, totalPages, data.ciclo);
-  y = 28;
+  y = 24;
 
   // Summary block
   doc.setFillColor(...DARK_BG);
-  doc.rect(margin, y, contentW, 50, 'F');
+  doc.rect(margin, y, contentW, 42, 'F');
   doc.setFillColor(...BLUE);
-  doc.rect(margin, y, 3, 50, 'F');
+  doc.rect(margin, y, 2, 42, 'F');
+
+  // Photo in closing page too
+  if (photoBase64) {
+    try {
+      doc.addImage(photoBase64, 'JPEG', margin + 5, y + 6, 22, 22, undefined, 'FAST');
+    } catch { /* skip */ }
+  }
+
+  const closingInfoX = photoBase64 ? margin + 32 : margin + 8;
 
   doc.setTextColor(...WHITE);
-  doc.setFontSize(14);
+  doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
-  doc.text(data.analista.nome, margin + 8, y + 12);
+  doc.text(data.analista.nome, closingInfoX, y + 12);
 
-  doc.setFontSize(9);
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...GRAY);
-  doc.text(`Ciclo: ${data.ciclo}  ·  QA: ${data.qaScore ?? '—'}  ·  IEPC: ${data.iepcScore ?? '—'}%  ·  Aderência: ${data.aderenciaScore ?? '—'}%`, margin + 8, y + 20);
+  doc.text(`Ciclo: ${data.ciclo}  ·  QA: ${data.qaScore ?? '—'}  ·  IEPC: ${data.iepcScore ?? '—'}%  ·  Aderência: ${data.aderenciaScore ?? '—'}%`, closingInfoX, y + 19);
   if (data.posicaoSquad) {
-    doc.text(`Posição no Squad: Top ${data.posicaoSquad} de ${data.totalSquad || '?'} analistas`, margin + 8, y + 27);
+    doc.text(`Posição no Squad: Top ${data.posicaoSquad} de ${data.totalSquad || '?'} analistas`, closingInfoX, y + 25);
   }
   if (data.ciclosConsecutivos && data.ciclosConsecutivos > 0) {
     doc.setTextColor(...GREEN);
-    doc.text(`✓ ${data.ciclosConsecutivos} ciclos consecutivos em evolução`, margin + 8, y + 34);
+    doc.text(`✓ ${data.ciclosConsecutivos} ciclos consecutivos em evolução`, closingInfoX, y + 31);
   }
 
-  doc.setTextColor(251, 146, 60);
-  doc.setFontSize(10);
+  doc.setTextColor(...AMBER);
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
-  doc.text('Desenvolvimento e evolução contínua.', margin + 8, y + 44);
+  doc.text('Desenvolvimento e evolução contínua.', closingInfoX, y + 39);
 
-  y += 58;
+  y += 50;
 
-  // Closing message
   doc.setFillColor(240, 249, 255);
-  doc.setDrawColor(...SKY);
-  doc.roundedRect(margin, y, contentW, 20, 2, 2, 'FD');
+  doc.setDrawColor(...BLUE_LIGHT);
+  doc.roundedRect(margin, y, contentW, 18, 2, 2, 'FD');
   doc.setTextColor(30, 64, 175);
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
-  doc.text('Você está no caminho certo!', pageW / 2, y + 8, { align: 'center' });
-  doc.setFontSize(8);
+  doc.text('Você está no caminho certo!', pageW / 2, y + 7, { align: 'center' });
+  doc.setFontSize(7.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(30, 41, 59);
-  doc.text('Continue evoluindo. Cada ciclo é uma oportunidade de crescimento profissional.', pageW / 2, y + 15, { align: 'center' });
+  doc.text('Continue evoluindo. Cada ciclo é uma oportunidade de crescimento profissional.', pageW / 2, y + 13, { align: 'center' });
 
-  y += 28;
+  y += 25;
 
-  // Institutional footer block
   doc.setFillColor(...SECTION_BG);
-  doc.roundedRect(margin, y, contentW, 30, 2, 2, 'F');
+  doc.roundedRect(margin, y, contentW, 24, 2, 2, 'F');
   doc.setTextColor(...GRAY);
-  doc.setFontSize(7);
+  doc.setFontSize(6.5);
   doc.setFont('helvetica', 'normal');
-  doc.text('Documento confidencial · Uso interno · QualiVisão People Analytics © 2026', pageW / 2, y + 8, { align: 'center' });
+  doc.text('Documento confidencial · Uso interno · QualiVisão People Analytics © 2026', pageW / 2, y + 7, { align: 'center' });
 
   const now = new Date();
   const dateStr = `${now.toLocaleDateString('pt-BR')} às ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-  doc.text(`Gerado em: ${dateStr}  ·  Ciclo: ${data.ciclo}  ·  Versão 1.0`, pageW / 2, y + 15, { align: 'center' });
-  doc.setTextColor(56, 189, 248);
-  doc.setFontSize(10);
+  doc.text(`Gerado em: ${dateStr}  ·  Ciclo: ${data.ciclo}  ·  Versão 1.0`, pageW / 2, y + 13, { align: 'center' });
+  doc.setTextColor(...BLUE_LIGHT);
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
-  doc.text('QualiVisão', pageW / 2, y + 24, { align: 'center' });
+  doc.text('QualiVisão', pageW / 2, y + 21, { align: 'center' });
 
-  // Add page numbers to all pages
+  // Page numbers
   const totalPagesActual = (doc as any).internal.getNumberOfPages();
   for (let i = 1; i <= totalPagesActual; i++) {
     doc.setPage(i);
-    doc.setFontSize(7);
+    doc.setFontSize(6.5);
     doc.setTextColor(...GRAY);
     doc.setFont('helvetica', 'normal');
     doc.text(`QualiVisão People Analytics  ·  ${data.ciclo}  ·  Pág. ${i} / ${totalPagesActual}`, pageW / 2, pageH - 4, { align: 'center' });
