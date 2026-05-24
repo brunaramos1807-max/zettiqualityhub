@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { LayoutDashboard, TrendingUp, BarChart3, RefreshCw, ClipboardCheck, Upload, AlertTriangle, Star, Sliders, History, ScrollText, FileText, Settings, ChevronLeft, ChevronRight, LogOut, Activity, UserSquare2, Shield, Zap, MessageSquare, GitBranch } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, BarChart3, RefreshCw, ClipboardCheck, Upload, AlertTriangle, Star, Sliders, History, ScrollText, FileText, Settings, ChevronLeft, ChevronRight, LogOut, Activity, UserSquare2, Shield, Zap, MessageSquare, GitBranch, Users } from 'lucide-react';
 
 interface NavItem {
   id: string;
@@ -49,11 +49,12 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: 'FEEDBACK',
+    title: 'DESENVOLVIMENTO',
     items: [
       { id: 'feedback', label: 'Feedback', href: '/feedback', icon: <MessageSquare size={16} /> },
       { id: 'feedback-pdi', label: 'Plano de Desenvolvimento', href: '/feedback/pdi', icon: <GitBranch size={16} /> },
-      { id: 'feedback-historico', label: 'Histórico', href: '/feedback/historico', icon: <History size={16} /> },
+      { id: 'gestao', label: 'Gestão de Pessoas', href: '/gestao', icon: <Users size={16} /> },
+      { id: 'feedback-historico', label: 'Histórico de Feedbacks', href: '/feedback/historico', icon: <History size={16} /> },
     ],
   },
   {
@@ -67,7 +68,6 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'ADMIN',
     items: [
-      { id: 'gestao', label: 'Gestão', href: '/gestao', icon: <BarChart3 size={16} /> },
       { id: 'analistas', label: 'Analistas', href: '/analistas', icon: <UserSquare2 size={16} /> },
       { id: 'configuracoes', label: 'Configurações', href: '/configuracoes', icon: <Settings size={16} />, adminOnly: true },
       { id: 'admin-diagnostico', label: 'Logs & Diagnóstico', href: '/admin-diagnostico', icon: <Shield size={16} />, adminOnly: true },
@@ -86,17 +86,15 @@ function getActiveId(pathname: string): string {
   if (pathname.startsWith('/qa-iepc')) return 'qa-iepc';
   if (pathname.startsWith('/nao-conformidades')) return 'ncs';
   if (pathname.startsWith('/mural-elogios')) return 'elogios';
-  if (pathname.startsWith('/pdis')) return 'pdis';
   if (pathname.startsWith('/calibragem')) return 'calibragem';
   if (pathname.startsWith('/feedback/historico')) return 'feedback-historico';
-  if (pathname.startsWith('/feedback/people-analytics')) return 'people-analytics';
   if (pathname.startsWith('/feedback/pdi')) return 'feedback-pdi';
   if (pathname.startsWith('/feedback')) return 'feedback';
+  if (pathname.startsWith('/gestao')) return 'gestao';
   if (pathname.startsWith('/historico')) return 'historico';
   if (pathname.startsWith('/logs')) return 'logs';
   if (pathname.startsWith('/documentos')) return 'documentos';
   if (pathname.startsWith('/analistas')) return 'analistas';
-  if (pathname.startsWith('/gestao')) return 'gestao';
   if (pathname.startsWith('/admin-diagnostico')) return 'admin-diagnostico';
   if (pathname.startsWith('/configuracoes')) return 'configuracoes';
   return 'painel';

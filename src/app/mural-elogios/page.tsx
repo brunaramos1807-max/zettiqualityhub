@@ -86,13 +86,13 @@ function MuralContent() {
 
   const topAnalysts = useMemo(() => {
     const map: Record<string, { name: string; squad: string; count: number; destaques: number }> = {};
-    elogios.forEach((e) => {
+    filtered.forEach((e) => {
       if (!map[e.colaborador]) map[e.colaborador] = { name: e.colaborador, squad: e.squad, count: 0, destaques: 0 };
       map[e.colaborador].count++;
       if (e.destaque) map[e.colaborador].destaques++;
     });
     return Object.values(map).sort((a, b) => b.count - a.count).slice(0, 8);
-  }, [elogios]);
+  }, [filtered]);
 
   const bySquadData = useMemo(() => {
     const map: Record<string, number> = {};
@@ -102,19 +102,19 @@ function MuralContent() {
 
   const byPeriodData = useMemo(() => {
     const map: Record<string, number> = {};
-    elogios.forEach((e) => { if (e.periodo) map[e.periodo] = (map[e.periodo] || 0) + 1; });
+    filtered.forEach((e) => { if (e.periodo) map[e.periodo] = (map[e.periodo] || 0) + 1; });
     return Object.entries(map).sort((a, b) => a[0].localeCompare(b[0])).map(([periodo, count]) => ({ periodo, count }));
-  }, [elogios]);
+  }, [filtered]);
 
   const rankingBarData = useMemo(() => topAnalysts.slice(0, 8).map((a) => ({ name: a.name.split(' ')[0], elogios: a.count, destaques: a.destaques })), [topAnalysts]);
 
   const donutData = useMemo(() => {
-    const destaques = elogios.filter((e) => e.destaque).length;
+    const destaques = filtered.filter((e) => e.destaque).length;
     return [
       { name: 'Destaques', value: destaques, color: '#F59E0B' },
-      { name: 'Regulares', value: elogios.length - destaques, color: '#38BDF8' },
+      { name: 'Regulares', value: filtered.length - destaques, color: '#38BDF8' },
     ].filter((d) => d.value > 0);
-  }, [elogios]);
+  }, [filtered]);
 
   const handleToggleDestaque = async (elogio: ElogioItem) => {
     setTogglingId(elogio.id);
@@ -131,12 +131,12 @@ function MuralContent() {
     if (periodos.length < 2) return topAnalysts[0];
     const lastPeriodo = periodos[1]; // periodos[0] is 'all'
     const map: Record<string, { name: string; squad: string; count: number }> = {};
-    elogios.filter((e) => e.periodo === lastPeriodo).forEach((e) => {
+    filtered.filter((e) => e.periodo === lastPeriodo).forEach((e) => {
       if (!map[e.colaborador]) map[e.colaborador] = { name: e.colaborador, squad: e.squad, count: 0 };
       map[e.colaborador].count++;
     });
     return Object.values(map).sort((a, b) => b.count - a.count)[0];
-  }, [elogios, periodos, topAnalysts]);
+  }, [filtered, periodos, topAnalysts]);
 
   return (
     <div className="p-6 max-w-screen-2xl mx-auto w-full">

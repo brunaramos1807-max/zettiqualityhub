@@ -6,7 +6,7 @@ import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
 import { fetchCycleScores, fetchAllPeriodos, type RealAnalyst, exportCycleToCSV, deletePeriodData, dispatchDataChanged } from '@/lib/services/dataService';
 import { createClient } from '@/lib/supabase/client';
-import { BarChart2, Activity, Plus, Save, X, Loader2, Trash2, Download, FileText } from 'lucide-react';
+import { BarChart2, Activity, Plus, Save, X, Loader2, Trash2, Download, FileText, History } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface ManualEvalForm {
@@ -31,6 +31,15 @@ interface ImportRecord {
   periodo: string;
   data: string;
   rows: number;
+}
+
+interface RetroImportItem {
+  ciclo: string;
+  scores?: Record<string, unknown>;
+  pilares?: Record<string, unknown>;
+  observacoes?: string;
+  historico?: unknown[];
+  [key: string]: unknown;
 }
 
 const EMPTY_FORM: ManualEvalForm = {
@@ -62,6 +71,12 @@ function deleteImportRecord(id: string): void {
 function ImportacoesContent() {
   const [importOpen, setImportOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
+  const [retroOpen, setRetroOpen] = useState(false);
+  const [retroJson, setRetroJson] = useState('');
+  const [retroJsonError, setRetroJsonError] = useState('');
+  const [retroParsed, setRetroParsed] = useState<RetroImportItem | null>(null);
+  const [retroAnalista, setRetroAnalista] = useState('');
+  const [retroSaving, setRetroSaving] = useState(false);
   const { session } = useSystemAuth();
   const [periodos, setPeriodos] = useState<string[]>([]);
   const [selectedPeriodo, setSelectedPeriodo] = useState('');
@@ -314,6 +329,83 @@ function ImportacoesContent() {
     toast.success(`Download iniciado para o ciclo ${record.periodo}`);
   };
 
+  const handleRetroJsonChange = (value: string) => {
+    setRetroJson(value);
+    setRetroJsonError('');
+    setRetroParsed(null);
+    if (!value.trim()) return;
+    try {
+      const parsed = JSON.parse(value);
+      setRetroParsed(parsed as RetroImportItem);
+    } catch {
+      setRetroJsonError('JSON inválido. Verifique a formatação.');
+    }
+  };
+
+  const handleSaveRetro = async () => {
+    if (!retroParsed) { toast.error('Cole um JSON válido primeiro'); return; }
+    if (!retroAnalista) { toast.error('Selecione o analista para vincular'); return; }
+    setRetroSaving(true);
+    try {
+      const supabase = createClient();
+      const ciclo = retroParsed.ciclo || 'Histórico';
+      const qaScore = (retroParsed.scores as any)?.qa ?? (retroParsed as any).qa_score ?? null;
+      const iepcScore = (retroParsed.scores as any)?.iepc ?? (retroParsed as any).iepc_score ?? null;
+      const aderencia = (retroParsed.scores as any)?.aderencia ?? null;
+
+      // Find analista id
+      const { data: analistaData } = await supabase
+        .from('analistas')
+        .select('id, nome')
+        .ilike('nome', `%${retroAnalista.split(' ')[0]}%`)
+        .limit(1)
+        .single();
+
+      const analistaId = analistaData?.id || null;
+
+      // Insert into feedback_historico as retroactive
+      if (analistaId) {
+        await supabase.from('feedback_historico').upsert({
+          analista_id: analistaId,
+          ciclo,
+          qa_score: qaScore,
+          iepc_score: iepcScore,
+          aderencia_score: aderencia,
+          source: 'retroativo',
+          created_at: new Date().toISOString(),
+        }, { onConflict: 'analista_id,ciclo' });
+      }
+
+      // Also save to feedbacks table
+      const feedbackPayload: Record<string, unknown> = {
+        analista_id: analistaId,
+        ciclo,
+        qa_score: qaScore,
+        iepc_score: iepcScore,
+        aderencia_score: aderencia,
+        pilares_qa: (retroParsed as any).pilares?.qa || (retroParsed as any).qa_pilares || [],
+        pilares_iepc: (retroParsed as any).pilares?.iepc || (retroParsed as any).iepc_pilares || [],
+        resumo_ciclo: retroParsed.observacoes || null,
+        status: 'retroativo',
+        source: 'retroativo',
+        created_at: new Date().toISOString(),
+      };
+
+      await supabase.from('feedbacks').insert(feedbackPayload);
+
+      toast.success(`Histórico retroativo de "${retroAnalista}" para ciclo "${ciclo}" importado com sucesso!`);
+      setRetroOpen(false);
+      setRetroJson('');
+      setRetroParsed(null);
+      setRetroAnalista('');
+      loadData();
+    } catch (err: any) {
+      toast.error('Erro ao salvar: ' + (err.message || 'Tente novamente'));
+    } finally {
+      setRetroSaving(false);
+    }
+  };
+
   const getTipoColor = (tipo: string) => {
     if (tipo === 'Qualidade') return { color: '#38BDF8', bg: 'rgba(56,189,248,0.12)', border: 'rgba(56,189,248,0.25)' };
     if (tipo === 'Não Conformidades') return { color: '#EF4444', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.25)' };
@@ -345,6 +437,14 @@ function ImportacoesContent() {
                 >
                   <Plus size={14} />
                   Lançamento Manual
+                </button>
+                <button
+                  onClick={() => setRetroOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all"
+                  style={{ backgroundColor: 'rgba(167,139,250,0.15)', color: '#A78BFA', border: '1px solid rgba(167,139,250,0.3)' }}
+                >
+                  <History size={14} />
+                  Histórico Antigo
                 </button>
                 <button
                   onClick={() => setImportOpen(true)}
@@ -597,6 +697,119 @@ function ImportacoesContent() {
               <button onClick={handleSaveManual} disabled={saving} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ backgroundColor: '#1E40AF' }}>
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 {saving ? 'Salvando...' : 'Salvar Avaliação'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Retroactive Import Modal */}
+      {retroOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto" style={{ backgroundColor: 'rgba(0,0,0,0.85)' }}>
+          <div className="w-full max-w-2xl rounded-2xl p-6 my-4" style={{ backgroundColor: '#111827', border: '1px solid rgba(167,139,250,0.2)' }}>
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-base font-bold text-white flex items-center gap-2">
+                  <History size={16} style={{ color: '#A78BFA' }} />
+                  Importar Histórico Antigo
+                </h2>
+                <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  Importe feedbacks retroativos sem vínculo obrigatório de e-mail ou ID
+                </p>
+              </div>
+              <button onClick={() => { setRetroOpen(false); setRetroJson(''); setRetroParsed(null); setRetroAnalista(''); setRetroJsonError(''); }}
+                style={{ color: 'rgba(255,255,255,0.4)' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Info */}
+            <div className="rounded-xl p-3 mb-4" style={{ backgroundColor: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.15)' }}>
+              <p className="text-xs" style={{ color: 'rgba(167,139,250,0.8)' }}>
+                <strong>Fluxo:</strong> Cole o JSON → Sistema detecta os campos → Selecione o analista manualmente → Salvar como histórico retroativo
+              </p>
+            </div>
+
+            {/* JSON Input */}
+            <div className="mb-4">
+              <label className="block text-xs font-medium mb-1.5" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                JSON do Feedback Antigo
+              </label>
+              <textarea
+                value={retroJson}
+                onChange={(e) => handleRetroJsonChange(e.target.value)}
+                placeholder={`{\n  "ciclo": "02/2026",\n  "scores": { "qa": 88.5, "iepc": 85 },\n  "pilares": { "qa": [], "iepc": [] },\n  "observacoes": "Feedback retroativo de fevereiro"\n}`}
+                rows={8}
+                className="w-full px-3 py-2 rounded-lg text-xs text-white outline-none font-mono"
+                style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: `1px solid ${retroJsonError ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.1)'}`, resize: 'vertical' }}
+              />
+              {retroJsonError && <p className="text-xs mt-1" style={{ color: '#EF4444' }}>{retroJsonError}</p>}
+              {retroParsed && (
+                <div className="mt-2 p-2 rounded-lg" style={{ backgroundColor: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                  <p className="text-xs" style={{ color: '#22C55E' }}>
+                    ✓ JSON válido — Ciclo: <strong>{retroParsed.ciclo || '(não informado)'}</strong>
+                    {(retroParsed.scores as any)?.qa && <> · QA: <strong>{(retroParsed.scores as any).qa}</strong></>}
+                    {(retroParsed.scores as any)?.iepc && <> · IEPC: <strong>{(retroParsed.scores as any).iepc}</strong></>}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Analyst Selection */}
+            <div className="mb-5">
+              <label className="block text-xs font-medium mb-1.5" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                Vincular ao Analista *
+              </label>
+              <input
+                type="text"
+                value={retroAnalista}
+                onChange={(e) => setRetroAnalista(e.target.value)}
+                placeholder="Digite o nome do analista para vincular este histórico"
+                className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none"
+                style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }}
+              />
+              <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                O sistema irá buscar o analista pelo nome e vincular o histórico retroativo.
+              </p>
+            </div>
+
+            {/* Format hint */}
+            <details className="mb-4">
+              <summary className="text-xs cursor-pointer" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                Ver formato JSON aceito
+              </summary>
+              <pre className="mt-2 p-3 rounded-lg text-xs overflow-x-auto" style={{ backgroundColor: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.06)' }}>
+{`{
+  "ciclo": "02/2026",
+  "scores": {
+    "qa": 88.5,
+    "iepc": 85,
+    "aderencia": 90
+  },
+  "pilares": {
+    "qa": [{ "nome": "Pilar 1", "pontuacao": 18, "max": 22 }],
+    "iepc": []
+  },
+  "observacoes": "Texto livre sobre o ciclo",
+  "historico": []
+}`}
+              </pre>
+            </details>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setRetroOpen(false); setRetroJson(''); setRetroParsed(null); setRetroAnalista(''); setRetroJsonError(''); }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium"
+                style={{ backgroundColor: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)' }}>
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveRetro}
+                disabled={retroSaving || !retroParsed || !retroAnalista}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-40 transition-all"
+                style={{ backgroundColor: '#7C3AED' }}>
+                {retroSaving ? <Loader2 size={14} className="animate-spin" /> : <History size={14} />}
+                {retroSaving ? 'Salvando...' : 'Salvar Histórico Retroativo'}
               </button>
             </div>
           </div>
