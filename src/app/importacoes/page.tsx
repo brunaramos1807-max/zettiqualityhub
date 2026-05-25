@@ -343,37 +343,32 @@ function ImportacoesContent() {
   };
 
   const confirmDelete = async (record: ImportRecord) => {
-    // Remove from import records list (localStorage)
-    deleteImportRecord(record.id);
+    const supabase = createClient();
 
-    // If it's an integration record, delete from Supabase cycle_scores/nc_records/pdi_records
-    if (record.modo === 'Integração API' || record.id.startsWith('integration-')) {
-      const supabase = createClient();
-      if (supabase) {
-        try {
-          await supabase.from('cycle_scores').delete().eq('periodo', record.periodo).eq('source', 'integration');
-          await supabase.from('nc_records').delete().eq('periodo', record.periodo).eq('source', 'integration');
-          await supabase.from('pdi_records').delete().eq('periodo', record.periodo).eq('source', 'integration');
-          // Also remove the import_cycles record if it exists
-          await supabase.from('import_cycles').delete().eq('periodo', record.periodo);
-          toast.success(`Dados de integração do ciclo ${record.periodo} excluídos`);
-        } catch (err: any) {
-          toast.error('Erro ao excluir dados: ' + err.message);
-          setDeleteConfirm(null);
-          return;
-        }
-      }
-    } else {
-      // Remove period data from localStorage if no other imports for same period
-      const remaining = loadImportRecords().filter((r) => r.id !== record.id && r.periodo === record.periodo);
-      if (remaining.length === 0) {
-        deletePeriodData(record.periodo);
+    // Always try to delete from Supabase first
+    if (supabase) {
+      try {
+        // Delete all data for this period from Supabase
+        await supabase.from('cycle_scores').delete().eq('periodo', record.periodo);
+        await supabase.from('nc_records').delete().eq('periodo', record.periodo);
+        await supabase.from('elogios').delete().eq('periodo', record.periodo);
+        await supabase.from('pdi_records').delete().eq('periodo', record.periodo);
+        await supabase.from('cycle_summaries').delete().eq('periodo', record.periodo);
+        await supabase.from('import_cycles').delete().eq('periodo', record.periodo);
+      } catch (err: any) {
+        toast.error('Erro ao excluir dados do banco: ' + err.message);
+        setDeleteConfirm(null);
+        return;
       }
     }
 
+    // Remove from localStorage import records
+    deleteImportRecord(record.id);
+    deletePeriodData(record.periodo);
+
     setDeleteConfirm(null);
-    loadImports();
-    toast.success(`Importação "${record.fileName}" excluída`);
+    await loadImports();
+    toast.success(`Importação "${record.fileName}" e todos os dados do ciclo ${record.periodo} excluídos`);
     dispatchDataChanged({ tipo: 'delete_import', periodo: record.periodo });
   };
 

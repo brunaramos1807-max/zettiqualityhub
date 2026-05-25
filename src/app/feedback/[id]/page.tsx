@@ -7,9 +7,10 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
 } from 'recharts';
-import { ArrowLeft, Download, Star, TrendingUp, TrendingDown, Users, MessageSquare, BarChart2, CheckCircle, AlertCircle, Eye, Maximize2, Minimize2, ChevronDown, ChevronUp, Award, Target, Clock, Shield, Zap, Activity, Grid } from 'lucide-react';
+import { ArrowLeft, Download, Star, TrendingUp, TrendingDown, Users, MessageSquare, BarChart2, CheckCircle, AlertCircle, Eye, Maximize2, Minimize2, ChevronDown, ChevronUp, Award, Target, Clock, Shield, Zap, Activity, Grid, Edit2, Save, X as XIcon } from 'lucide-react';
 import Link from 'next/link';
 import { exportFeedbackPDF, type FeedbackPDFData } from '@/lib/utils/pdfExport';
+import { useSystemAuth } from '@/contexts/SystemAuthContext';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -377,16 +378,11 @@ function AtendimentoAccordion({
   });
 
   const qaCriterios = criterioEntries.filter((c) => c.group === 'qa');
-  const iepcCriterios = criterioEntries.filter((c) => c.group === 'iepc');
+  // IEPC removed from individual attendances per request — IEPC shown only in global feedback
 
-  // Radar data per attendance
+  // Radar data per attendance — QA only
   const qaRadar = qaCriterios.slice(0, 6).map((c) => ({
     subject: c.label.substring(0, 14),
-    value: c.max > 0 ? Math.round((c.pts / c.max) * 100) : 0,
-    fullMark: 100,
-  }));
-  const iepcRadar = iepcCriterios.map((c) => ({
-    subject: c.label.substring(0, 16),
     value: c.max > 0 ? Math.round((c.pts / c.max) * 100) : 0,
     fullMark: 100,
   }));
@@ -424,16 +420,15 @@ function AtendimentoAccordion({
         </span>
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className="text-sm font-bold" style={{ color: C.blue }}>{atendimento.nota_qa ?? '—'}</span>
-          <span className="text-xs" style={{ color: C.textMuted }}>{atendimento.nota_iepc != null ? `${atendimento.nota_iepc}%` : '—'}</span>
           {atendimento.classificacao && (
             <span className="text-xs font-semibold px-2 py-0.5 rounded-full hidden sm:inline"
-              style={{ backgroundColor: `${classColor}15`, color: classColor, border: `1px solid ${classColor}30` }}>
+              style={{ backgroundColor: `${CLASSIFICACAO_COLORS[atendimento.classificacao?.toLowerCase()] || C.textMuted}15`, color: CLASSIFICACAO_COLORS[atendimento.classificacao?.toLowerCase()] || C.textMuted, border: `1px solid ${CLASSIFICACAO_COLORS[atendimento.classificacao?.toLowerCase()] || C.textMuted}30` }}>
               {atendimento.classificacao.charAt(0).toUpperCase() + atendimento.classificacao.slice(1)}
             </span>
           )}
           {ncs.length > 0 && (
             <span className="text-xs font-bold px-1.5 py-0.5 rounded"
-              style={{ backgroundColor: C.redLight, color: C.red, border: `1px solid ${C.redBorder}` }}>
+              style={{ backgroundColor: 'rgba(212,168,83,0.15)', color: C.amber, border: `1px solid rgba(212,168,83,0.3)` }}>
               {ncs.length} NC
             </span>
           )}
@@ -446,14 +441,13 @@ function AtendimentoAccordion({
         <div className="pb-6" style={{ borderTop: `1px solid ${C.border}` }}>
 
           {/* ── HEADER DO ATENDIMENTO ── */}
-          <div className="px-5 pt-4 pb-3 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+          <div className="px-5 pt-4 pb-3 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
             {[
               { label: 'Protocolo', value: atendimento.protocolo || atendimento.sup || '—', color: C.blue },
               { label: 'Cliente', value: atendimento.cliente || '—', color: C.text },
               { label: 'Canal', value: atendimento.canal || '—', color: C.teal },
               { label: 'Duração', value: atendimento.duracao || '—', color: C.amber },
               { label: 'Nota QA', value: String(atendimento.nota_qa ?? '—'), color: C.blue },
-              { label: 'IEPC', value: atendimento.nota_iepc != null ? `${atendimento.nota_iepc}%` : '—', color: C.green },
             ].map((s) => (
               <div key={s.label} className="p-2.5 rounded-lg text-center"
                 style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}` }}>
@@ -491,35 +485,29 @@ function AtendimentoAccordion({
             )}
           </div>
 
-          {/* ── RADARES QA + IEPC ── */}
-          {(qaRadar.length >= 3 || iepcRadar.length >= 3) && (
-            <div className="px-5 grid md:grid-cols-2 gap-4 mb-4">
-              {qaRadar.length >= 3 && (
-                <div className="rounded-lg p-4" style={{ backgroundColor: C.blueLight, border: `1px solid ${C.blueBorder}` }}>
-                  <p className="text-xs font-bold mb-3 uppercase tracking-wider text-center" style={{ color: C.blue }}>Radar QA — Este Atendimento</p>
-                  <ResponsiveContainer width="100%" height={180}>
-                    <RadarChart data={qaRadar}>
-                      <PolarGrid stroke="rgba(255,255,255,0.08)" />
-                      <PolarAngleAxis dataKey="subject" tick={{ fill: C.textMuted, fontSize: 8 }} />
-                      <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
-                      <Radar name="QA" dataKey="value" stroke={C.blue} fill={C.blue} fillOpacity={0.15} strokeWidth={1.5} />
-                    </RadarChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-              {iepcRadar.length >= 3 && (
-                <div className="rounded-lg p-4" style={{ backgroundColor: C.tealLight, border: `1px solid rgba(78,205,196,0.25)` }}>
-                  <p className="text-xs font-bold mb-3 uppercase tracking-wider text-center" style={{ color: C.teal }}>Radar IEPC — Este Atendimento</p>
-                  <ResponsiveContainer width="100%" height={180}>
-                    <RadarChart data={iepcRadar}>
-                      <PolarGrid stroke="rgba(255,255,255,0.08)" />
-                      <PolarAngleAxis dataKey="subject" tick={{ fill: C.textMuted, fontSize: 8 }} />
-                      <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
-                      <Radar name="IEPC" dataKey="value" stroke={C.teal} fill={C.teal} fillOpacity={0.15} strokeWidth={1.5} />
-                    </RadarChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
+          {/* ── RADARES QA ── */}
+          {qaRadar.length >= 3 && (
+            <div className="px-5 mb-4">
+              <div className="rounded-lg p-4" style={{ backgroundColor: C.blueLight, border: `1px solid ${C.blueBorder}` }}>
+                <p className="text-xs font-bold mb-3 uppercase tracking-wider text-center" style={{ color: C.blue }}>Radar QA — Este Atendimento</p>
+                <ResponsiveContainer width="100%" height={200}>
+                  <RadarChart data={qaRadar} margin={{ top: 20, right: 30, bottom: 20, left: 30 }}>
+                    <PolarGrid stroke="rgba(255,255,255,0.08)" />
+                    <PolarAngleAxis dataKey="subject" tick={(props: any) => {
+                      const { x, y, payload } = props;
+                      const item = qaRadar.find(d => d.subject === payload.value);
+                      return (
+                        <text x={x} y={y} textAnchor="middle" dominantBaseline="middle" fontSize={8} fill={C.textMuted}>
+                          <tspan x={x} dy="-0.4em">{payload.value}</tspan>
+                          <tspan x={x} dy="1.2em" fontWeight="bold" fill={C.blue}>{item?.value ?? 0}%</tspan>
+                        </text>
+                      );
+                    }} />
+                    <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
+                    <Radar name="QA" dataKey="value" stroke={C.blue} fill={C.blue} fillOpacity={0.15} strokeWidth={1.5} />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           )}
 
@@ -614,11 +602,61 @@ export default function FeedbackViewPage() {
   const params = useParams();
   const router = useRouter();
   const supabase = createClient();
+  const { session } = useSystemAuth();
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [historico, setHistorico] = useState<HistoricoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editFields, setEditFields] = useState<{
+    resumo_ciclo: string;
+    evolucao_tecnica: string;
+    evolucao_comportamental: string;
+    risco_operacional: string;
+  }>({ resumo_ciclo: '', evolucao_tecnica: '', evolucao_comportamental: '', risco_operacional: '' });
+  const [saving, setSaving] = useState(false);
+
+  const isAdmin = session?.cargo === 'Administrador' || session?.permissoes?.acesso_total;
+
+  const handleStartEdit = () => {
+    if (!feedback) return;
+    setEditFields({
+      resumo_ciclo: feedback.resumo_ciclo || feedback.sintese_ia || '',
+      evolucao_tecnica: feedback.evolucao_tecnica || '',
+      evolucao_comportamental: feedback.evolucao_comportamental || '',
+      risco_operacional: feedback.risco_operacional || '',
+    });
+    setIsEditing(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!feedback || !supabase) return;
+    setSaving(true);
+    try {
+      const { error: updateError } = await supabase
+        .from('feedbacks')
+        .update({
+          resumo_ciclo: editFields.resumo_ciclo || null,
+          evolucao_tecnica: editFields.evolucao_tecnica || null,
+          evolucao_comportamental: editFields.evolucao_comportamental || null,
+          risco_operacional: editFields.risco_operacional || null,
+        })
+        .eq('id', feedback.id);
+
+      if (!updateError) {
+        setFeedback((prev) => prev ? {
+          ...prev,
+          resumo_ciclo: editFields.resumo_ciclo || null,
+          evolucao_tecnica: editFields.evolucao_tecnica || null,
+          evolucao_comportamental: editFields.evolucao_comportamental || null,
+          risco_operacional: editFields.risco_operacional || null,
+        } : prev);
+        setIsEditing(false);
+      }
+    } catch { /* ignore */ }
+    setSaving(false);
+  };
 
   const handleExportPDF = useCallback(() => {
     if (!feedback) return;
@@ -832,6 +870,27 @@ export default function FeedbackViewPage() {
             {fullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
             {fullscreen ? 'Sair da Apresentação' : 'Modo Apresentação'}
           </button>
+          {isAdmin && !isEditing && (
+            <button onClick={handleStartEdit}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+              style={{ backgroundColor: C.amberLight, color: C.amber, border: `1px solid ${C.amberBorder}` }}>
+              <Edit2 size={14} /> Editar Feedback
+            </button>
+          )}
+          {isAdmin && isEditing && (
+            <>
+              <button onClick={handleSaveEdit} disabled={saving}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-colors"
+                style={{ backgroundColor: C.green }}>
+                <Save size={14} /> {saving ? 'Salvando...' : 'Salvar'}
+              </button>
+              <button onClick={() => setIsEditing(false)}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+                style={{ backgroundColor: C.surface, color: C.textMuted, border: `1px solid ${C.border}` }}>
+                <XIcon size={14} /> Cancelar
+              </button>
+            </>
+          )}
           <button onClick={handleExportPDF}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors"
             style={{ backgroundColor: C.blue }}>
@@ -953,11 +1012,56 @@ export default function FeedbackViewPage() {
         </div>
 
         {/* ══ 2. RESUMO EXECUTIVO ══ */}
-        {resumo && (
+        {(resumo || isEditing) && (
           <div className="rounded-xl p-6"
-            style={{ backgroundColor: C.surface, border: `1px solid ${C.border}` }}>
+            style={{ backgroundColor: C.surface, border: `1px solid ${isEditing ? C.amberBorder : C.border}` }}>
             <SectionTitle icon={<BarChart2 size={14} />} title="Resumo Executivo do Ciclo" color={C.blue} />
-            <p className="text-sm leading-relaxed mb-5" style={{ color: C.text, lineHeight: '1.85' }}>{resumo}</p>
+            {isEditing ? (
+              <div className="space-y-4 mb-5">
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: C.textFaint }}>Resumo do Ciclo</label>
+                  <textarea
+                    value={editFields.resumo_ciclo}
+                    onChange={(e) => setEditFields((p) => ({ ...p, resumo_ciclo: e.target.value }))}
+                    rows={4}
+                    className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none resize-none"
+                    style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: `1px solid ${C.amberBorder}`, lineHeight: '1.7' }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: C.textFaint }}>Evolução Técnica</label>
+                  <textarea
+                    value={editFields.evolucao_tecnica}
+                    onChange={(e) => setEditFields((p) => ({ ...p, evolucao_tecnica: e.target.value }))}
+                    rows={3}
+                    className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none resize-none"
+                    style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: `1px solid ${C.amberBorder}`, lineHeight: '1.7' }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: C.textFaint }}>Evolução Comportamental</label>
+                  <textarea
+                    value={editFields.evolucao_comportamental}
+                    onChange={(e) => setEditFields((p) => ({ ...p, evolucao_comportamental: e.target.value }))}
+                    rows={3}
+                    className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none resize-none"
+                    style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: `1px solid ${C.amberBorder}`, lineHeight: '1.7' }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: C.textFaint }}>Risco Operacional</label>
+                  <textarea
+                    value={editFields.risco_operacional}
+                    onChange={(e) => setEditFields((p) => ({ ...p, risco_operacional: e.target.value }))}
+                    rows={2}
+                    className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none resize-none"
+                    style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: `1px solid ${C.amberBorder}`, lineHeight: '1.7' }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm leading-relaxed mb-5" style={{ color: C.text, lineHeight: '1.85' }}>{resumo}</p>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {(tendencias?.variacao_qa !== undefined || tendencias?.variacao_iepc !== undefined) && (
                 <div className="rounded-xl p-4 text-center" style={{ backgroundColor: C.blueLight, border: `1px solid ${C.blueBorder}` }}>
@@ -994,6 +1098,47 @@ export default function FeedbackViewPage() {
           </div>
         )}
 
+        {/* ══ 2B. PANORAMA DO CICLO ══ */}
+        {(feedback.evolucao_tecnica || feedback.evolucao_comportamental || resumo) && (
+          <div className="rounded-xl overflow-hidden"
+            style={{ background: 'linear-gradient(135deg, rgba(15,30,60,0.9), rgba(10,22,40,0.95))', border: `1px solid ${C.borderAccent}` }}>
+            <div className="px-6 py-4" style={{ borderBottom: `1px solid ${C.border}` }}>
+              <SectionTitle icon={<Activity size={14} />} title="Panorama do Ciclo" color={C.blue} />
+            </div>
+            <div className="p-6 grid md:grid-cols-3 gap-4">
+              <div className="rounded-xl p-5" style={{ backgroundColor: C.blueLight, border: `1px solid ${C.blueBorder}` }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <Zap size={14} style={{ color: C.blue }} />
+                  <p className="text-xs font-bold uppercase tracking-wider" style={{ color: C.blue }}>Evolução Técnica</p>
+                </div>
+                <p className="text-sm leading-relaxed" style={{ color: C.text, lineHeight: '1.75' }}>
+                  {feedback.evolucao_tecnica || 'Analista demonstra consistência técnica no ciclo avaliado, com domínio dos processos operacionais.'}
+                </p>
+              </div>
+              <div className="rounded-xl p-5" style={{ backgroundColor: C.purpleLight, border: `1px solid rgba(139,126,200,0.25)` }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <Users size={14} style={{ color: C.purple }} />
+                  <p className="text-xs font-bold uppercase tracking-wider" style={{ color: C.purple }}>Evolução Comportamental</p>
+                </div>
+                <p className="text-sm leading-relaxed" style={{ color: C.text, lineHeight: '1.75' }}>
+                  {feedback.evolucao_comportamental || 'Postura profissional alinhada às expectativas da equipe, com contribuição positiva ao ambiente operacional.'}
+                </p>
+              </div>
+              <div className="rounded-xl p-5" style={{ backgroundColor: C.greenLight, border: `1px solid ${C.greenBorder}` }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <CheckCircle size={14} style={{ color: C.green }} />
+                  <p className="text-xs font-bold uppercase tracking-wider" style={{ color: C.green }}>Fechamento do Ciclo</p>
+                </div>
+                <p className="text-sm leading-relaxed" style={{ color: C.text, lineHeight: '1.75' }}>
+                  {resumo
+                    ? resumo.substring(0, 180) + (resumo.length > 180 ? '...' : '')
+                    : `Ciclo ${cicloLabel} encerrado com desempenho ${qaScore >= 90 ? 'excelente' : qaScore >= 80 ? 'satisfatório' : 'em desenvolvimento'}. QA: ${qaScore} | IEPC: ${iepcScore}%.`}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ══ 3. QA + IEPC SIDE BY SIDE ══ */}
         <div className="grid lg:grid-cols-2 gap-5">
           <div className="rounded-xl p-5"
@@ -1019,6 +1164,7 @@ export default function FeedbackViewPage() {
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           <span className="font-bold text-white">{p.pontuacao}/{p.max}</span>
+                          <span className="font-bold text-xs px-1.5 py-0.5 rounded" style={{ color, backgroundColor: `${color}15` }}>{Math.round(pct)}%</span>
                           {p.variacao !== undefined && p.variacao !== 0 && (
                             <span className="font-semibold text-xs" style={{ color: p.variacao >= 0 ? C.green : C.red }}>
                               {p.variacao >= 0 ? '↑' : '↓'}{Math.abs(p.variacao)}
@@ -1039,10 +1185,19 @@ export default function FeedbackViewPage() {
             {qaRadarData.length >= 3 && (
               <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${C.border}` }}>
                 <p className="text-xs font-bold mb-2 uppercase tracking-wider text-center" style={{ color: C.blue }}>Radar QA</p>
-                <ResponsiveContainer width="100%" height={190}>
-                  <RadarChart data={qaRadarData}>
+                <ResponsiveContainer width="100%" height={220}>
+                  <RadarChart data={qaRadarData} margin={{ top: 20, right: 30, bottom: 20, left: 30 }}>
                     <PolarGrid stroke="rgba(255,255,255,0.07)" />
-                    <PolarAngleAxis dataKey="subject" tick={{ fill: C.textMuted, fontSize: 9 }} />
+                    <PolarAngleAxis dataKey="subject" tick={(props: any) => {
+                      const { x, y, payload } = props;
+                      const item = qaRadarData.find(d => d.subject === payload.value);
+                      return (
+                        <text x={x} y={y} textAnchor="middle" dominantBaseline="middle" fontSize={8} fill={C.textMuted}>
+                          <tspan x={x} dy="-0.4em">{payload.value}</tspan>
+                          <tspan x={x} dy="1.2em" fontWeight="bold" fill={C.blue}>{item?.value ?? 0}%</tspan>
+                        </text>
+                      );
+                    }} />
                     <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
                     <Radar name="QA" dataKey="value" stroke={C.blue} fill={C.blue} fillOpacity={0.15} strokeWidth={1.5} />
                   </RadarChart>
@@ -1072,7 +1227,10 @@ export default function FeedbackViewPage() {
                           </div>
                           <span style={{ color: C.text }}>{p.nome}</span>
                         </div>
-                        <span className="font-bold text-white">{p.pontuacao}/{p.max}</span>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="font-bold text-white">{p.pontuacao}/{p.max}</span>
+                          <span className="font-bold text-xs px-1.5 py-0.5 rounded" style={{ color, backgroundColor: `${color}15` }}>{Math.round(pct)}%</span>
+                        </div>
                       </div>
                       <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
                         <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
@@ -1089,7 +1247,10 @@ export default function FeedbackViewPage() {
                     <div key={i}>
                       <div className="flex items-center justify-between text-xs mb-1">
                         <span style={{ color: C.text }}>{c.label}</span>
-                        <span className="font-bold text-white">{c.pts}/{c.max}</span>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="font-bold text-white">{c.pts}/{c.max}</span>
+                          <span className="font-bold text-xs px-1.5 py-0.5 rounded" style={{ color, backgroundColor: `${color}15` }}>{c.pct}%</span>
+                        </div>
                       </div>
                       <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
                         <div className="h-full rounded-full" style={{ width: `${c.pct}%`, backgroundColor: color }} />
@@ -1104,10 +1265,19 @@ export default function FeedbackViewPage() {
             {iepcRadarFinal.length >= 3 && (
               <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${C.border}` }}>
                 <p className="text-xs font-bold mb-2 uppercase tracking-wider text-center" style={{ color: C.teal }}>Radar IEPC</p>
-                <ResponsiveContainer width="100%" height={190}>
-                  <RadarChart data={iepcRadarFinal}>
+                <ResponsiveContainer width="100%" height={220}>
+                  <RadarChart data={iepcRadarFinal} margin={{ top: 20, right: 30, bottom: 20, left: 30 }}>
                     <PolarGrid stroke="rgba(255,255,255,0.07)" />
-                    <PolarAngleAxis dataKey="subject" tick={{ fill: C.textMuted, fontSize: 9 }} />
+                    <PolarAngleAxis dataKey="subject" tick={(props: any) => {
+                      const { x, y, payload } = props;
+                      const item = iepcRadarFinal.find(d => d.subject === payload.value);
+                      return (
+                        <text x={x} y={y} textAnchor="middle" dominantBaseline="middle" fontSize={8} fill={C.textMuted}>
+                          <tspan x={x} dy="-0.4em">{payload.value}</tspan>
+                          <tspan x={x} dy="1.2em" fontWeight="bold" fill={C.teal}>{item?.value ?? 0}%</tspan>
+                        </text>
+                      );
+                    }} />
                     <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
                     <Radar name="IEPC" dataKey="value" stroke={C.teal} fill={C.teal} fillOpacity={0.15} strokeWidth={1.5} />
                   </RadarChart>
@@ -1375,8 +1545,8 @@ export default function FeedbackViewPage() {
   return (
     <>
       {fullscreen ? (
-        <div className="fixed inset-0 z-50 overflow-y-auto" style={{ backgroundColor: C.bg }}>
-          <div className="min-h-screen" style={{ scrollBehavior: 'smooth' }}>
+        <div className="fixed inset-0 z-50 overflow-y-auto w-full h-full" style={{ backgroundColor: C.bg }}>
+          <div className="w-full min-h-screen" style={{ scrollBehavior: 'smooth' }}>
             {content}
           </div>
         </div>

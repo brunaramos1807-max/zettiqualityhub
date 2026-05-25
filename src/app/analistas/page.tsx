@@ -728,13 +728,18 @@ function AnalistasContent() {
   const [importResult, setImportResult] = useState<{ success: number; errors: string[] } | null>(null);
   const [importing, setImporting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [allScores, setAllScores] = useState<any[]>([]);
   const importRef = useRef<HTMLInputElement>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchAnalistas();
+      const [data, scores] = await Promise.all([
+        fetchAnalistas(),
+        fetchCycleScores(),
+      ]);
       setAnalistas(data);
+      setAllScores(scores || []);
     } catch { setAnalistas([]); }
     setLoading(false);
   }, []);
@@ -1076,6 +1081,21 @@ function AnalistasContent() {
               : { texto: analista.tempo_empresa || '', meses: analista.tempo_empresa_meses || 0 };
             const initials = (analista.nome_completo || analista.nome || 'AN').substring(0, 2).toUpperCase();
 
+            // Star badge: check if analista has 3 consecutive cycles above 90
+            const analistaScores = allScores
+              .filter((s: any) => {
+                const n = (s.analista || '').toLowerCase().trim();
+                const nome = (analista.nome_completo || analista.nome || '').toLowerCase().trim();
+                const nomeShort = (analista.nome || '').toLowerCase().trim();
+                return n === nome || n === nomeShort || nome.includes(n) || n.includes(nomeShort);
+              })
+              .sort((a: any, b: any) => a.periodo.localeCompare(b.periodo));
+            const hasStarBadge = (() => {
+              if (analistaScores.length < 3) return false;
+              const last3 = analistaScores.slice(-3);
+              return last3.every((s: any) => (s.nota_final_qa || 0) >= 90);
+            })();
+
             return (
               <div key={analista.id} style={cardStyle} className="transition-all hover:border-white/15">
                 <div className="flex items-center gap-4">
@@ -1108,6 +1128,12 @@ function AnalistasContent() {
                         style={{ backgroundColor: `${statusStyle.color}15`, color: statusStyle.color }}>
                         {statusStyle.label}
                       </span>
+                      {hasStarBadge && (
+                        <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-bold"
+                          style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.3)' }}>
+                          ⭐ Destaque Operacional
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs mt-0.5 truncate" style={{ color: '#8B949E' }}>
                       {analista.cargo_operacional || 'Analista'} · {analista.squad || analista.equipe || '—'}

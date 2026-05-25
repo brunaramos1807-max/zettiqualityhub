@@ -147,10 +147,19 @@ export async function importCycleDataToSupabase(
         cycleId = inserted?.id;
       }
     } else {
-      // Update existing cycle record count
+      // Update existing cycle — ACCUMULATE record count (don't overwrite)
+      const { data: existingCount } = await supabase
+        .from('import_cycles')
+        .select('record_count')
+        .eq('id', cycleId)
+        .maybeSingle();
+      const prevCount = existingCount?.record_count || 0;
       await supabase
         .from('import_cycles')
-        .update({ record_count: scores.length + ncs.length + elogios.length, updated_at: new Date().toISOString() })
+        .update({
+          record_count: prevCount + scores.length + ncs.length + elogios.length,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', cycleId);
     }
 

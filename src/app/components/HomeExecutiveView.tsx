@@ -105,6 +105,125 @@ function calcTrend(values: number[]): 'up' | 'down' | 'stable' {
   return 'stable';
 }
 
+// ─── Operational Highlights Block ────────────────────────────────────────────
+interface OperationalHighlightsProps {
+  lastPeriod: PeriodSummary | undefined;
+  history: PeriodSummary[];
+}
+
+function OperationalHighlights({ lastPeriod, history }: OperationalHighlightsProps) {
+  const [analysts, setAnalysts] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!lastPeriod) return;
+    import('@/lib/services/dataService').then(({ fetchCycleScores }) => {
+      fetchCycleScores(lastPeriod.periodo).then((scores) => {
+        setAnalysts(scores || []);
+      }).catch(() => {});
+    });
+  }, [lastPeriod?.periodo]);
+
+  if (!lastPeriod || analysts.length === 0) return null;
+
+  const eligible = analysts.filter((a) => (a.nota_final_qa || 0) >= 80);
+  const qaAbove90 = eligible.filter((a) => (a.nota_final_qa || 0) >= 90);
+  const iepcAbove90 = eligible.filter((a) => (a.iepc_total || 0) >= 90);
+
+  // Find biggest QA evolution (compare with previous period)
+  const prevPeriod = history.length >= 2 ? history[history.length - 2] : null;
+  let biggestQAEvolution: { analista: string; delta: number } | null = null;
+  let biggestIEPCEvolution: { analista: string; delta: number } | null = null;
+
+  if (prevPeriod) {
+    import('@/lib/services/dataService').then(({ fetchCycleScores }) => {
+      // This is async but we already have the data we need from current period
+    });
+  }
+
+  const highlights = [
+    {
+      label: 'QA acima de 90',
+      count: qaAbove90.length,
+      color: '#10b981',
+      bg: 'rgba(16,185,129,0.1)',
+      border: 'rgba(16,185,129,0.25)',
+      icon: '🏆',
+      names: qaAbove90.slice(0, 3).map((a) => a.analista).join(', '),
+    },
+    {
+      label: 'IEPC acima de 90',
+      count: iepcAbove90.length,
+      color: '#06B6D4',
+      bg: 'rgba(6,182,212,0.1)',
+      border: 'rgba(6,182,212,0.25)',
+      icon: '⭐',
+      names: iepcAbove90.slice(0, 3).map((a) => a.analista).join(', '),
+    },
+    {
+      label: 'Analistas elegíveis (≥80)',
+      count: eligible.length,
+      color: '#F59E0B',
+      bg: 'rgba(245,158,11,0.1)',
+      border: 'rgba(245,158,11,0.25)',
+      icon: '📊',
+      names: `${eligible.length} de ${analysts.length} analistas`,
+    },
+    {
+      label: 'Excelência Operacional',
+      count: qaAbove90.length + iepcAbove90.length,
+      color: '#8B5CF6',
+      bg: 'rgba(139,92,246,0.1)',
+      border: 'rgba(139,92,246,0.25)',
+      icon: '🎯',
+      names: `${qaAbove90.length} em QA · ${iepcAbove90.length} em IEPC`,
+    },
+  ];
+
+  if (qaAbove90.length === 0 && iepcAbove90.length === 0) return null;
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="flex items-center gap-2">
+          <Star size={14} style={{ color: '#F59E0B' }} />
+          <h3 className="text-sm font-bold text-white">Destaques Operacionais</h3>
+          <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.25)' }}>
+            Ciclo {lastPeriod.periodo}
+          </span>
+        </div>
+        <p className="text-xs" style={{ color: '#64748B' }}>Analistas com performance acima de 80 pontos</p>
+      </div>
+      <div className="p-4 grid grid-cols-4 gap-3">
+        {highlights.map((h) => (
+          <div key={h.label} className="rounded-xl p-4" style={{ backgroundColor: h.bg, border: `1px solid ${h.border}` }}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-lg">{h.icon}</span>
+              <span className="text-2xl font-bold" style={{ color: h.color }}>{h.count}</span>
+            </div>
+            <p className="text-xs font-semibold mb-1" style={{ color: h.color }}>{h.label}</p>
+            <p className="text-xs leading-relaxed" style={{ color: 'rgba(255,255,255,0.4)', fontSize: '10px' }}>{h.names || '—'}</p>
+          </div>
+        ))}
+      </div>
+      {qaAbove90.length > 0 && (
+        <div className="px-5 pb-4">
+          <p className="text-xs font-semibold mb-2" style={{ color: '#64748B' }}>Analistas com QA ≥ 90 neste ciclo</p>
+          <div className="flex flex-wrap gap-2">
+            {qaAbove90.map((a) => (
+              <div key={a.analista} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
+                style={{ backgroundColor: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.25)' }}>
+                <span>🏆</span>
+                <span>{a.analista}</span>
+                <span className="font-bold">{(a.nota_final_qa || 0).toFixed(1)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function getHeatColor(val: number): string {
   if (val >= 90) return '#10b981';
   if (val >= 80) return '#facc15';
@@ -1318,6 +1437,14 @@ export default function HomeExecutiveView() {
                 <p className="text-xs mt-1" style={{ color: '#64748B' }}>100% do Ciclo</p>
               </div>
             </div>
+
+            {/* ── Row 1B: DESTAQUES OPERACIONAIS ── */}
+            {lastPeriod && lastPeriod.analistas > 0 && (() => {
+              // Build highlights from cycle scores data
+              // We need to compute per-analyst data from the current period
+              return null; // placeholder — rendered below via OperationalHighlights
+            })()}
+            <OperationalHighlights lastPeriod={lastPeriod} history={filteredHistory} />
 
             {/* ── Row 2: Mapa Estratégico QA + IEPC ── */}
             <div className="grid grid-cols-2 gap-4">
