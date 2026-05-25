@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
-import { Shield, Users, Briefcase, Lock, Plus, Edit2, Trash2, X, Save, CheckCircle, Loader2, UserCheck, Clock, AlertTriangle, RefreshCw, Key, Database, Copy, ToggleLeft, ToggleRight, Search, Upload, Star, History, Trash } from 'lucide-react';
+import { Shield, Users, Briefcase, Lock, Plus, Edit2, Trash2, X, Save, CheckCircle, Loader2, UserCheck, Clock, AlertTriangle, RefreshCw, Key, Database, Copy, ToggleLeft, ToggleRight, Search, Upload, Star, History, Trash, Link, Activity } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -67,7 +67,7 @@ interface PermissionLog {
   created_at: string;
 }
 
-type Tab = 'usuarios' | 'cargos' | 'permissoes' | 'analistas' | 'logs';
+type Tab = 'usuarios' | 'cargos' | 'permissoes' | 'analistas' | 'logs' | 'integracoes';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -966,6 +966,200 @@ function AnalistasTab({ actorEmail }: AnalistasTabProps) {
   );
 }
 
+// ─── Integrações Tab ──────────────────────────────────────────────────────────
+
+interface IntegrationToken {
+  id: string;
+  label: string;
+  is_active: boolean;
+  created_at: string;
+  last_used_at: string | null;
+  expires_at: string | null;
+}
+
+interface IntegrationLog {
+  id: string;
+  received_at: string;
+  source: string;
+  periodo: string | null;
+  analista: string | null;
+  squad: string | null;
+  status: string;
+  error_message: string | null;
+  duration_ms: number | null;
+}
+
+function IntegracoesTab() {
+  const [tokens, setTokens] = useState<IntegrationToken[]>([]);
+  const [logs, setLogs] = useState<IntegrationLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
+
+  const loadData = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const supabase = createClient();
+      if (!supabase) return;
+      const [tokensRes, logsRes] = await Promise.all([
+        supabase.from('integration_tokens').select('*').order('created_at', { ascending: false }),
+        supabase.from('integration_request_logs').select('*').order('received_at', { ascending: false }).limit(100),
+      ]);
+      setTokens(tokensRes.data || []);
+      setLogs(logsRes.data || []);
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, []);
+
+  React.useEffect(() => { loadData(); }, [loadData]);
+
+  const handleCopyEndpoint = () => {
+    const url = `${window.location.origin}/api/receber-avaliacao`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const statusColor = (status: string) => {
+    if (status === 'success' || status === 'received') return '#22C55E';
+    if (status === 'error') return '#EF4444';
+    return '#F59E0B';
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* API Endpoint */}
+      <div style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '1rem' }}>
+        <div className="p-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="flex items-center gap-2 mb-1">
+            <Activity size={16} style={{ color: '#38BDF8' }} />
+            <h2 className="text-base font-semibold text-white">API de Integração</h2>
+          </div>
+          <p className="text-xs" style={{ color: '#94A3B8' }}>Endpoint para receber avaliações de sistemas externos</p>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold mb-2" style={{ color: '#94A3B8' }}>ENDPOINT</label>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 px-3 py-2 rounded-lg text-xs font-mono text-white" style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                POST /api/receber-avaliacao
+              </code>
+              <button onClick={handleCopyEndpoint} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all" style={{ backgroundColor: copied ? 'rgba(34,197,94,0.15)' : 'rgba(56,189,248,0.1)', color: copied ? '#22C55E' : '#38BDF8', border: `1px solid ${copied ? 'rgba(34,197,94,0.3)' : 'rgba(56,189,248,0.2)'}` }}>
+                <Copy size={12} />
+                {copied ? 'Copiado!' : 'Copiar URL'}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-2" style={{ color: '#94A3B8' }}>AUTENTICAÇÃO</label>
+            <div className="px-3 py-2 rounded-lg text-xs font-mono" style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#94A3B8' }}>
+              Authorization: Bearer <span style={{ color: '#38BDF8' }}>{'{INTEGRATION_API_TOKEN}'}</span>
+            </div>
+          </div>
+          <div className="p-3 rounded-xl" style={{ backgroundColor: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)' }}>
+            <p className="text-xs" style={{ color: '#60A5FA' }}>
+              <strong>Autenticação:</strong> Configure a variável de ambiente <code style={{ color: '#38BDF8' }}>INTEGRATION_API_TOKEN</code> no servidor com o token Bearer para autenticar as requisições.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Tokens */}
+      <div style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '1rem' }}>
+        <div className="flex items-center justify-between p-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div>
+            <h2 className="text-base font-semibold text-white">Tokens de Integração</h2>
+            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Tokens registrados no banco de dados</p>
+          </div>
+          <button onClick={loadData} className="p-2 rounded-lg hover:bg-white/10" style={{ color: '#94A3B8' }}>
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+        {loading ? (
+          <div className="flex items-center justify-center py-10"><Loader2 size={18} className="animate-spin" style={{ color: '#38BDF8' }} /></div>
+        ) : tokens.length === 0 ? (
+          <div className="py-10 text-center" style={{ color: '#94A3B8' }}>
+            <Key size={28} className="mx-auto mb-2 opacity-30" />
+            <p className="text-sm">Nenhum token registrado</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ backgroundColor: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  {['Label', 'Status', 'Criado em', 'Último uso', 'Expira em'].map((h) => (
+                    <th key={h} className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {tokens.map((t) => (
+                  <tr key={t.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                    <td className="py-3 px-4 font-medium text-white">{t.label}</td>
+                    <td className="py-3 px-4">
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: t.is_active ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', color: t.is_active ? '#22C55E' : '#EF4444' }}>
+                        {t.is_active ? 'Ativo' : 'Inativo'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-xs" style={{ color: '#94A3B8' }}>{new Date(t.created_at).toLocaleDateString('pt-BR')}</td>
+                    <td className="py-3 px-4 text-xs" style={{ color: '#94A3B8' }}>{t.last_used_at ? new Date(t.last_used_at).toLocaleString('pt-BR') : '—'}</td>
+                    <td className="py-3 px-4 text-xs" style={{ color: '#94A3B8' }}>{t.expires_at ? new Date(t.expires_at).toLocaleDateString('pt-BR') : 'Sem expiração'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Request Logs */}
+      <div style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '1rem' }}>
+        <div className="p-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <h2 className="text-base font-semibold text-white">Logs de Requisições</h2>
+          <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Últimas 100 chamadas à API de integração</p>
+        </div>
+        {loading ? (
+          <div className="flex items-center justify-center py-10"><Loader2 size={18} className="animate-spin" style={{ color: '#38BDF8' }} /></div>
+        ) : logs.length === 0 ? (
+          <div className="py-10 text-center" style={{ color: '#94A3B8' }}>
+            <Database size={28} className="mx-auto mb-2 opacity-30" />
+            <p className="text-sm">Nenhuma requisição registrada</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ backgroundColor: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  {['Data/Hora', 'Analista', 'Squad', 'Período', 'Status', 'Duração'].map((h) => (
+                    <th key={h} className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {logs.map((log) => (
+                  <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                    <td className="py-3 px-4 text-xs" style={{ color: '#94A3B8' }}>{new Date(log.received_at).toLocaleString('pt-BR')}</td>
+                    <td className="py-3 px-4 text-xs text-white">{log.analista || '—'}</td>
+                    <td className="py-3 px-4 text-xs" style={{ color: '#94A3B8' }}>{log.squad || '—'}</td>
+                    <td className="py-3 px-4 text-xs" style={{ color: '#94A3B8' }}>{log.periodo || '—'}</td>
+                    <td className="py-3 px-4">
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: `${statusColor(log.status)}15`, color: statusColor(log.status) }}>
+                        {log.status}
+                      </span>
+                      {log.error_message && <p className="text-xs mt-0.5" style={{ color: '#EF4444' }}>{log.error_message.substring(0, 60)}</p>}
+                    </td>
+                    <td className="py-3 px-4 text-xs" style={{ color: '#94A3B8' }}>{log.duration_ms ? `${log.duration_ms}ms` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 function ConfiguracoesContent() {
@@ -1136,6 +1330,7 @@ function ConfiguracoesContent() {
     { id: 'permissoes', label: 'Permissões', icon: <Lock size={14} /> },
     { id: 'analistas', label: 'Analistas', icon: <Star size={14} /> },
     { id: 'logs', label: 'Logs de Auditoria', icon: <History size={14} /> },
+    { id: 'integracoes', label: 'Integrações', icon: <Link size={14} /> },
   ];
 
   return (
@@ -1423,6 +1618,9 @@ function ConfiguracoesContent() {
           </div>
         </div>
       )}
+
+      {/* ── TAB: Integrações ── */}
+      {activeTab === 'integracoes' && <IntegracoesTab />}
 
       {/* Modals */}
       {editingUser && (

@@ -99,11 +99,26 @@ function ImportacoesContent() {
     const supabase = createClient();
     if (supabase) {
       try {
-        // Load CSV/manual imports from import_cycles
+        // Load all imports from import_cycles
         const { data: cycleData, error: cycleError } = await supabase
           .from('import_cycles')
           .select('id, periodo, file_name, record_count, imported_at, data_type, metadata')
           .order('imported_at', { ascending: false });
+
+        // Load counts per period for each data type
+        const [scoresRes, ncsRes, elogiosRes] = await Promise.all([
+          supabase.from('cycle_scores').select('periodo').neq('source', 'integration'),
+          supabase.from('nc_records').select('periodo'),
+          supabase.from('elogios').select('periodo'),
+        ]);
+
+        // Build per-period counts
+        const scoresByPeriod: Record<string, number> = {};
+        const ncsByPeriod: Record<string, number> = {};
+        const elogiosByPeriod: Record<string, number> = {};
+        (scoresRes.data || []).forEach((r: any) => { scoresByPeriod[r.periodo] = (scoresByPeriod[r.periodo] || 0) + 1; });
+        (ncsRes.data || []).forEach((r: any) => { ncsByPeriod[r.periodo] = (ncsByPeriod[r.periodo] || 0) + 1; });
+        (elogiosRes.data || []).forEach((r: any) => { elogiosByPeriod[r.periodo] = (elogiosByPeriod[r.periodo] || 0) + 1; });
 
         // Load integration records grouped by periodo from cycle_scores
         const { data: integrationData } = await supabase
@@ -116,14 +131,28 @@ function ImportacoesContent() {
 
         if (!cycleError && cycleData && cycleData.length > 0) {
           cycleData.forEach((d: any) => {
+            const periodo = d.periodo;
+            const hasScores = (scoresByPeriod[periodo] || 0) > 0;
+            const hasNCs = (ncsByPeriod[periodo] || 0) > 0;
+            const hasElogios = (elogiosByPeriod[periodo] || 0) > 0;
+
+            // Determine tipo based on what data actually exists
+            let tipo = 'Qualidade';
+            if (hasScores && hasNCs && hasElogios) tipo = 'Completo';
+            else if (hasNCs && !hasScores) tipo = 'Não Conformidades';
+            else if (hasElogios && !hasScores) tipo = 'Elogios';
+            else if (hasScores) tipo = 'Qualidade';
+
+            const totalRows = (scoresByPeriod[periodo] || 0) + (ncsByPeriod[periodo] || 0) + (elogiosByPeriod[periodo] || 0);
+
             supabaseRecords.push({
               id: d.id,
               fileName: d.file_name || 'Importação',
-              tipo: 'Qualidade',
+              tipo,
               modo: d.data_type === 'integration' ? 'Integração API' : 'Ciclo Completo',
-              periodo: d.periodo,
+              periodo,
               data: d.imported_at || new Date().toISOString(),
-              rows: d.record_count || 0,
+              rows: totalRows || d.record_count || 0,
             });
           });
         }
@@ -153,6 +182,30 @@ function ImportacoesContent() {
             }
           });
         }
+
+        // Also add standalone NC-only or Elogios-only periods not in import_cycles
+        const allPeriods = new Set([
+          ...Object.keys(ncsByPeriod),
+          ...Object.keys(elogiosByPeriod),
+        ]);
+        allPeriods.forEach((periodo) => {
+          const alreadyExists = supabaseRecords.some((sr) => sr.periodo === periodo);
+          if (!alreadyExists) {
+            const hasNCs = (ncsByPeriod[periodo] || 0) > 0;
+            const hasElogios = (elogiosByPeriod[periodo] || 0) > 0;
+            let tipo = hasNCs && hasElogios ? 'Completo' : hasNCs ? 'Não Conformidades' : 'Elogios';
+            const rows = (ncsByPeriod[periodo] || 0) + (elogiosByPeriod[periodo] || 0);
+            supabaseRecords.push({
+              id: `standalone-${periodo}`,
+              fileName: `Importação — ${periodo}`,
+              tipo,
+              modo: 'Ciclo Completo',
+              periodo,
+              data: new Date().toISOString(),
+              rows,
+            });
+          }
+        });
 
         if (supabaseRecords.length > 0) {
           // Merge with localStorage records (for manual entries not yet in Supabase)
@@ -410,6 +463,7 @@ function ImportacoesContent() {
     if (tipo === 'Qualidade') return { color: '#38BDF8', bg: 'rgba(56,189,248,0.12)', border: 'rgba(56,189,248,0.25)' };
     if (tipo === 'Não Conformidades') return { color: '#EF4444', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.25)' };
     if (tipo === 'Elogios') return { color: '#10B981', bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.25)' };
+    if (tipo === 'Completo') return { color: '#A78BFA', bg: 'rgba(167,139,250,0.12)', border: 'rgba(167,139,250,0.25)' };
     return { color: '#94A3B8', bg: 'rgba(148,163,184,0.12)', border: 'rgba(148,163,184,0.25)' };
   };
 

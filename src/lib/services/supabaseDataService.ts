@@ -245,13 +245,13 @@ export async function importCycleDataToSupabase(
       });
     }
 
-    // ── Step 4: UPSERT NCs — NO DELETE, true upsert on (periodo, analista, protocolo, tipo_nc) ─
+    // ── Step 4: UPSERT NCs — NO DELETE, use INSERT (nc_records has no unique constraint) ─
     let ncsInserted = 0;
     let ncsErrors = 0;
     if (ncs.length > 0) {
       await writeImportLog({
         periodo, file_name: fileName, step: 'ncs_start', level: 'info',
-        message: `Iniciando upsert de ${ncs.length} NCs`,
+        message: `Iniciando inserção de ${ncs.length} NCs`,
         cycle_id: cycleId,
       });
 
@@ -271,31 +271,38 @@ export async function importCycleDataToSupabase(
           pontos_deduzidos: n.pontos_deduzidos ?? -20,
           protocolo_referencia: n.protocolo_referencia || null,
           avaliacao_id: n.avaliacao_id || null,
+          source: 'import',
         }));
 
-        // Use insert with ignoreDuplicates since nc_records uses a partial unique index
         const { error: ncsError, data: ncsData } = await supabase
           .from('nc_records')
-          .upsert(payload, { ignoreDuplicates: true })
+          .insert(payload)
           .select('id');
 
         if (ncsError) {
           ncsErrors++;
           await writeImportLog({
-            periodo, file_name: fileName, step: 'ncs_upsert', level: 'error',
+            periodo, file_name: fileName, step: 'ncs_insert', level: 'error',
             message: `Erro no batch NC ${Math.floor(i / BATCH_SIZE) + 1}: ${ncsError.message}`,
-            details: { code: ncsError.code, hint: ncsError.hint },
+            details: { code: ncsError.code, hint: ncsError.hint, batch_start: i, batch_size: batch.length },
             cycle_id: cycleId,
           });
-          // Fallback: insert each row individually
+          // Fallback: insert each row individually to maximize success
           for (const row of payload) {
             try {
               const { error: singleErr } = await supabase.from('nc_records').insert(row);
               if (!singleErr) ncsInserted++;
+              else {
+                await writeImportLog({
+                  periodo, file_name: fileName, step: 'ncs_fallback', level: 'warn',
+                  message: `Fallback falhou para ${row.analista}/${row.tipo_nc}: ${singleErr.message}`,
+                  cycle_id: cycleId,
+                });
+              }
             } catch { /* continue */ }
           }
         } else {
-          ncsInserted += (ncsData?.length || 0);
+          ncsInserted += (ncsData?.length || batch.length);
         }
       }
 
