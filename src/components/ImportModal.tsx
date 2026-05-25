@@ -38,6 +38,8 @@ interface ValidationSummary {
   parsedScores: CycleScoreRow[];
   parsedNCs: NCRow[];
   parsedElogios: ElogioRow[];
+  discardedRows?: number;
+  discardedReasons?: string[];
 }
 
 const FILE_TYPE_OPTIONS: { type: FileType; label: string; description: string; color: string; required?: boolean }[] = [
@@ -48,7 +50,7 @@ const FILE_TYPE_OPTIONS: { type: FileType; label: string; description: string; c
 
 const REQUIRED_COLUMNS: Record<FileType, string[]> = {
   scores: ['Analista', 'Squad', 'Nota Final QA (0-100)', 'IEPC - Índice de Experiência Percebida pelo Cliente (0-100)'],
-  ncs: ['Analista', 'Squad', 'Tipo de Não Conformidade', 'Pontos Deduzidos'],
+  ncs: ['Analista', 'Squad'],
   elogios: ['Colaborador', 'Elogio'],
 };
 
@@ -69,7 +71,7 @@ function normalizeStr(s: string): string {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
-function validateColumns(rows: Record<string, any>[], type: FileType): { valid: boolean; missing: string[]; warnings: string[] } {
+function validateColumns(rows: Record<string, any>[], type: FileType): { valid: boolean; missing: string[]; warnings: string[]; discardedCount?: number } {
   if (rows.length === 0) return { valid: false, missing: [], warnings: ['Arquivo vazio — nenhuma linha encontrada.'] };
   const fileColumns = Object.keys(rows[0]).map(cleanColumnKey);
 
@@ -110,7 +112,50 @@ function validateColumns(rows: Record<string, any>[], type: FileType): { valid: 
     return { valid: true, missing: [], warnings };
   }
 
-  // For ncs and elogios: use original logic
+  if (type === 'ncs') {
+    // Accept flexible aliases for NC columns
+    const hasAnalista = fileColumns.some((fc) =>
+      normalizeStr(fc) === normalizeStr('Analista') ||
+      normalizeStr(fc) === normalizeStr('analista')
+    );
+    const hasSquad = fileColumns.some((fc) =>
+      normalizeStr(fc) === normalizeStr('Squad') ||
+      normalizeStr(fc) === normalizeStr('squad')
+    );
+    const missing: string[] = [];
+    if (!hasAnalista) missing.push('Analista');
+    if (!hasSquad) missing.push('Squad');
+
+    const warnings: string[] = [];
+    // Check if tipo_nc column exists (any alias)
+    const hasTipoNC = fileColumns.some((fc) => {
+      const n = normalizeStr(fc);
+      return n.includes('tipo') || n === 'nc';
+    });
+    if (!hasTipoNC) warnings.push('Coluna "Tipo NC" não encontrada — será usado "Não Especificado" como padrão.');
+
+    // Check if descrição column exists
+    const hasDesc = fileColumns.some((fc) => {
+      const n = normalizeStr(fc);
+      return n.includes('descri') || n.includes('observa') || n === 'desc';
+    });
+    if (!hasDesc) warnings.push('Coluna "Descrição" não encontrada — campo ficará vazio.');
+
+    // Count rows that would be discarded (no analista)
+    const discardedCount = rows.filter((r) => {
+      const analista = Object.entries(r).find(([k]) => normalizeStr(cleanColumnKey(k)) === 'analista')?.[1];
+      return !analista || String(analista).trim() === '';
+    }).length;
+    if (discardedCount > 0) warnings.push(`${discardedCount} linha(s) sem analista serão descartadas.`);
+
+    const hasPeriod = fileColumns.some((fc) => normalizeStr(fc) === 'periodo' || normalizeStr(fc) === 'period');
+    if (!hasPeriod) warnings.push('Coluna "Período" não encontrada — o período será definido pelo campo acima.');
+
+    if (missing.length > 0) return { valid: false, missing, warnings, discardedCount };
+    return { valid: true, missing: [], warnings, discardedCount };
+  }
+
+  // For elogios: use original logic
   const required = REQUIRED_COLUMNS[type];
   const missing = required.filter(
     (col) => !fileColumns.some((fc) => normalizeStr(fc) === normalizeStr(col))
@@ -161,7 +206,7 @@ async function parseFile(file: File): Promise<Record<string, any>[]> {
   throw new Error('Formato não suportado. Use CSV ou XLSX.');
 }
 
-function buildValidationSummary(type: FileType, rows: Record<string, any>[], periodo: string): ValidationSummary {
+function buildValidationSummary(type: FileType, rows: Record<string, any>[], periodo: string): ValidationSummary & { discardedRows?: number; discardedReasons?: string[] } {
   let parsedScores = type === 'scores' ? parseQAScoresCSV(rows, periodo) : [];
   const parsedNCs = type === 'ncs' ? parseNCsCSV(rows, periodo) : [];
   const parsedElogios = type === 'elogios' ? parseElogiosCSV(rows, periodo) : [];
@@ -170,13 +215,18 @@ function buildValidationSummary(type: FileType, rows: Record<string, any>[], per
     const qaAvg = parsedScores.length > 0 ? parsedScores.reduce((s, r) => s + r.nota_final_qa, 0) / parsedScores.length : 0;
     const iepcAvg = parsedScores.length > 0 ? parsedScores.reduce((s, r) => s + r.iepc_total, 0) / parsedScores.length : 0;
     const totalNCs = parsedScores.reduce((s, r) => s + r.total_ncs, 0);
-    return { totalRows: parsedScores.length, qaAvg, iepcAvg, totalNCs, ncRows: null, ncTotalPontos: null, elogioRows: null, parsedScores, parsedNCs: [], parsedElogios: [] };
+    const discardedRows = rows.length - parsedScores.length;
+    return { totalRows: parsedScores.length, qaAvg, iepcAvg, totalNCs, ncRows: null, ncTotalPontos: null, elogioRows: null, parsedScores, parsedNCs: [], parsedElogios: [], discardedRows };
   }
   if (type === 'ncs') {
     const ncTotalPontos = parsedNCs.reduce((s, r) => s + r.pontos_deduzidos, 0);
-    return { totalRows: parsedNCs.length, qaAvg: null, iepcAvg: null, totalNCs: parsedNCs.length, ncRows: parsedNCs.length, ncTotalPontos, elogioRows: null, parsedScores: [], parsedNCs, parsedElogios: [] };
+    const discardedRows = rows.length - parsedNCs.length;
+    const discardedReasons: string[] = [];
+    if (discardedRows > 0) discardedReasons.push(`${discardedRows} linha(s) descartada(s) por não ter analista preenchido`);
+    return { totalRows: parsedNCs.length, qaAvg: null, iepcAvg: null, totalNCs: parsedNCs.length, ncRows: parsedNCs.length, ncTotalPontos, elogioRows: null, parsedScores: [], parsedNCs, parsedElogios: [], discardedRows, discardedReasons };
   }
-  return { totalRows: parsedElogios.length, qaAvg: null, iepcAvg: null, totalNCs: null, ncRows: null, ncTotalPontos: null, elogioRows: parsedElogios.length, parsedScores: [], parsedNCs: [], parsedElogios };
+  const discardedRows = rows.length - parsedElogios.length;
+  return { totalRows: parsedElogios.length, qaAvg: null, iepcAvg: null, totalNCs: null, ncRows: null, ncTotalPontos: null, elogioRows: parsedElogios.length, parsedScores: [], parsedNCs: [], parsedElogios, discardedRows };
 }
 
 // ─── Por Andamento: get accumulated count from localStorage ──────────────────
@@ -683,6 +733,18 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
                   <p className="text-xs text-slate-400 mt-0.5">registros válidos</p>
                 </div>
 
+                {/* Discarded rows counter */}
+                {(validationSummary as any).discardedRows != null && (validationSummary as any).discardedRows > 0 && (
+                  <div className="p-4 rounded-xl" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <AlertCircle size={14} style={{ color: '#DC2626' }} />
+                      <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#DC2626' }}>Linhas descartadas</p>
+                    </div>
+                    <p className="text-2xl font-bold" style={{ color: '#7F1D1D' }}>{(validationSummary as any).discardedRows}</p>
+                    <p className="text-xs mt-0.5" style={{ color: '#EF4444' }}>sem analista preenchido</p>
+                  </div>
+                )}
+
                 {validationSummary.qaAvg !== null && (
                   <div className="p-4 rounded-xl" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
                     <div className="flex items-center gap-2 mb-2">
@@ -749,6 +811,18 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
                   </div>
                 )}
               </div>
+
+              {/* Discarded rows log */}
+              {(validationSummary as any).discardedReasons && (validationSummary as any).discardedReasons.length > 0 && (
+                <div className="p-3 rounded-lg" style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+                  <p className="text-xs font-semibold text-red-700 mb-1 flex items-center gap-1">
+                    <AlertCircle size={12} /> Log de linhas descartadas:
+                  </p>
+                  {(validationSummary as any).discardedReasons.map((reason: string, i: number) => (
+                    <p key={i} className="text-xs text-red-600">• {reason}</p>
+                  ))}
+                </div>
+              )}
 
               <div className="flex items-start gap-2 p-3 rounded-lg" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
                 <Info size={13} className="text-amber-500 flex-shrink-0 mt-0.5" />

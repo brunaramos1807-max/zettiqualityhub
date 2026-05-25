@@ -616,6 +616,8 @@ export default function FeedbackViewPage() {
     risco_operacional: string;
   }>({ resumo_ciclo: '', evolucao_tecnica: '', evolucao_comportamental: '', risco_operacional: '' });
   const [saving, setSaving] = useState(false);
+  const [elogios, setElogios] = useState<Array<{ id: string; colaborador: string; elogio: string; cliente?: string; squad?: string }>>([]);
+  const [ncRecords, setNcRecords] = useState<Array<{ id: string; tipo_nc: string; descricao?: string; protocolo_referencia?: string; pontos_deduzidos: number }>>([]);
 
   const isAdmin = session?.cargo === 'Administrador' || session?.permissoes?.acesso_total;
 
@@ -740,7 +742,10 @@ export default function FeedbackViewPage() {
                 .maybeSingle();
               (fallback as any).analistas = analistaData;
             }
-            setFeedback(mergeFeedbackData(fallback as Feedback));
+            const merged = mergeFeedbackData(fallback as Feedback);
+            setFeedback(merged);
+            // Load elogios and NCs for this feedback
+            await loadElogiosAndNCs(merged);
           } else {
             setError('Feedback não encontrado');
           }
@@ -748,7 +753,9 @@ export default function FeedbackViewPage() {
           return;
         }
 
-        setFeedback(mergeFeedbackData(data as Feedback));
+        const merged = mergeFeedbackData(data as Feedback);
+        setFeedback(merged);
+        await loadElogiosAndNCs(merged);
 
         if (data.analista_id) {
           const { data: hist } = await supabase
@@ -783,6 +790,31 @@ export default function FeedbackViewPage() {
       setLoading(false);
     })();
   }, [params?.id]);
+
+  const loadElogiosAndNCs = async (fb: Feedback) => {
+    if (!supabase) return;
+    const periodo = fb.ciclo || fb.periodo || '';
+    const analistaId = fb.analista_id;
+    const analistaNome = fb.analistas?.nome || fb.analista || '';
+
+    // Load elogios for this analyst and cycle
+    try {
+      let elogiosQuery = supabase.from('elogios').select('id, colaborador, elogio, cliente, squad');
+      if (periodo) elogiosQuery = elogiosQuery.eq('periodo', periodo);
+      if (analistaNome) elogiosQuery = elogiosQuery.ilike('colaborador', `%${analistaNome.split(' ')[0]}%`);
+      const { data: elogiosData } = await elogiosQuery.limit(10);
+      if (elogiosData && elogiosData.length > 0) setElogios(elogiosData);
+    } catch { /* ignore */ }
+
+    // Load NC records for this analyst and cycle
+    try {
+      let ncsQuery = supabase.from('nc_records').select('id, tipo_nc, descricao, protocolo_referencia, pontos_deduzidos');
+      if (periodo) ncsQuery = ncsQuery.eq('periodo', periodo);
+      if (analistaNome) ncsQuery = ncsQuery.ilike('analista', `%${analistaNome.split(' ')[0]}%`);
+      const { data: ncsData } = await ncsQuery.limit(20);
+      if (ncsData && ncsData.length > 0) setNcRecords(ncsData);
+    } catch { /* ignore */ }
+  };
 
   if (loading) return (
     <EnterpriseLayout>
@@ -855,7 +887,7 @@ export default function FeedbackViewPage() {
   }));
 
   const content = (
-    <div className={`max-w-6xl mx-auto ${fullscreen ? 'px-6 py-4' : ''}`}>
+    <div className={fullscreen ? 'w-full px-6 py-4' : 'max-w-6xl mx-auto'}>
       {/* Top nav */}
       <div className="flex items-center justify-between px-6 py-4 print:hidden">
         {!fullscreen ? (
@@ -1459,6 +1491,73 @@ export default function FeedbackViewPage() {
                     </p>
                     <p className="text-sm leading-relaxed" style={{ color: C.text, lineHeight: '1.7' }}>{c.dica_de_ouro}</p>
                   </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ══ 10B. BLOCO EXECUTIVO DE NÃO CONFORMIDADES ══ */}
+        {ncRecords.length > 0 && (
+          <div className="rounded-xl p-6"
+            style={{ backgroundColor: 'rgba(212,168,83,0.04)', border: '1px solid rgba(212,168,83,0.2)' }}>
+            <SectionTitle icon={<AlertCircle size={14} />} title={`Não Conformidades do Ciclo (${ncRecords.length})`} color={C.amber} />
+            <div className="grid md:grid-cols-2 gap-3">
+              {ncRecords.map((nc, i) => (
+                <div key={nc.id || i} className="rounded-xl p-4"
+                  style={{ backgroundColor: 'rgba(212,168,83,0.06)', border: '1px solid rgba(212,168,83,0.18)' }}>
+                  <div className="flex items-start gap-3">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+                      style={{ backgroundColor: 'rgba(212,168,83,0.15)', border: '1px solid rgba(212,168,83,0.25)' }}>
+                      <span className="text-xs font-bold" style={{ color: C.amber }}>{i + 1}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+                          style={{ backgroundColor: 'rgba(212,168,83,0.12)', color: C.amber, border: '1px solid rgba(212,168,83,0.25)' }}>
+                          {nc.tipo_nc || 'NC'}
+                        </span>
+                        {nc.protocolo_referencia && (
+                          <span className="text-xs font-mono" style={{ color: C.textFaint }}>#{nc.protocolo_referencia}</span>
+                        )}
+                        {nc.pontos_deduzidos > 0 && (
+                          <span className="text-xs font-semibold ml-auto" style={{ color: C.amber }}>-{nc.pontos_deduzidos} pts</span>
+                        )}
+                      </div>
+                      {nc.descricao && (
+                        <p className="text-sm leading-relaxed mt-1" style={{ color: C.text }}>{nc.descricao}</p>
+                      )}
+                      <p className="text-xs mt-2 italic" style={{ color: C.textMuted }}>
+                        💡 Oportunidade de fortalecimento para o próximo ciclo.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ══ 10C. ELOGIOS DO CICLO ══ */}
+        {elogios.length > 0 && (
+          <div className="rounded-xl p-6"
+            style={{ backgroundColor: C.greenLight, border: `1px solid ${C.greenBorder}` }}>
+            <SectionTitle icon={<Star size={14} />} title={`Elogios Recebidos (${elogios.length})`} color={C.green} />
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {elogios.map((el, i) => (
+                <div key={el.id || i} className="rounded-xl p-4"
+                  style={{ backgroundColor: 'rgba(82,183,136,0.08)', border: `1px solid ${C.greenBorder}` }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: 'rgba(82,183,136,0.2)' }}>
+                      <Star size={11} fill="currentColor" style={{ color: C.green }} />
+                    </div>
+                    {el.cliente && (
+                      <span className="text-xs font-semibold" style={{ color: C.textMuted }}>{el.cliente}</span>
+                    )}
+                  </div>
+                  <p className="text-sm leading-relaxed" style={{ color: C.text, lineHeight: '1.65' }}>&ldquo;{el.elogio}&rdquo;</p>
+                  <p className="text-xs mt-2 font-semibold" style={{ color: C.green }}>⭐ Destaque positivo</p>
                 </div>
               ))}
             </div>

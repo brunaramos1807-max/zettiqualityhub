@@ -312,6 +312,29 @@ export function parseNCsCSV(rows: Record<string, any>[], fallbackPeriodo?: strin
 
     const rowPeriodo = String(get('Período', 'Periodo') ?? '').trim();
 
+    const tipo_nc_raw = String(get(
+      'Tipo de Não Conformidade',
+      'Tipo de Nao Conformidade',
+      'Tipo NC',
+      'Tipo de NC',
+      'Tipo Não Conformidade',
+      'Tipo Nao Conformidade',
+      'NC',
+      'Tipo',
+    ) ?? '').trim();
+
+    const descricao_raw = String(get(
+      'Descrição',
+      'Descricao',
+      'Descrição da NC',
+      'Descricao da NC',
+      'Desc',
+      'Observação',
+      'Observacao',
+      'Observações',
+      'Observacoes',
+    ) ?? '').trim();
+
     return {
       periodo: rowPeriodo || fallbackPeriodo || '',
       data_registro: String(get('Data do Registro') ?? '').trim(),
@@ -319,17 +342,13 @@ export function parseNCsCSV(rows: Record<string, any>[], fallbackPeriodo?: strin
       squad: String(get('Squad') ?? '').trim(),
       coordenador: String(get('Coordenador') ?? '').trim(),
       auditor: String(get('Auditor') ?? '').trim(),
-      tipo_nc: String(get(
-        'Tipo de Não Conformidade',
-        'Tipo de Nao Conformidade',
-        'Tipo NC',
-        'Tipo de NC' ) ??'').trim(),
-      descricao: String(get('Descrição', 'Descricao', 'Descrição') ?? '').trim(),
-      pontos_deduzidos: parseNum(get('Pontos Deduzidos')),
+      tipo_nc: tipo_nc_raw || 'Não Especificado',
+      descricao: descricao_raw || undefined,
+      pontos_deduzidos: parseNum(get('Pontos Deduzidos', 'Pontos Deduzidos por NC', 'pontos_deduzidos')),
       protocolo_referencia: String(get('Protocolo Referência', 'Protocolo Referencia', 'Protocolo') ?? '').trim(),
       avaliacao_id: String(get('ID da Avaliação', 'ID da Avaliacao', 'ID Avaliação') ?? '').trim(),
     };
-  }).filter((r) => r.analista && r.tipo_nc);
+  }).filter((r) => r.analista); // Only require analista — tipo_nc now has fallback
 }
 
 export function parseElogiosCSV(rows: Record<string, any>[], fallbackPeriodo?: string): ElogioRow[] {
