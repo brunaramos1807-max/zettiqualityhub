@@ -13,74 +13,142 @@ function getServiceClient() {
   });
 }
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types — NEW payload contract from Lovable ────────────────────────────────
 
-interface PilarQA {
+interface NewPayloadMetadata {
+  origem?: string;
+  versao?: string;
+  gerado_em?: string;
+  avaliacao_id?: string;
+}
+
+interface NewPayloadAnalista {
+  nome?: string;
+  nome_completo?: string;
+  email?: string;
+  equipe?: string;
+  coordenador?: string;
+  auditor?: string;
+}
+
+interface NewPayloadCiclo {
+  nome?: string;
+  data_inicio?: string;
+  data_fim?: string;
+  status?: string;
+}
+
+interface NewPayloadScores {
+  qa?: number;
+  iepc?: number;
+  aderencia?: number;
+}
+
+interface NewPayloadPilar {
+  codigo?: string;
   nome: string;
   nota: number;
+  maximo?: number;
   peso?: number;
 }
 
-interface PilarIEPC {
-  nome: string;
-  nota: number;
-  peso?: number;
-}
-
-interface Criterio {
-  nome: string;
-  atende: boolean;
+interface NewPayloadCriterio {
+  pilar_nome?: string;
+  criterio_nome?: string;
+  status?: string;
+  // old format fallback
+  nome?: string;
+  atende?: boolean;
   observacao?: string;
 }
 
-interface Evidencia {
-  tipo: string;
-  descricao: string;
-  url?: string;
+interface NewPayloadAtendimento {
+  protocolo?: string;
+  sup?: string;
+  cliente?: string;
+  data?: string;
+  duracao?: string;
+  nota_qa?: number;
+  assunto?: string;
+  solucao?: string;
+  sintese?: string;
+  informou_sup?: boolean;
+  criterios?: NewPayloadCriterio[];
+  nao_conformidades?: string[];
 }
 
-interface NC {
-  tipo: string;
-  descricao: string;
-  pontos_deduzidos: number;
+interface NewPayloadCoaching {
+  o_que_foi_dito?: string;
+  como_poderia_ser?: string;
+  dica_de_ouro?: string;
+  categoria?: string;
+}
+
+interface NewPayloadNC {
+  protocolo?: string;
+  tipo_nc?: string;
+  descricao?: string;
+  // old format
+  tipo?: string;
+  pontos_deduzidos?: number;
   protocolo_referencia?: string;
   reincidente?: boolean;
 }
 
-interface PDI {
-  acoes: string[];
-  metas: string[];
+interface NewPayloadFeedbackBlocks {
+  evolucao_tecnica?: string[];
+  evolucao_comportamental?: string[];
+  atencao_evolutiva?: string[];
+  fechamento_ciclo?: string;
+}
+
+interface NewPayloadPDI {
+  objetivo?: string;
+  acao?: string;
   prazo?: string;
+  status?: string;
+  // old format
+  acoes?: string[];
+  metas?: string[];
   responsavel?: string;
 }
 
-interface Analytics {
-  tendencia_qa?: string;
-  tendencia_iepc?: string;
-  posicao_ranking?: number;
-  percentil?: number;
-  [key: string]: unknown;
+interface NewPayloadHistorico {
+  ciclo?: string;
+  qa?: number;
+  iepc?: number;
 }
 
+// ─── Unified payload — supports both old and new format ──────────────────────
 interface AvaliacaoPayload {
-  analista: string;
-  coordenador: string;
-  squad: string;
-  ciclo: string;
-  qa: number;
-  iepc: number;
-  pilares_qa?: PilarQA[];
-  pilares_iepc?: PilarIEPC[];
-  atendimentos?: number;
-  criterios?: Criterio[];
-  evidencias?: Evidencia[];
+  // NEW format top-level objects
+  metadata?: NewPayloadMetadata;
+  analista?: string | NewPayloadAnalista;
+  ciclo?: string | NewPayloadCiclo;
+  scores?: NewPayloadScores;
+  qa_pilares?: NewPayloadPilar[];
+  iepc_pilares?: NewPayloadPilar[];
+  atendimentos?: number | NewPayloadAtendimento[];
+  coaching?: NewPayloadCoaching | NewPayloadCoaching[];
+  nao_conformidades?: NewPayloadNC[];
+  feedback_blocks?: NewPayloadFeedbackBlocks;
+  pdi?: NewPayloadPDI | NewPayloadPDI[];
+  historico?: NewPayloadHistorico[];
+
+  // OLD format flat fields (backward compat)
+  coordenador?: string;
+  squad?: string;
+  qa?: number;
+  iepc?: number;
+  pilares_qa?: NewPayloadPilar[];
+  pilares_iepc?: NewPayloadPilar[];
+  criterios?: NewPayloadCriterio[];
+  evidencias?: unknown[];
   sintese_ia?: string;
-  ncs?: NC[];
-  pdi?: PDI;
-  analytics?: Analytics;
+  ncs?: NewPayloadNC[];
+  analytics?: Record<string, unknown>;
   tendencias?: Record<string, unknown>;
   reincidencia?: Record<string, unknown>;
-  // Optional extra fields
   auditor?: string;
   data_registro?: string;
   tipo_demanda?: string;
@@ -106,11 +174,156 @@ function hashPayload(payload: unknown): string {
   return Math.abs(hash).toString(16);
 }
 
-function extractPilares(pilares: PilarQA[] | PilarIEPC[] | undefined): {
-  p1: number; p2: number; p3: number; p4: number; p5: number;
-  e1: number; e2: number; e3: number; e4: number; e5: number;
+// ─── Normalize payload — extract fields from both old and new format ──────────
+
+function normalizePayload(raw: AvaliacaoPayload): {
+  analistaNome: string;
+  analistaEmail: string | null;
+  coordenador: string;
+  squad: string;
+  auditor: string | null;
+  cicloNome: string;
+  cicloInicio: string | null;
+  cicloFim: string | null;
+  qaScore: number;
+  iepcScore: number;
+  aderencia: number | null;
+  pilaresQA: NewPayloadPilar[];
+  pilaresIEPC: NewPayloadPilar[];
+  atendimentosArray: NewPayloadAtendimento[];
+  coaching: NewPayloadCoaching[];
+  ncs: NewPayloadNC[];
+  feedbackBlocks: NewPayloadFeedbackBlocks | null;
+  pdiList: NewPayloadPDI[];
+  historico: NewPayloadHistorico[];
+  sintese: string | null;
 } {
-  const result = { p1: 0, p2: 0, p3: 0, p4: 0, p5: 0, e1: 0, e2: 0, e3: 0, e4: 0, e5: 0 };
+  // Analista
+  let analistaNome = '';
+  let analistaEmail: string | null = null;
+  let coordenador = '';
+  let squad = '';
+  let auditor: string | null = null;
+
+  if (typeof raw.analista === 'object' && raw.analista !== null) {
+    const a = raw.analista as NewPayloadAnalista;
+    analistaNome = a.nome || a.nome_completo || '';
+    analistaEmail = a.email || null;
+    coordenador = a.coordenador || (raw.coordenador as string) || '';
+    squad = a.equipe || (raw.squad as string) || '';
+    auditor = a.auditor || (raw.auditor as string) || null;
+  } else {
+    analistaNome = (raw.analista as string) || '';
+    coordenador = (raw.coordenador as string) || '';
+    squad = (raw.squad as string) || '';
+    auditor = (raw.auditor as string) || null;
+  }
+
+  // Ciclo
+  let cicloNome = '';
+  let cicloInicio: string | null = null;
+  let cicloFim: string | null = null;
+
+  if (typeof raw.ciclo === 'object' && raw.ciclo !== null) {
+    const c = raw.ciclo as NewPayloadCiclo;
+    cicloNome = c.nome || '';
+    cicloInicio = c.data_inicio || null;
+    cicloFim = c.data_fim || null;
+  } else {
+    cicloNome = (raw.ciclo as string) || '';
+  }
+
+  // Scores
+  let qaScore = 0;
+  let iepcScore = 0;
+  let aderencia: number | null = null;
+
+  if (raw.scores) {
+    qaScore = parseNum(raw.scores.qa);
+    iepcScore = parseNum(raw.scores.iepc);
+    aderencia = raw.scores.aderencia != null ? parseNum(raw.scores.aderencia) : null;
+  } else {
+    qaScore = parseNum(raw.qa);
+    iepcScore = parseNum(raw.iepc);
+  }
+
+  // Pilares
+  const pilaresQA = raw.qa_pilares || raw.pilares_qa || [];
+  const pilaresIEPC = raw.iepc_pilares || raw.pilares_iepc || [];
+
+  // Atendimentos
+  let atendimentosArray: NewPayloadAtendimento[] = [];
+  if (Array.isArray(raw.atendimentos)) {
+    atendimentosArray = raw.atendimentos as NewPayloadAtendimento[];
+  }
+
+  // Coaching
+  let coaching: NewPayloadCoaching[] = [];
+  if (Array.isArray(raw.coaching)) {
+    coaching = raw.coaching as NewPayloadCoaching[];
+  } else if (raw.coaching && typeof raw.coaching === 'object') {
+    coaching = [raw.coaching as NewPayloadCoaching];
+  }
+
+  // NCs — support both new nao_conformidades and old ncs
+  const ncs: NewPayloadNC[] = [
+    ...(raw.nao_conformidades || []),
+    ...(raw.ncs || []),
+  ];
+
+  // Feedback blocks
+  const feedbackBlocks = raw.feedback_blocks || null;
+
+  // PDI
+  let pdiList: NewPayloadPDI[] = [];
+  if (Array.isArray(raw.pdi)) {
+    pdiList = raw.pdi as NewPayloadPDI[];
+  } else if (raw.pdi && typeof raw.pdi === 'object') {
+    pdiList = [raw.pdi as NewPayloadPDI];
+  }
+
+  // Historico
+  const historico = raw.historico || [];
+
+  // Sintese
+  const sintese = raw.sintese_ia || null;
+
+  return {
+    analistaNome, analistaEmail, coordenador, squad, auditor,
+    cicloNome, cicloInicio, cicloFim,
+    qaScore, iepcScore, aderencia,
+    pilaresQA, pilaresIEPC,
+    atendimentosArray, coaching, ncs, feedbackBlocks, pdiList, historico, sintese,
+  };
+}
+
+// ─── Parse criterios array — fix corrupted {pilar:"0", criterio:"status"} ────
+
+function parseCriteriosArray(criterios: NewPayloadCriterio[]): Record<string, { pts: number; max: number; evidencia?: string }> {
+  const result: Record<string, { pts: number; max: number; evidencia?: string }> = {};
+  if (!Array.isArray(criterios)) return result;
+
+  criterios.forEach((c, i) => {
+    // Skip corrupted entries: {pilar:"0", criterio:"status"} or entries with numeric pilar
+    const pilarNome = c.pilar_nome || '';
+    const criterioNome = c.criterio_nome || c.nome || '';
+
+    // Skip if pilar is just a number or "status" string (corrupted)
+    if (!criterioNome || criterioNome === 'status' || /^\d+$/.test(pilarNome)) return;
+    // Skip if criterio_nome is a field name like "pilar", "criterio", "status"
+    if (['pilar', 'criterio', 'status', '0', '1', '2'].includes(criterioNome.toLowerCase())) return;
+
+    const key = `criterio_${i}_${criterioNome.toLowerCase().replace(/\s+/g, '_').substring(0, 30)}`;
+    const statusVal = c.status || (c.atende ? 'aderido' : 'nao_aderido');
+    const pts = statusVal === 'aderido' ? 20 : statusVal === 'parcial' ? 10 : 0;
+
+    result[key] = {
+      pts,
+      max: 20,
+      evidencia: `${pilarNome ? pilarNome + ' — ' : ''}${statusVal}`,
+    };
+  });
+
   return result;
 }
 
@@ -120,14 +333,12 @@ async function validateToken(
   supabase: ReturnType<typeof createSupabaseClient>,
   authHeader: string | null
 ): Promise<{ valid: boolean; error?: string }> {
-  // ── DIAGNOSTIC LOGS (temporary) ──────────────────────────────────────────
   console.log('[receber-avaliacao] Raw Authorization header:', authHeader);
 
   if (!authHeader) {
     return { valid: false, error: 'Missing Authorization header. Expected: Bearer <token>' };
   }
 
-  // Normalize: handle both "Bearer token" and "bearer token" (case-insensitive)
   const bearerMatch = authHeader.match(/^[Bb]earer\s+(.+)$/);
   if (!bearerMatch) {
     return { valid: false, error: 'Invalid Authorization header format. Expected: Bearer <token>' };
@@ -136,23 +347,16 @@ async function validateToken(
   const token = bearerMatch[1].trim();
   console.log('[receber-avaliacao] Extracted token (first 8 chars):', token.substring(0, 8) + '...');
 
-  // Hash the incoming token using SHA-256
   let hashHex: string;
-
   try {
     const encoder = new TextEncoder();
     const data = encoder.encode(token);
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-  } catch (cryptoErr) {
-    console.error('[receber-avaliacao] crypto.subtle failed:', cryptoErr);
-    // Fallback: simple hash comparison for environments without crypto.subtle
+  } catch {
     hashHex = hashPayload(token);
   }
-
-  console.log('[receber-avaliacao] Computed SHA-256 hash:', hashHex);
-  console.log('[receber-avaliacao] Expected hash:         4c42bf27615c0ecc61aefec1214ce3fe99d82651a91b7424c5c6f962e42bf46b');
 
   const { data: tokenRow, error } = await supabase
     .from('integration_tokens')
@@ -160,8 +364,6 @@ async function validateToken(
     .eq('token_hash', hashHex)
     .eq('is_active', true)
     .maybeSingle();
-
-  console.log('[receber-avaliacao] DB query result - tokenRow:', tokenRow, '| error:', error);
 
   if (error || !tokenRow) {
     return { valid: false, error: 'Invalid or inactive token' };
@@ -171,7 +373,6 @@ async function validateToken(
     return { valid: false, error: 'Token expired' };
   }
 
-  // Update last_used_at
   await supabase
     .from('integration_tokens')
     .update({ last_used_at: new Date().toISOString() })
@@ -184,35 +385,50 @@ async function validateToken(
 
 function validatePayload(body: unknown): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
-
   if (!body || typeof body !== 'object') {
     return { valid: false, errors: ['Request body must be a JSON object'] };
   }
 
   const p = body as Record<string, unknown>;
 
-  if (!p.analista || typeof p.analista !== 'string' || p.analista.trim() === '') {
+  // Support both new format (analista object) and old format (analista string)
+  const analistaVal = p.analista;
+  if (!analistaVal) {
+    errors.push('analista: required (string or object with nome)');
+  } else if (typeof analistaVal === 'object') {
+    const a = analistaVal as Record<string, unknown>;
+    if (!a.nome && !a.nome_completo) errors.push('analista.nome: required');
+  } else if (typeof analistaVal === 'string' && analistaVal.trim() === '') {
     errors.push('analista: required string');
   }
-  if (!p.coordenador || typeof p.coordenador !== 'string' || p.coordenador.trim() === '') {
-    errors.push('coordenador: required string');
+
+  // Ciclo
+  const cicloVal = p.ciclo;
+  if (!cicloVal) {
+    errors.push('ciclo: required (string or object with nome)');
+  } else if (typeof cicloVal === 'object') {
+    const c = cicloVal as Record<string, unknown>;
+    if (!c.nome) errors.push('ciclo.nome: required');
+  } else if (typeof cicloVal === 'string' && cicloVal.trim() === '') {
+    errors.push('ciclo: required string');
   }
-  if (!p.squad || typeof p.squad !== 'string' || p.squad.trim() === '') {
-    errors.push('squad: required string');
-  }
-  if (!p.ciclo || typeof p.ciclo !== 'string' || p.ciclo.trim() === '') {
-    errors.push('ciclo: required string (e.g. "2026-05")');
-  }
-  if (p.qa === undefined || p.qa === null) {
-    errors.push('qa: required numeric score');
-  } else if (isNaN(parseNum(p.qa))) {
-    errors.push('qa: must be a number');
-  }
-  if (p.iepc === undefined || p.iepc === null) {
-    errors.push('iepc: required numeric score');
-  } else if (isNaN(parseNum(p.iepc))) {
-    errors.push('iepc: must be a number');
-  }
+
+  // Scores — support both new scores object and old flat qa/iepc
+  const scores = p.scores as Record<string, unknown> | undefined;
+  const qa = scores?.qa ?? p.qa;
+  const iepc = scores?.iepc ?? p.iepc;
+
+  if (qa === undefined || qa === null) errors.push('qa (or scores.qa): required numeric score');
+  if (iepc === undefined || iepc === null) errors.push('iepc (or scores.iepc): required numeric score');
+
+  // Coordenador — may be inside analista object
+  const analista = p.analista as Record<string, unknown> | string | undefined;
+  let coordenador = typeof analista === 'object' ? (analista as Record<string, unknown>)?.coordenador : p.coordenador;
+  if (!coordenador) errors.push('coordenador: required (in analista object or top-level)');
+
+  // Squad — may be inside analista.equipe
+  let squad = typeof analista === 'object' ? (analista as Record<string, unknown>)?.equipe : p.squad;
+  if (!squad) errors.push('squad/equipe: required');
 
   return { valid: errors.length === 0, errors };
 }
@@ -225,9 +441,7 @@ async function checkDuplicate(
   ciclo: string,
   payloadHash: string
 ): Promise<boolean> {
-  // Check if exact same payload was already processed (within last 5 minutes)
   const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-
   const { data } = await supabase
     .from('integration_request_logs')
     .select('id')
@@ -237,8 +451,67 @@ async function checkDuplicate(
     .eq('status', 'success')
     .gte('received_at', fiveMinutesAgo)
     .maybeSingle();
-
   return !!data;
+}
+
+// ─── Find or create analista record ──────────────────────────────────────────
+
+async function findOrCreateAnalista(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  nome: string,
+  email: string | null,
+  equipe: string,
+  coordenador: string
+): Promise<string | null> {
+  try {
+    // Try by email first
+    if (email) {
+      const { data: byEmail } = await supabase
+        .from('analistas')
+        .select('id')
+        .eq('email', email.toLowerCase())
+        .maybeSingle();
+      if (byEmail) return byEmail.id;
+    }
+
+    // Try by exact name
+    const { data: byName } = await supabase
+      .from('analistas')
+      .select('id')
+      .ilike('nome', nome.trim())
+      .maybeSingle();
+    if (byName) return byName.id;
+
+    // Try by partial name (first + last)
+    const parts = nome.trim().split(' ');
+    if (parts.length >= 2) {
+      const { data: byPartial } = await supabase
+        .from('analistas')
+        .select('id')
+        .ilike('nome', `%${parts[0]}%${parts[parts.length - 1]}%`)
+        .maybeSingle();
+      if (byPartial) return byPartial.id;
+    }
+
+    // Create new analista
+    const { data: created } = await supabase
+      .from('analistas')
+      .insert({
+        nome: nome.trim(),
+        nome_completo: nome.trim(),
+        email: email?.toLowerCase() || null,
+        equipe: equipe || null,
+        coordenador: coordenador || null,
+        ativo: true,
+      })
+      .select('id')
+      .single();
+
+    return created?.id || null;
+  } catch (err) {
+    console.error('[receber-avaliacao] findOrCreateAnalista error:', err);
+    return null;
+  }
 }
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
@@ -258,15 +531,11 @@ export async function POST(request: NextRequest) {
   // ── 1. Token validation ──────────────────────────────────────────────────
   const authHeader = request.headers.get('Authorization');
   const tokenResult = await validateToken(supabase, authHeader);
-
   if (!tokenResult.valid) {
-    return NextResponse.json(
-      { success: false, error: tokenResult.error },
-      { status: 401 }
-    );
+    return NextResponse.json({ success: false, error: tokenResult.error }, { status: 401 });
   }
 
-  // ── 2. Parse body with timeout protection ────────────────────────────────
+  // ── 2. Parse body ────────────────────────────────────────────────────────
   let body: unknown;
   try {
     const timeoutPromise = new Promise<never>((_, reject) =>
@@ -287,21 +556,19 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const payload = body as AvaliacaoPayload;
+  const rawPayload = body as AvaliacaoPayload;
+  const norm = normalizePayload(rawPayload);
   const payloadHash = hashPayload(body);
-  const ipAddress =
-    request.headers.get('x-forwarded-for') ||
-    request.headers.get('x-real-ip') ||
-    'unknown';
+  const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
 
   // ── 4. Create initial log entry ──────────────────────────────────────────
   const { data: logEntry } = await supabase
     .from('integration_request_logs')
     .insert({
       source: 'lovable',
-      periodo: payload.ciclo,
-      analista: payload.analista,
-      squad: payload.squad,
+      periodo: norm.cicloNome,
+      analista: norm.analistaNome,
+      squad: norm.squad,
       status: 'processing',
       payload_hash: payloadHash,
       ip_address: ipAddress,
@@ -309,37 +576,22 @@ export async function POST(request: NextRequest) {
     })
     .select('id')
     .single();
-
   logId = logEntry?.id ?? null;
 
   // ── 5. Duplicate detection ───────────────────────────────────────────────
-  const isDuplicate = await checkDuplicate(
-    supabase,
-    payload.analista,
-    payload.ciclo,
-    payloadHash
-  );
-
+  const isDuplicate = await checkDuplicate(supabase, norm.analistaNome, norm.cicloNome, payloadHash);
   if (isDuplicate) {
-    if (logId) {
-      await supabase
-        .from('integration_request_logs')
-        .update({ status: 'duplicate', duration_ms: Date.now() - startTime })
-        .eq('id', logId);
-    }
-    return NextResponse.json(
-      { success: false, error: 'Duplicate request detected. Same evaluation already processed recently.' },
-      { status: 409 }
-    );
+    if (logId) await supabase.from('integration_request_logs').update({ status: 'duplicate', duration_ms: Date.now() - startTime }).eq('id', logId);
+    return NextResponse.json({ success: false, error: 'Duplicate request detected.' }, { status: 409 });
   }
 
-  // ── 6. Upsert import_cycles record ───────────────────────────────────────
+  // ── 6. Upsert import_cycles ──────────────────────────────────────────────
   const { data: cycleData, error: cycleError } = await supabase
     .from('import_cycles')
     .upsert(
       {
-        periodo: payload.ciclo,
-        file_name: `integration_lovable_${payload.ciclo}`,
+        periodo: norm.cicloNome,
+        file_name: `integration_lovable_${norm.cicloNome}`,
         record_count: 1,
         import_status: 'completed',
         status: 'completed',
@@ -353,169 +605,284 @@ export async function POST(request: NextRequest) {
 
   if (cycleError) {
     await updateLog(supabase, logId, 'error', `cycle upsert: ${cycleError.message}`, startTime);
-    return NextResponse.json(
-      { success: false, error: `Failed to create/update cycle: ${cycleError.message}` },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: `Failed to create/update cycle: ${cycleError.message}` }, { status: 500 });
   }
-
   const cycleId = cycleData?.id;
 
-  // ── 7. Build cycle_scores row ────────────────────────────────────────────
-  const qaScore = parseNum(payload.qa);
-  const iepcScore = parseNum(payload.iepc);
+  // ── 7. Find or create analista ───────────────────────────────────────────
+  const analistaId = await findOrCreateAnalista(supabase, norm.analistaNome, norm.analistaEmail, norm.squad, norm.coordenador);
 
-  // Extract pillar scores from pilares_qa / pilares_iepc arrays
-  const pilaresQA = payload.pilares_qa ?? [];
-  const pilaresIEPC = payload.pilares_iepc ?? [];
+  // ── 8. Build cycle_scores row ────────────────────────────────────────────
+  // Parse criterios from atendimentos (new format) or top-level criterios (old format)
+  let criteriosMap: Record<string, unknown> = {};
+  if (rawPayload.criterios && Array.isArray(rawPayload.criterios)) {
+    criteriosMap = parseCriteriosArray(rawPayload.criterios as NewPayloadCriterio[]);
+  }
 
   const scoreRow = {
     cycle_id: cycleId,
-    periodo: payload.ciclo,
-    analista: payload.analista,
-    squad: payload.squad,
-    coordenador: payload.coordenador,
-    auditor: payload.auditor ?? null,
-    data_registro: payload.data_registro ?? new Date().toISOString().split('T')[0],
-    nota_final_qa: qaScore,
-    iepc_total: iepcScore,
-    total_ncs: Array.isArray(payload.ncs) ? payload.ncs.length : 0,
-    pontos_deduzidos_nc: Array.isArray(payload.ncs)
-      ? payload.ncs.reduce((sum, nc) => sum + parseNum(nc.pontos_deduzidos), 0)
-      : 0,
-    p1: parseNum(pilaresQA[0]?.nota),
-    p2: parseNum(pilaresQA[1]?.nota),
-    p3: parseNum(pilaresQA[2]?.nota),
-    p4: parseNum(pilaresQA[3]?.nota),
-    p5: parseNum(pilaresQA[4]?.nota),
-    e1: parseNum(pilaresIEPC[0]?.nota),
-    e2: parseNum(pilaresIEPC[1]?.nota),
-    e3: parseNum(pilaresIEPC[2]?.nota),
-    e4: parseNum(pilaresIEPC[3]?.nota),
-    e5: parseNum(pilaresIEPC[4]?.nota),
-    tipo_demanda: payload.tipo_demanda ?? null,
-    qtd_atendimentos_avaliados: payload.atendimentos ?? 0,
-    protocolo: payload.protocolo ?? null,
-    sintese_ia: payload.sintese_ia ?? null,
-    tendencias: payload.tendencias ?? null,
-    reincidencia: payload.reincidencia ?? null,
-    criterios: payload.criterios ? JSON.parse(JSON.stringify(payload.criterios)) : null,
-    evidencias: payload.evidencias ? JSON.parse(JSON.stringify(payload.evidencias)) : null,
-    analytics: payload.analytics ? JSON.parse(JSON.stringify(payload.analytics)) : null,
+    periodo: norm.cicloNome,
+    analista: norm.analistaNome,
+    squad: norm.squad,
+    coordenador: norm.coordenador,
+    auditor: norm.auditor,
+    data_registro: rawPayload.data_registro ?? new Date().toISOString().split('T')[0],
+    nota_final_qa: norm.qaScore,
+    iepc_total: norm.iepcScore,
+    total_ncs: norm.ncs.length,
+    pontos_deduzidos_nc: norm.ncs.reduce((sum, nc) => sum + parseNum(nc.pontos_deduzidos), 0),
+    p1: parseNum(norm.pilaresQA[0]?.nota),
+    p2: parseNum(norm.pilaresQA[1]?.nota),
+    p3: parseNum(norm.pilaresQA[2]?.nota),
+    p4: parseNum(norm.pilaresQA[3]?.nota),
+    p5: parseNum(norm.pilaresQA[4]?.nota),
+    e1: parseNum(norm.pilaresIEPC[0]?.nota),
+    e2: parseNum(norm.pilaresIEPC[1]?.nota),
+    e3: parseNum(norm.pilaresIEPC[2]?.nota),
+    e4: parseNum(norm.pilaresIEPC[3]?.nota),
+    e5: parseNum(norm.pilaresIEPC[4]?.nota),
+    tipo_demanda: rawPayload.tipo_demanda ?? null,
+    qtd_atendimentos_avaliados: Array.isArray(rawPayload.atendimentos) ? rawPayload.atendimentos.length : (typeof rawPayload.atendimentos === 'number' ? rawPayload.atendimentos : 0),
+    protocolo: rawPayload.protocolo ?? null,
+    sintese_ia: norm.sintese,
+    tendencias: rawPayload.tendencias ?? null,
+    reincidencia: rawPayload.reincidencia ?? null,
+    criterios: Object.keys(criteriosMap).length > 0 ? criteriosMap : null,
+    evidencias: rawPayload.evidencias ? JSON.parse(JSON.stringify(rawPayload.evidencias)) : null,
+    analytics: rawPayload.analytics ? JSON.parse(JSON.stringify(rawPayload.analytics)) : null,
     source: 'integration',
     is_manual: false,
   };
 
-  // Upsert cycle_scores (replace existing for same analista+periodo)
-  const { error: scoreError } = await supabase
-    .from('cycle_scores')
-    .upsert(scoreRow, { onConflict: 'id' });
-
+  const { error: scoreError } = await supabase.from('cycle_scores').upsert(scoreRow, { onConflict: 'id' });
   if (scoreError) {
-    // Try insert if upsert fails due to missing id
     const { error: insertError } = await supabase.from('cycle_scores').insert(scoreRow);
     if (insertError) {
       await updateLog(supabase, logId, 'error', `scores insert: ${insertError.message}`, startTime);
-      return NextResponse.json(
-        { success: false, error: `Failed to save evaluation score: ${insertError.message}` },
-        { status: 500 }
+      return NextResponse.json({ success: false, error: `Failed to save evaluation score: ${insertError.message}` }, { status: 500 });
+    }
+  }
+
+  // ── 9. Upsert feedback record ────────────────────────────────────────────
+  // Build evolucao_tecnica and evolucao_comportamental from feedback_blocks
+  const evolucaoTecnica = norm.feedbackBlocks?.evolucao_tecnica?.join('\n') || null;
+  const evolucaoComportamental = norm.feedbackBlocks?.evolucao_comportamental?.join('\n') || null;
+  const fechamentoCiclo = norm.feedbackBlocks?.fechamento_ciclo || null;
+  const atencaoEvolutiva = norm.feedbackBlocks?.atencao_evolutiva?.join('\n') || null;
+
+  const feedbackRow = {
+    analista_id: analistaId,
+    ciclo: norm.cicloNome,
+    periodo_inicio: norm.cicloInicio,
+    periodo_fim: norm.cicloFim,
+    coordenador: norm.coordenador,
+    equipe: norm.squad,
+    auditor: norm.auditor,
+    qa_score: norm.qaScore,
+    iepc_score: norm.iepcScore,
+    aderencia_score: norm.aderencia,
+    pilares_qa: norm.pilaresQA.map((p) => ({
+      nome: p.nome,
+      pontuacao: p.nota,
+      max: p.maximo || 20,
+      codigo: p.codigo || null,
+    })),
+    pilares_iepc: norm.pilaresIEPC.map((p) => ({
+      nome: p.nome,
+      pontuacao: p.nota,
+      max: p.maximo || 20,
+      codigo: p.codigo || null,
+    })),
+    resumo_ciclo: norm.sintese || fechamentoCiclo,
+    evolucao_tecnica: evolucaoTecnica,
+    evolucao_comportamental: evolucaoComportamental,
+    risco_operacional: atencaoEvolutiva,
+    status: 'generated',
+    origem: 'integration',
+    snapshot_json_completo: body as Record<string, unknown>,
+  };
+
+  // Upsert by analista_id + ciclo
+  let feedbackId: string | null = null;
+  const { data: existingFb } = await supabase
+    .from('feedbacks')
+    .select('id')
+    .eq('analista_id', analistaId || '')
+    .eq('ciclo', norm.cicloNome)
+    .maybeSingle();
+
+  if (existingFb?.id) {
+    feedbackId = existingFb.id;
+    await supabase.from('feedbacks').update(feedbackRow).eq('id', feedbackId);
+  } else {
+    const { data: newFb, error: fbError } = await supabase
+      .from('feedbacks')
+      .insert(feedbackRow)
+      .select('id')
+      .single();
+    if (fbError) {
+      console.error('[receber-avaliacao] feedback insert error:', fbError.message);
+    } else {
+      feedbackId = newFb?.id || null;
+    }
+  }
+
+  // ── 10. Save feedback_atendimentos ───────────────────────────────────────
+  if (feedbackId && norm.atendimentosArray.length > 0) {
+    // Delete existing atendimentos for this feedback
+    await supabase.from('feedback_atendimentos').delete().eq('feedback_id', feedbackId);
+
+    const atRows = norm.atendimentosArray.map((a) => {
+      // Parse criterios array for this atendimento — fix corrupted entries
+      const criteriosRaw = Array.isArray(a.criterios) ? parseCriteriosArray(a.criterios) : null;
+
+      return {
+        feedback_id: feedbackId,
+        protocolo: a.protocolo || a.sup || null,
+        sup: a.sup || null,
+        cliente: a.cliente || null,
+        assunto: a.assunto || null,
+        solucao: a.solucao || null,
+        sintese: a.sintese || null,
+        nota_qa: a.nota_qa != null ? parseNum(a.nota_qa) : null,
+        duracao: a.duracao || null,
+        ncs: Array.isArray(a.nao_conformidades) ? a.nao_conformidades : [],
+        criterios_raw: criteriosRaw,
+        classificacao: a.nota_qa != null
+          ? (parseNum(a.nota_qa) >= 90 ? 'excelente' : parseNum(a.nota_qa) >= 75 ? 'bom' : 'regular')
+          : null,
+      };
+    });
+
+    const { error: atError } = await supabase.from('feedback_atendimentos').insert(atRows);
+    if (atError) console.error('[receber-avaliacao] atendimentos insert error:', atError.message);
+  }
+
+  // ── 11. Save feedback_coaching ───────────────────────────────────────────
+  if (feedbackId && norm.coaching.length > 0) {
+    await supabase.from('feedback_coaching').delete().eq('feedback_id', feedbackId);
+    const coachRows = norm.coaching
+      .filter((c) => c.o_que_foi_dito)
+      .map((c) => ({
+        feedback_id: feedbackId,
+        o_que_foi_dito: c.o_que_foi_dito || '',
+        como_poderia_ser: c.como_poderia_ser || '',
+        dica_de_ouro: c.dica_de_ouro || '',
+      }));
+    if (coachRows.length > 0) {
+      const { error: coachError } = await supabase.from('feedback_coaching').insert(coachRows);
+      if (coachError) console.error('[receber-avaliacao] coaching insert error:', coachError.message);
+    }
+  }
+
+  // ── 12. Save feedback_pdi ────────────────────────────────────────────────
+  if (feedbackId && norm.pdiList.length > 0) {
+    await supabase.from('feedback_pdi').delete().eq('feedback_id', feedbackId);
+    const pdiRows = norm.pdiList
+      .filter((p) => p.objetivo || p.acao || (p.acoes && p.acoes.length > 0))
+      .map((p) => ({
+        feedback_id: feedbackId,
+        analista_id: analistaId,
+        objetivo: p.objetivo || (p.acoes ? p.acoes[0] : '') || '',
+        acao_desenvolvimento: p.acao || (p.metas ? p.metas[0] : '') || null,
+        prazo: p.prazo || null,
+        progresso: 0,
+        status: p.status || 'pendente',
+      }));
+    if (pdiRows.length > 0) {
+      const { error: pdiError } = await supabase.from('feedback_pdi').insert(pdiRows);
+      if (pdiError) console.error('[receber-avaliacao] pdi insert error:', pdiError.message);
+    }
+  }
+
+  // ── 13. Save feedback_historico ──────────────────────────────────────────
+  if (analistaId && norm.historico.length > 0) {
+    for (const h of norm.historico) {
+      if (!h.ciclo) continue;
+      await supabase.from('feedback_historico').upsert(
+        {
+          analista_id: analistaId,
+          ciclo: h.ciclo,
+          qa_score: parseNum(h.qa),
+          iepc_score: parseNum(h.iepc),
+        },
+        { onConflict: 'analista_id,ciclo' }
       );
     }
   }
 
-  // ── 8. Save NC records ───────────────────────────────────────────────────
-  if (Array.isArray(payload.ncs) && payload.ncs.length > 0) {
-    const ncRows = payload.ncs.map((nc) => ({
+  // ── 14. Save NC records ──────────────────────────────────────────────────
+  if (norm.ncs.length > 0) {
+    await supabase.from('nc_records').delete().eq('periodo', norm.cicloNome).eq('analista', norm.analistaNome).eq('source', 'integration');
+
+    const ncRows = norm.ncs.map((nc) => ({
       cycle_id: cycleId,
-      periodo: payload.ciclo,
-      analista: payload.analista,
-      squad: payload.squad,
-      coordenador: payload.coordenador,
-      auditor: payload.auditor ?? null,
-      tipo_nc: nc.tipo,
-      descricao: nc.descricao,
+      periodo: norm.cicloNome,
+      analista: norm.analistaNome,
+      squad: norm.squad,
+      coordenador: norm.coordenador,
+      auditor: norm.auditor,
+      tipo_nc: nc.tipo_nc || nc.tipo || 'Não Especificado',
+      descricao: nc.descricao || null,
       pontos_deduzidos: parseNum(nc.pontos_deduzidos),
-      protocolo_referencia: nc.protocolo_referencia ?? null,
+      protocolo_referencia: nc.protocolo || nc.protocolo_referencia || null,
       source: 'integration',
     }));
 
-    // Delete existing NCs for this analista+periodo from integration source before re-inserting
-    await supabase
-      .from('nc_records')
-      .delete()
-      .eq('periodo', payload.ciclo)
-      .eq('analista', payload.analista)
-      .eq('source', 'integration');
-
     const { error: ncError } = await supabase.from('nc_records').insert(ncRows);
-    if (ncError) {
-      console.error('[receber-avaliacao] NC insert error:', ncError.message);
-    }
+    if (ncError) console.error('[receber-avaliacao] NC insert error:', ncError.message);
   }
 
-  // ── 9. Upsert PDI record ─────────────────────────────────────────────────
-  if (payload.pdi) {
+  // ── 15. Save old-format PDI records ─────────────────────────────────────
+  const oldPdi = rawPayload.pdi as NewPayloadPDI | undefined;
+  if (!Array.isArray(rawPayload.pdi) && oldPdi && (oldPdi.acoes || oldPdi.metas)) {
     const pdiRow = {
       cycle_id: cycleId,
-      periodo: payload.ciclo,
-      analista: payload.analista,
-      squad: payload.squad,
-      coordenador: payload.coordenador,
+      periodo: norm.cicloNome,
+      analista: norm.analistaNome,
+      squad: norm.squad,
+      coordenador: norm.coordenador,
       status_pdi: 'Em andamento',
-      acoes: payload.pdi.acoes ?? [],
-      metas: payload.pdi.metas ?? [],
-      nc_reincidentes: Array.isArray(payload.ncs)
-        ? payload.ncs.filter((nc) => nc.reincidente).map((nc) => nc.tipo)
-        : [],
-      qa_score: qaScore,
-      iepc_score: iepcScore,
-      sintese_ia: payload.sintese_ia ?? null,
+      acoes: oldPdi.acoes ?? [],
+      metas: oldPdi.metas ?? [],
+      nc_reincidentes: norm.ncs.filter((nc) => nc.reincidente).map((nc) => nc.tipo_nc || nc.tipo || ''),
+      qa_score: norm.qaScore,
+      iepc_score: norm.iepcScore,
+      sintese_ia: norm.sintese,
       source: 'integration',
       updated_at: new Date().toISOString(),
     };
-
-    const { error: pdiError } = await supabase
-      .from('pdi_records')
-      .upsert(pdiRow, { onConflict: 'analista,periodo' });
-
-    if (pdiError) {
-      console.error('[receber-avaliacao] PDI upsert error:', pdiError.message);
-    }
+    await supabase.from('pdi_records').upsert(pdiRow, { onConflict: 'analista,periodo' });
   }
 
-  // ── 10. Update cycle_summaries ───────────────────────────────────────────
+  // ── 16. Update cycle_summaries ───────────────────────────────────────────
   try {
     const { data: allScores } = await supabase
       .from('cycle_scores')
       .select('nota_final_qa, iepc_total, total_ncs')
-      .eq('periodo', payload.ciclo);
+      .eq('periodo', norm.cicloNome);
 
     if (allScores && allScores.length > 0) {
-      const qaMedia =
-        allScores.reduce((s, r) => s + parseNum(r.nota_final_qa), 0) / allScores.length;
-      const iepcMedia =
-        allScores.reduce((s, r) => s + parseNum(r.iepc_total), 0) / allScores.length;
+      const qaMedia = allScores.reduce((s, r) => s + parseNum(r.nota_final_qa), 0) / allScores.length;
+      const iepcMedia = allScores.reduce((s, r) => s + parseNum(r.iepc_total), 0) / allScores.length;
       const totalNCs = allScores.reduce((s, r) => s + (r.total_ncs ?? 0), 0);
-
-      await supabase
-        .from('cycle_summaries')
-        .upsert(
-          {
-            periodo: payload.ciclo,
-            total_analistas: allScores.length,
-            qa_media: Math.round(qaMedia * 100) / 100,
-            iepc_media: Math.round(iepcMedia * 100) / 100,
-            total_ncs: totalNCs,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'periodo' }
-        );
+      await supabase.from('cycle_summaries').upsert(
+        {
+          periodo: norm.cicloNome,
+          total_analistas: allScores.length,
+          qa_media: Math.round(qaMedia * 100) / 100,
+          iepc_media: Math.round(iepcMedia * 100) / 100,
+          total_ncs: totalNCs,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'periodo' }
+      );
     }
   } catch (summaryErr) {
     console.error('[receber-avaliacao] cycle_summaries update error:', summaryErr);
   }
 
-  // ── 11. Mark log as success ──────────────────────────────────────────────
+  // ── 17. Mark log as success ──────────────────────────────────────────────
   await updateLog(supabase, logId, 'success', null, startTime);
 
   return NextResponse.json(
@@ -523,15 +890,20 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'Avaliação recebida e persistida com sucesso.',
       data: {
-        ciclo: payload.ciclo,
-        analista: payload.analista,
-        squad: payload.squad,
+        ciclo: norm.cicloNome,
+        analista: norm.analistaNome,
+        squad: norm.squad,
+        analista_id: analistaId,
+        feedback_id: feedbackId,
         cycle_id: cycleId,
         log_id: logId,
-        qa: qaScore,
-        iepc: iepcScore,
-        ncs_saved: Array.isArray(payload.ncs) ? payload.ncs.length : 0,
-        pdi_saved: !!payload.pdi,
+        qa: norm.qaScore,
+        iepc: norm.iepcScore,
+        ncs_saved: norm.ncs.length,
+        atendimentos_saved: norm.atendimentosArray.length,
+        coaching_saved: norm.coaching.length,
+        pdi_saved: norm.pdiList.length,
+        historico_saved: norm.historico.length,
       },
     },
     { status: 200 }
@@ -549,11 +921,7 @@ async function updateLog(
   if (!logId) return;
   await supabase
     .from('integration_request_logs')
-    .update({
-      status,
-      error_message: errorMessage,
-      duration_ms: Date.now() - startTime,
-    })
+    .update({ status, error_message: errorMessage, duration_ms: Date.now() - startTime })
     .eq('id', logId);
 }
 
@@ -562,26 +930,23 @@ export async function GET() {
   return NextResponse.json({
     status: 'online',
     endpoint: 'POST /api/receber-avaliacao',
-    version: '1.0.0',
-    description: 'Qualivisão Integration API — receives evaluations from Lovable',
-    required_headers: {
-      Authorization: 'Bearer <token>',
-      'Content-Type': 'application/json',
+    version: '2.0.0',
+    description: 'Qualivisão Integration API — receives evaluations from Lovable (new payload contract)',
+    required_headers: { Authorization: 'Bearer <token>', 'Content-Type': 'application/json' },
+    payload_contract: {
+      metadata: '{ origem, versao, gerado_em, avaliacao_id }',
+      analista: '{ nome, nome_completo, email, equipe, coordenador, auditor }',
+      ciclo: '{ nome, data_inicio, data_fim, status }',
+      scores: '{ qa, iepc, aderencia }',
+      qa_pilares: '[{ codigo, nome, nota, maximo }]',
+      iepc_pilares: '[{ codigo, nome, nota, maximo }]',
+      atendimentos: '[{ protocolo, sup, cliente, data, duracao, nota_qa, assunto, solucao, sintese, criterios[], nao_conformidades[] }]',
+      coaching: '[{ o_que_foi_dito, como_poderia_ser, dica_de_ouro, categoria }]',
+      nao_conformidades: '[{ protocolo, tipo_nc, descricao }]',
+      feedback_blocks: '{ evolucao_tecnica[], evolucao_comportamental[], atencao_evolutiva[], fechamento_ciclo }',
+      pdi: '[{ objetivo, acao, prazo, status }]',
+      historico: '[{ ciclo, qa, iepc }]',
     },
-    required_fields: ['analista', 'coordenador', 'squad', 'ciclo', 'qa', 'iepc'],
-    optional_fields: [
-      'pilares_qa',
-      'pilares_iepc',
-      'atendimentos',
-      'criterios',
-      'evidencias',
-      'sintese_ia',
-      'ncs',
-      'pdi',
-      'analytics',
-      'tendencias',
-      'reincidencia',
-    ],
-    note: 'Elogios are not accepted via integration — use manual import.',
+    backward_compat: 'Old flat format (analista string, ciclo string, qa/iepc numbers) still supported',
   });
 }

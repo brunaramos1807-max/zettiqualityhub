@@ -1703,7 +1703,19 @@ function mergeFeedbackData(data: Feedback): Feedback {
 
 function buildAtendimentos(feedback: Feedback): AtendimentoItem[] {
   if (feedback.feedback_atendimentos && feedback.feedback_atendimentos.length > 0) {
-    return feedback.feedback_atendimentos;
+    return feedback.feedback_atendimentos.map((a) => ({
+      ...a,
+      // Ensure fields from new payload format are mapped correctly
+      protocolo: a.protocolo || a.sup || '—',
+      cliente: a.cliente || '—',
+      assunto: a.assunto || '—',
+      sintese: a.sintese || (a as any).sintese_operacional || '',
+      solucao: a.solucao || (a as any).solucao_aplicada || '',
+      duracao: a.duracao || '',
+      sup: a.sup || '',
+      ncs: Array.isArray(a.ncs) ? a.ncs : [],
+      criterios_raw: a.criterios_raw || (a as any).criterios || undefined,
+    }));
   }
 
   const evidencias = feedback.evidencias || (feedback.snapshot_json_completo as any)?.evidencias || [];
@@ -1729,5 +1741,55 @@ function buildAtendimentos(feedback: Feedback): AtendimentoItem[] {
     }));
   }
 
+  // Try snapshot atendimentos array (new payload format)
+  const snapAtendimentos = (feedback.snapshot_json_completo as any)?.atendimentos;
+  if (Array.isArray(snapAtendimentos) && snapAtendimentos.length > 0) {
+    return snapAtendimentos.map((a: any, i: number) => ({
+      id: `snap-${i}`,
+      protocolo: a.protocolo || a.sup || `#${i + 1}`,
+      sup: a.sup || '',
+      cliente: a.cliente || '—',
+      assunto: a.assunto || '—',
+      nota_qa: a.nota_qa != null ? Number(a.nota_qa) : 0,
+      nota_iepc: 0,
+      classificacao: a.nota_qa != null
+        ? (Number(a.nota_qa) >= 90 ? 'excelente' : Number(a.nota_qa) >= 75 ? 'bom' : 'regular')
+        : 'regular',
+      duracao: a.duracao || '',
+      sintese: a.sintese || '',
+      solucao: a.solucao || '',
+      observacao: '',
+      ncs: Array.isArray(a.nao_conformidades) ? a.nao_conformidades : [],
+      tags: [],
+      criterios_raw: Array.isArray(a.criterios) ? buildCriteriosFromArray(a.criterios) : undefined,
+    }));
+  }
+
   return [];
+}
+
+// ─── Build criterios map from new array format ────────────────────────────────
+
+function buildCriteriosFromArray(criterios: Array<{ pilar_nome?: string; criterio_nome?: string; status?: string }>): Record<string, { pts: number; max: number; evidencia?: string }> {
+  const result: Record<string, { pts: number; max: number; evidencia?: string }> = {};
+  if (!Array.isArray(criterios)) return result;
+
+  criterios.forEach((c, i) => {
+    const pilarNome = c.pilar_nome || '';
+    const criterioNome = c.criterio_nome || '';
+    // Skip corrupted entries
+    if (!criterioNome || criterioNome === 'status' || /^\d+$/.test(pilarNome) || ['pilar', 'criterio', 'status'].includes(criterioNome.toLowerCase())) return;
+
+    const key = `criterio_${i}_${criterioNome.toLowerCase().replace(/\s+/g, '_').substring(0, 30)}`;
+    const statusVal = c.status || 'nao_aderido';
+    const pts = statusVal === 'aderido' ? 20 : statusVal === 'parcial' ? 10 : 0;
+
+    result[key] = {
+      pts,
+      max: 20,
+      evidencia: `${pilarNome ? pilarNome + ' — ' : ''}${statusVal}`,
+    };
+  });
+
+  return result;
 }

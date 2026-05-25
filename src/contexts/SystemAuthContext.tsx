@@ -239,7 +239,7 @@ function buildDefaultPermissions(role: UserRole | null, isAdminMaster: boolean):
     'painel_executivo','evolucao','analytics','ciclo_atual','ciclos',
     'auditoria','importacoes','nao_conformidades','elogios','pdis',
     'calibragem','historico','logs','documentos_iso','gestao',
-    'configuracoes','analistas',
+    'configuracoes','analistas','feedback',
   ];
 
   if (isAdminMaster || ADMIN_ROLES.includes(role || '')) {
@@ -281,10 +281,10 @@ function buildDefaultPermissions(role: UserRole | null, isAdminMaster: boolean):
     }));
   }
 
-  // Default: minimal access — only executive panel
+  // Default: minimal access — executive panel + feedback view
   return ALL_MODULES.map((m) => ({
     module_name: m,
-    can_view: ['painel_executivo','evolucao','ciclo_atual','nao_conformidades','elogios','pdis','historico','analytics'].includes(m),
+    can_view: ['painel_executivo','evolucao','ciclo_atual','nao_conformidades','elogios','pdis','historico','analytics','feedback'].includes(m),
     can_edit: false, can_delete: false, can_import: false,
     can_export: false, can_close_cycle: false, can_reopen_cycle: false,
     can_approve: false, can_admin: false,
@@ -620,7 +620,7 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
     // Fallback: coordinators and gestors can view most modules
     if (COORDINATOR_ROLES.includes(userRole || '') || GESTOR_ROLES.includes(userRole || '')) return true;
     // Minimum fallback: these modules are always accessible to any authenticated user
-    return ['painel_executivo','ciclo_atual','evolucao','nao_conformidades','elogios','pdis','historico','analytics'].includes(module);
+    return ['painel_executivo','ciclo_atual','evolucao','nao_conformidades','elogios','pdis','historico','analytics','feedback'].includes(module);
   }, [isAdminMaster, userRole, modulePermissions]);
 
   const canEditModule = useCallback((module: string): boolean => {
