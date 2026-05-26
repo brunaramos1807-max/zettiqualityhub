@@ -11,9 +11,7 @@ interface RouteGuardProps {
   requireAdmin?: boolean;
 }
 
-// Check if running inside an iframe (Rocket editor preview) or bypass flag is set
 function isPreviewMode(): boolean {
-  if (typeof window === 'undefined') return false;
   try {
     const inIframe = window.self !== window.top;
     const bypassFlag = process.env.NEXT_PUBLIC_BYPASS_AUTH === 'true';
@@ -25,11 +23,18 @@ function isPreviewMode(): boolean {
 
 export default function RouteGuard({ children, requireAdmin = false }: RouteGuardProps) {
   const { session, loading, isAdmin, isAdminMaster } = useSystemAuth();
+  const [mounted, setMounted] = useState(false);
   const [preview, setPreview] = useState(false);
 
   useEffect(() => {
     setPreview(isPreviewMode());
+    setMounted(true);
   }, []);
+
+  // Before client hydration completes, render nothing to avoid mismatch
+  if (!mounted) {
+    return null;
+  }
 
   // In preview/editor mode, skip auth entirely
   if (preview) {
