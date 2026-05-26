@@ -42,7 +42,7 @@ export default function AuthCallbackPage() {
 
         if (error) {
           console.error('OAuth error:', error, errorDescription);
-          router?.replace('/sign-up-login');
+          router?.replace('/');
           return;
         }
 
@@ -107,11 +107,11 @@ export default function AuthCallbackPage() {
             Somente usuários pré-cadastrados pelo administrador podem acessar a plataforma QualiVisão.
           </p>
           <button
-            onClick={() => router?.replace('/sign-up-login')}
+            onClick={() => router?.replace('/')}
             className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all"
             style={{ backgroundColor: '#1E3A5F', border: '1px solid rgba(56,189,248,0.2)' }}
           >
-            Voltar ao Login
+            Voltar ao início
           </button>
         </div>
       </div>
