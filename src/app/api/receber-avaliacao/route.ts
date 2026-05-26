@@ -88,6 +88,10 @@ interface NewPayloadNC {
   protocolo?: string;
   tipo_nc?: string;
   descricao?: string;
+  // per-NC analyst fields (Lovable may send these per NC)
+  analista?: string;
+  squad?: string;
+  coordenador?: string;
   // old format
   tipo?: string;
   pontos_deduzidos?: number;
@@ -818,9 +822,9 @@ export async function POST(request: NextRequest) {
     const ncRows = norm.ncs.map((nc) => ({
       cycle_id: cycleId,
       periodo: norm.cicloNome,
-      analista: norm.analistaNome,
-      squad: norm.squad,
-      coordenador: norm.coordenador,
+      analista: nc.analista || norm.analistaNome,
+      squad: nc.squad || norm.squad,
+      coordenador: nc.coordenador || norm.coordenador,
       auditor: norm.auditor,
       tipo_nc: nc.tipo_nc || nc.tipo || 'Não Especificado',
       descricao: nc.descricao || null,

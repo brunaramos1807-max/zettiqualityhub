@@ -90,9 +90,12 @@ function ImportacoesContent() {
 
   const canImport = session?.permissoes?.permissao_editar ||
     session?.permissoes?.acesso_total ||
+    session?.acesso_total === true ||
     session?.cargo === 'Administrador' ||
     session?.cargo === 'Coordenador' ||
-    session?.cargo === 'Coordenador Geral';
+    session?.cargo === 'Coordenador Geral' ||
+    session?.role === 'admin' ||
+    session?.role === 'coordinator';
 
   // Load import records from Supabase first, then merge with localStorage
   const loadImports = useCallback(async () => {
@@ -355,6 +358,20 @@ function ImportacoesContent() {
         await supabase.from('pdi_records').delete().eq('periodo', record.periodo);
         await supabase.from('cycle_summaries').delete().eq('periodo', record.periodo);
         await supabase.from('import_cycles').delete().eq('periodo', record.periodo);
+
+        // Also delete feedbacks and related tables for this ciclo/periodo
+        const { data: fbIds } = await supabase
+          .from('feedbacks')
+          .select('id')
+          .eq('ciclo', record.periodo);
+
+        if (fbIds && fbIds.length > 0) {
+          const ids = fbIds.map((f: any) => f.id);
+          await supabase.from('feedback_atendimentos').delete().in('feedback_id', ids);
+          await supabase.from('feedback_coaching').delete().in('feedback_id', ids);
+          await supabase.from('feedback_pdi').delete().in('feedback_id', ids);
+          await supabase.from('feedbacks').delete().in('id', ids);
+        }
       } catch (err: any) {
         toast.error('Erro ao excluir dados do banco: ' + err.message);
         setDeleteConfirm(null);
@@ -597,17 +614,15 @@ function ImportacoesContent() {
                                   <Download size={11} />
                                   Baixar
                                 </button>
-                                {canImport && (
-                                  <button
-                                    onClick={() => handleDeleteImport(imp)}
-                                    title="Excluir importação"
-                                    className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-all hover:opacity-80"
-                                    style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}
-                                  >
-                                    <Trash2 size={11} />
-                                    Excluir
-                                  </button>
-                                )}
+                                <button
+                                  onClick={() => handleDeleteImport(imp)}
+                                  title="Excluir importação"
+                                  className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-all hover:opacity-80"
+                                  style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}
+                                >
+                                  <Trash2 size={11} />
+                                  Excluir
+                                </button>
                               </div>
                             )}
                           </td>

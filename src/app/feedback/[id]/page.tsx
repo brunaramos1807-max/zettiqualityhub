@@ -3,14 +3,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
 import { useParams, useRouter } from 'next/navigation';
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
-} from 'recharts';
-import { ArrowLeft, Download, Star, TrendingUp, TrendingDown, Users, MessageSquare, BarChart2, CheckCircle, AlertCircle, Eye, Maximize2, Minimize2, ChevronDown, ChevronUp, Award, Target, Clock, Shield, Zap, Activity, Grid, Edit2, Save, X as XIcon } from 'lucide-react';
-import Link from 'next/link';
-import { exportFeedbackPDF, type FeedbackPDFData } from '@/lib/utils/pdfExport';
-import { useSystemAuth } from '@/contexts/SystemAuthContext';
+import {  } from 'recharts';
+import { Eye, ChevronDown, ChevronUp, Grid } from 'lucide-react';
+
+import { type FeedbackPDFData } from '@/lib/utils/pdfExport';
+
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 interface CriterioData { max?: number; pts: number; class?: string; evidencia?: string; }
