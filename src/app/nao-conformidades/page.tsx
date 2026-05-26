@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import ImportModal from '@/components/ImportModal';
 import { fetchNCRecords, fetchAllPeriodos } from '@/lib/services/dataService';
-import { AlertTriangle, Search, BarChart2, RefreshCw, TrendingUp, Filter, ChevronRight, Shield, Activity, Layers, X, Eye } from 'lucide-react';
+import { AlertTriangle, Search, BarChart2, RefreshCw, TrendingUp, Filter, ChevronRight, Shield, Activity, Layers, X, Eye, Trash2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend, PieChart, Pie, Cell, AreaChart, Area,  } from 'recharts';
 
 const NC_TYPES = [
@@ -120,6 +120,8 @@ function NCContent() {
   const [filterReincidente, setFilterReincidente] = useState(false);
   const [activeView, setActiveView] = useState<'table' | 'charts'>('charts');
   const [detailModal, setDetailModal] = useState<NCDetailModal | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<NCRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -130,6 +132,20 @@ function NCContent() {
       setPeriodos(pList);
     } catch { /* ignore */ }
     setLoading(false);
+  };
+
+  const handleDeleteNC = async () => {
+    if (!deleteConfirm) return;
+    setDeleting(true);
+    try {
+      const { deleteNCRecord } = await import('@/lib/services/dataService');
+      const result = await deleteNCRecord(deleteConfirm.id);
+      if (result.success) {
+        setNcs((prev) => prev.filter((n) => n.id !== deleteConfirm.id));
+        setDeleteConfirm(null);
+      }
+    } catch { /* ignore */ }
+    setDeleting(false);
   };
 
   useEffect(() => { loadData(); }, []);
@@ -558,9 +574,14 @@ function NCContent() {
                         {nc.pontos_deduzidos ? `-${nc.pontos_deduzidos}` : '—'}
                       </td>
                       <td className="px-4 py-2.5">
-                        <button onClick={() => setDetailModal({ nc, typeInfo })} className="p-1.5 rounded-lg hover:bg-white/5 transition-colors" style={{ color: '#64748B' }}>
-                          <Eye size={13} />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => setDetailModal({ nc, typeInfo })} className="p-1.5 rounded-lg hover:bg-white/5 transition-colors" style={{ color: '#64748B' }}>
+                            <Eye size={13} />
+                          </button>
+                          <button onClick={() => setDeleteConfirm(nc)} className="p-1.5 rounded-lg hover:bg-red-500/10 transition-colors" style={{ color: '#64748B' }} title="Excluir NC">
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -581,6 +602,49 @@ function NCContent() {
 
       <ImportModal isOpen={importOpen} onClose={() => setImportOpen(false)} />
       {detailModal && <NCDetailModal data={detailModal} onClose={() => setDetailModal(null)} />}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}>
+          <div className="w-full max-w-sm rounded-2xl overflow-hidden" style={{ backgroundColor: '#0A1628', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 25px 80px rgba(0,0,0,0.6)' }}>
+            <div className="flex items-center justify-between p-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(239,68,68,0.12)' }}>
+                  <Trash2 size={15} style={{ color: '#EF4444' }} />
+                </div>
+                <h2 className="text-sm font-bold text-white">Excluir NC</h2>
+              </div>
+              <button onClick={() => setDeleteConfirm(null)} className="p-1.5 rounded-lg hover:bg-white/5" style={{ color: '#94A3B8' }}><X size={14} /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-sm" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                Tem certeza que deseja excluir a NC de <span className="font-semibold text-white">{deleteConfirm.analista}</span>?
+              </p>
+              <div className="rounded-xl p-3 space-y-1" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <p className="text-xs" style={{ color: '#94A3B8' }}>Tipo: <span className="text-white">{deleteConfirm.tipo_nc}</span></p>
+                <p className="text-xs" style={{ color: '#94A3B8' }}>Período: <span className="text-white">{deleteConfirm.periodo}</span></p>
+                {deleteConfirm.protocolo_referencia && (
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>Protocolo: <span className="text-white">{deleteConfirm.protocolo_referencia}</span></p>
+                )}
+              </div>
+              <p className="text-xs" style={{ color: '#EF4444' }}>Esta ação não pode ser desfeita.</p>
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setDeleteConfirm(null)} disabled={deleting}
+                  className="flex-1 py-2 rounded-xl text-xs font-medium transition-colors"
+                  style={{ backgroundColor: 'rgba(255,255,255,0.04)', color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  Cancelar
+                </button>
+                <button onClick={handleDeleteNC} disabled={deleting}
+                  className="flex-1 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
+                  style={{ backgroundColor: deleting ? 'rgba(239,68,68,0.4)' : '#EF4444', color: '#fff' }}>
+                  {deleting ? <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" /> : <Trash2 size={12} />}
+                  {deleting ? 'Excluindo...' : 'Excluir'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

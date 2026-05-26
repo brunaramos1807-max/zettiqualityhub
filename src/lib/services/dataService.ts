@@ -777,6 +777,21 @@ export async function fetchNCRecords(periodo?: string): Promise<any[]> {
   return data;
 }
 
+export async function deleteNCRecord(id: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { error } = await supabase.from('nc_records').delete().eq('id', id);
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    }
+    return { success: false, error: 'Supabase não disponível' };
+  } catch (e: any) {
+    return { success: false, error: e?.message || 'Erro desconhecido' };
+  }
+}
+
 export async function fetchElogios(periodo?: string): Promise<any[]> {
   // Supabase is the single source of truth
   try {
