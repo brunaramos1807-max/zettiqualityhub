@@ -219,7 +219,7 @@ export default function FeedbackViewPage() {
   // Panorama blocks
   const evolucaoTecnica = extract(snapshot, 'feedback_blocks.evolucao_tecnica', 'evolucao_tecnica') || rawFeedback?.evolucao_tecnica || '';
   const evolucaoComportamental = extract(snapshot, 'feedback_blocks.evolucao_comportamental', 'evolucao_comportamental') || rawFeedback?.evolucao_comportamental || '';
-  const atencaoEvolutiva = extract(snapshot, 'feedback_blocks.atencao_evolutiva', 'atencao_evolutiva') || '';
+  const atencaoEvolutiva = extract(snapshot, 'feedback_blocks.atencao_evolutiva', 'atencao_evolutiva') || rawFeedback?.atencao_evolutiva || rawFeedback?.risco_operacional || '';
   const fechamentoCiclo = extract(snapshot, 'feedback_blocks.fechamento_ciclo', 'fechamento') || rawFeedback?.resumo_ciclo || '';
 
   // Elogios: merge snapshot elogios + real elogios from DB
@@ -286,12 +286,12 @@ export default function FeedbackViewPage() {
           style={{ background: 'linear-gradient(135deg, #0F1B31 0%, #0B1426 60%, #071020 100%)' }}>
           <div className="absolute top-0 right-0 w-96 h-96 bg-sky-500/5 blur-[100px] rounded-full pointer-events-none" />
           <div className="absolute bottom-0 left-0 w-64 h-64 bg-teal-500/5 blur-[80px] rounded-full pointer-events-none" />
-          <div className="relative z-10 px-6 py-6">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+          <div className="relative z-10 px-8 py-8">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
               {/* LEFT: Photo + Info */}
-              <div className="flex items-center gap-5">
+              <div className="flex items-center gap-6">
                 <div className="relative flex-shrink-0">
-                  <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-sky-500/30 shadow-xl shadow-sky-900/30">
+                  <div className="w-28 h-28 rounded-2xl overflow-hidden border-2 border-sky-500/50 shadow-2xl shadow-sky-900/40" style={{ boxShadow: '0 0 32px rgba(56,189,248,0.18), 0 8px 32px rgba(0,0,0,0.5)' }}>
                     <img
                       src={analistaInfo?.foto_url || '/assets/images/no_image.png'}
                       className="w-full h-full object-cover"
@@ -299,15 +299,15 @@ export default function FeedbackViewPage() {
                     />
                   </div>
                   {isHighScore && (
-                    <div className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-yellow-500 flex items-center justify-center shadow-lg">
-                      <Star size={12} className="text-yellow-900 fill-yellow-900" />
+                    <div className="absolute -top-2 -right-2 w-8 h-8 rounded-full bg-yellow-500 flex items-center justify-center shadow-lg shadow-yellow-900/50">
+                      <Star size={15} className="text-yellow-900 fill-yellow-900" />
                     </div>
                   )}
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold text-white tracking-tight leading-tight">{analistaNome}</h1>
-                  <p className="text-sm text-sky-300/80 mt-0.5 font-medium">{analistaInfo?.cargo_operacional || analista?.cargo || 'Analista de Qualidade'}</p>
-                  <div className="flex flex-wrap gap-x-5 gap-y-1 mt-2 text-xs text-slate-400">
+                  <h1 className="text-3xl font-black text-white tracking-tight leading-tight">{analistaNome}</h1>
+                  <p className="text-sm text-sky-300/90 mt-1 font-semibold">{analistaInfo?.cargo_operacional || analista?.cargo || 'Analista de Qualidade'}</p>
+                  <div className="flex flex-wrap gap-x-5 gap-y-1 mt-2.5 text-xs text-slate-400">
                     {analistaEquipe && analistaEquipe !== '—' && (
                       <span className="flex items-center gap-1">
                         <span className="text-slate-600">Equipe</span>
@@ -333,36 +333,43 @@ export default function FeedbackViewPage() {
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-sky-900/50 text-sky-300 border border-sky-700/40">{analistaCiclo}</span>
-                    <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-green-900/40 text-green-400 border border-green-700/30 flex items-center gap-1">
-                      <CheckCircle size={9} /> Concluído
+                  <div className="flex items-center gap-2 mt-3">
+                    <span className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-sky-900/50 text-sky-300 border border-sky-700/40">{analistaCiclo}</span>
+                    <span className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-green-900/40 text-green-400 border border-green-700/30 flex items-center gap-1">
+                      <CheckCircle size={10} /> Concluído
                     </span>
                   </div>
                 </div>
               </div>
 
               {/* RIGHT: Big Scores */}
-              <div className="flex items-stretch gap-3 lg:border-l lg:border-[#1E3050] lg:pl-6">
-                <div className="text-center px-5 py-4 rounded-xl bg-[#07101F]/80 border border-sky-800/30 min-w-[100px]">
-                  <p className="text-[9px] uppercase tracking-widest text-slate-500 mb-1">QA Score</p>
-                  <p className="text-4xl font-black text-sky-400 leading-none tracking-tight">{qaScore ?? '—'}</p>
-                  <p className="text-[10px] text-slate-600 mt-1">/ 100</p>
-                  {isHighScore && <p className="text-[9px] text-yellow-400 mt-1 font-semibold">⭐ Destaque</p>}
+              <div className="flex items-stretch gap-4 lg:border-l lg:border-[#1E3050] lg:pl-8">
+                {/* QA Score — highlighted */}
+                <div className="text-center px-6 py-5 rounded-xl min-w-[120px] relative overflow-hidden"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(56,189,248,0.12) 0%, rgba(14,165,233,0.06) 100%)',
+                    border: '2px solid rgba(56,189,248,0.45)',
+                    boxShadow: '0 0 24px rgba(56,189,248,0.18), inset 0 1px 0 rgba(56,189,248,0.15)'
+                  }}>
+                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-sky-400/60 to-transparent" />
+                  <p className="text-[9px] uppercase tracking-widest text-sky-400/70 mb-1 font-semibold">QA Score</p>
+                  <p className="text-5xl font-black text-sky-300 leading-none tracking-tight">{qaScore ?? '—'}</p>
+                  <p className="text-[11px] text-sky-500/60 mt-1 font-medium">/ 100</p>
+                  {isHighScore && <p className="text-[10px] text-yellow-400 mt-1.5 font-bold">⭐ Destaque</p>}
                 </div>
-                <div className="text-center px-5 py-4 rounded-xl bg-[#07101F]/80 border border-teal-800/30 min-w-[100px]">
+                <div className="text-center px-6 py-5 rounded-xl bg-[#07101F]/80 border border-teal-800/40 min-w-[120px]">
                   <p className="text-[9px] uppercase tracking-widest text-slate-500 mb-1">IEPC</p>
-                  <p className="text-4xl font-black text-teal-400 leading-none tracking-tight">
-                    {iepcScore ?? '—'}<span className="text-lg font-normal text-slate-500">%</span>
+                  <p className="text-5xl font-black text-teal-400 leading-none tracking-tight">
+                    {iepcScore ?? '—'}<span className="text-xl font-normal text-slate-500">%</span>
                   </p>
-                  <p className="text-[10px] text-slate-600 mt-1">Experiência</p>
+                  <p className="text-[11px] text-slate-600 mt-1">Experiência</p>
                 </div>
-                <div className="text-center px-5 py-4 rounded-xl bg-[#07101F]/80 border border-purple-800/30 min-w-[100px]">
+                <div className="text-center px-6 py-5 rounded-xl bg-[#07101F]/80 border border-purple-800/40 min-w-[120px]">
                   <p className="text-[9px] uppercase tracking-widest text-slate-500 mb-1">Aderência</p>
-                  <p className="text-4xl font-black text-purple-400 leading-none tracking-tight">
-                    {aderenciaScore ?? '—'}<span className="text-lg font-normal text-slate-500">%</span>
+                  <p className="text-5xl font-black text-purple-400 leading-none tracking-tight">
+                    {aderenciaScore ?? '—'}<span className="text-xl font-normal text-slate-500">%</span>
                   </p>
-                  <p className="text-[10px] text-slate-600 mt-1">Critérios</p>
+                  <p className="text-[11px] text-slate-600 mt-1">Critérios</p>
                 </div>
               </div>
             </div>
@@ -390,19 +397,40 @@ export default function FeedbackViewPage() {
         {(evolucaoTecnica || evolucaoComportamental || atencaoEvolutiva || fechamentoCiclo) && (
           <div className="print-card rounded-xl border border-[#1E3050] bg-[#0F1B31] p-4">
             <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">Panorama do Ciclo</h3>
-            <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3">
-              {[
-                { label: 'Evolução Técnica', value: evolucaoTecnica, color: 'text-sky-400' },
-                { label: 'Evolução Comportamental', value: evolucaoComportamental, color: 'text-teal-400' },
-                { label: 'Atenção Evolutiva', value: atencaoEvolutiva, color: 'text-amber-400' },
-                { label: 'Fechamento do Ciclo', value: fechamentoCiclo, color: 'text-purple-400' },
-              ].filter(b => b.value).map((block, i) => (
-                <div key={i} className="bg-[#07101F]/60 rounded-lg p-3 border border-[#1E3050]/60">
-                  <p className={`text-[10px] font-semibold uppercase tracking-wider mb-1.5 ${block.color}`}>{block.label}</p>
-                  <p className="text-xs text-slate-300 leading-relaxed">{block.value}</p>
-                </div>
-              ))}
-            </div>
+            {/* Row 1: Evolução Técnica full width */}
+            {evolucaoTecnica && (
+              <div className="bg-[#07101F]/60 rounded-lg p-3 border border-[#1E3050]/60 mb-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-sky-400">Evolução Técnica</p>
+                <p className="text-xs text-slate-300 leading-relaxed">{evolucaoTecnica}</p>
+              </div>
+            )}
+            {/* Row 2: Evolução Comportamental + Atenção Evolutiva side by side */}
+            {(evolucaoComportamental || atencaoEvolutiva) && (
+              <div className="grid md:grid-cols-2 gap-3 mb-3">
+                {evolucaoComportamental && (
+                  <div className="bg-[#07101F]/60 rounded-lg p-3 border border-[#1E3050]/60">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-teal-400">Evolução Comportamental</p>
+                    <p className="text-xs text-slate-300 leading-relaxed">{evolucaoComportamental}</p>
+                  </div>
+                )}
+                {atencaoEvolutiva && (
+                  <div className="bg-[#07101F]/60 rounded-lg p-3 border border-amber-800/30">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-amber-400 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+                      Atenção Evolutiva
+                    </p>
+                    <p className="text-xs text-slate-300 leading-relaxed">{atencaoEvolutiva}</p>
+                  </div>
+                )}
+              </div>
+            )}
+            {/* Row 3: Fechamento do Ciclo */}
+            {fechamentoCiclo && (
+              <div className="bg-[#07101F]/60 rounded-lg p-3 border border-purple-800/20">
+                <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-purple-400">Fechamento do Ciclo</p>
+                <p className="text-xs text-slate-300 leading-relaxed">{fechamentoCiclo}</p>
+              </div>
+            )}
           </div>
         )}
 
