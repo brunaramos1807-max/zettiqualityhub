@@ -491,9 +491,17 @@ export default function FeedbackViewPage() {
 
         {/* ── COACHING DE COMUNICAÇÃO ── */}
         {coaching.length > 0 && (
-          <div className="print-card rounded-xl border border-[#1E3050] bg-[#0F1B31] p-4">
-            <h3 className="text-[11px] font-semibold text-amber-400 uppercase tracking-widest mb-4">Coaching de Comunicação</h3>
-            <div className={`grid gap-4 ${coaching.length === 1 ? 'grid-cols-1 max-w-2xl mx-auto' : coaching.length === 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3'}`}>
+          <div className="print-card rounded-xl overflow-hidden" style={{ border: '1px solid rgba(245,158,11,0.25)', background: 'linear-gradient(180deg, #0F1B31 0%, #0A1220 100%)' }}>
+            <div className="px-5 py-3.5 flex items-center gap-2.5" style={{ borderBottom: '1px solid rgba(245,158,11,0.15)', background: 'linear-gradient(90deg, rgba(245,158,11,0.1) 0%, transparent 100%)' }}>
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.35)' }}>
+                <Zap size={14} className="text-amber-400 fill-amber-400" />
+              </div>
+              <h3 className="text-sm font-bold text-amber-300 uppercase tracking-wider">Coaching de Comunicação</h3>
+              <span className="ml-auto text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.25)' }}>
+                {coaching.length} ponto{coaching.length > 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className={`p-5 grid gap-5 ${coaching.length === 1 ? 'grid-cols-1' : coaching.length === 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3'}`}>
               {coaching.map((c: any, i: number) => (
                 <CoachingCard key={i} coaching={c} />
               ))}
@@ -503,16 +511,30 @@ export default function FeedbackViewPage() {
 
         {/* ── MURAL DE ELOGIOS ── */}
         {allElogios.length > 0 && (
-          <div className="print-card rounded-xl border border-teal-900/30 bg-[#0F1B31] p-4">
-            <h3 className="text-[11px] font-semibold text-teal-400 uppercase tracking-widest mb-3">Mural de Reconhecimento</h3>
-            <div className="grid md:grid-cols-3 gap-3">
+          <div className="print-card rounded-xl overflow-hidden" style={{ background: 'linear-gradient(135deg, #0D2E2B 0%, #0A2420 50%, #071C19 100%)', border: '1px solid rgba(45,212,191,0.3)', boxShadow: '0 0 32px rgba(45,212,191,0.08)' }}>
+            <div className="px-5 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid rgba(45,212,191,0.15)', background: 'linear-gradient(90deg, rgba(45,212,191,0.12) 0%, transparent 100%)' }}>
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(45,212,191,0.2)', border: '1px solid rgba(45,212,191,0.4)' }}>
+                <Star size={15} className="text-teal-300 fill-teal-300" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-teal-200 uppercase tracking-wider">Mural de Reconhecimento</h3>
+                <p className="text-[10px] text-teal-500 mt-0.5">{allElogios.length} elogio{allElogios.length > 1 ? 's' : ''} registrado{allElogios.length > 1 ? 's' : ''}</p>
+              </div>
+            </div>
+            <div className="p-5 grid md:grid-cols-2 xl:grid-cols-3 gap-4">
               {allElogios.map((e: any, i: number) => (
-                <div key={i} className="bg-teal-900/10 border border-teal-700/20 p-3 rounded-lg flex items-start gap-2 hover:border-teal-600/30 transition-all">
-                  <Star size={13} className="text-teal-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-xs text-slate-300 leading-relaxed">&ldquo;{e.descricao || e.elogio}&rdquo;</p>
-                    {e.protocolo && <p className="text-[10px] text-slate-600 mt-1 font-mono">{e.protocolo}</p>}
+                <div key={i} className="rounded-xl p-4 flex flex-col gap-3 transition-all hover:scale-[1.01]"
+                  style={{ background: 'linear-gradient(135deg, rgba(45,212,191,0.12) 0%, rgba(45,212,191,0.05) 100%)', border: '1px solid rgba(45,212,191,0.25)', boxShadow: '0 2px 12px rgba(45,212,191,0.06)' }}>
+                  <div className="flex items-start gap-2">
+                    <Star size={14} className="text-teal-300 fill-teal-300 flex-shrink-0 mt-0.5" />
+                    <p className="text-sm text-white leading-relaxed font-medium">&ldquo;{e.descricao || e.elogio}&rdquo;</p>
                   </div>
+                  {(e.protocolo || e.cliente) && (
+                    <div className="flex items-center gap-2 pt-2" style={{ borderTop: '1px solid rgba(45,212,191,0.12)' }}>
+                      {e.protocolo && <span className="text-[10px] text-teal-500 font-mono bg-teal-900/30 px-2 py-0.5 rounded">{e.protocolo}</span>}
+                      {e.cliente && <span className="text-[10px] text-teal-400">{e.cliente}</span>}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -585,16 +607,6 @@ export default function FeedbackViewPage() {
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* ── FECHAMENTO QUOTE ── */}
-        {fechamentoCiclo && (
-          <div className="print-card rounded-xl border border-[#1E3050] bg-[#0F1B31] p-5 text-center">
-            <Quote size={24} className="text-sky-400/20 mx-auto mb-3" />
-            <p className="text-sm font-medium italic text-slate-200 max-w-2xl mx-auto leading-relaxed">
-              &ldquo;{fechamentoCiclo}&rdquo;
-            </p>
           </div>
         )}
 
@@ -955,40 +967,49 @@ function HistoricoChart({ historico }: { historico: any[] }) {
   );
 }
 
-// ── COACHING CARD — Premium dark card with 3 sections ──
+// ── COACHING CARD — Premium enterprise mentoring card ──
 function CoachingCard({ coaching: c }: { coaching: any }) {
   return (
-    <div className="rounded-xl border border-[#1E3050] bg-[#07101F]/80 overflow-hidden hover:border-slate-600/40 transition-all">
-      {/* Category tag */}
+    <div className="rounded-xl overflow-hidden transition-all hover:shadow-lg hover:shadow-amber-900/10"
+      style={{ background: 'linear-gradient(180deg, #111E35 0%, #0C1828 100%)', border: '1px solid rgba(245,158,11,0.2)' }}>
+      {/* Category badge header */}
       {c.categoria && (
-        <div className="px-4 pt-3 pb-2 border-b border-[#1E3050]/60">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700/50">
+        <div className="px-4 py-2.5 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(245,158,11,0.12)', background: 'rgba(245,158,11,0.06)' }}>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold" style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.3)' }}>
+            <Zap size={9} className="fill-amber-400" />
             {c.categoria}
           </span>
         </div>
       )}
-      <div className="p-4 space-y-3">
+      <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
         {/* O QUE FOI DITO */}
         {c.o_que_foi_dito && (
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-red-400 mb-1">O QUE FOI DITO</p>
-            <p className="text-xs text-slate-400 italic leading-relaxed">&ldquo;{c.o_que_foi_dito}&rdquo;</p>
+          <div className="px-4 py-3.5" style={{ background: 'rgba(239,68,68,0.05)' }}>
+            <p className="text-[10px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1.5" style={{ color: '#EF4444' }}>
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
+              O que foi dito
+            </p>
+            <p className="text-sm text-slate-300 italic leading-relaxed font-medium">&ldquo;{c.o_que_foi_dito}&rdquo;</p>
           </div>
         )}
         {/* COMO PODERIA SER */}
         {c.como_poderia_ser && (
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-teal-400 mb-1">COMO PODERIA SER</p>
-            <p className="text-xs text-slate-300 italic leading-relaxed">&ldquo;{c.como_poderia_ser}&rdquo;</p>
+          <div className="px-4 py-3.5" style={{ background: 'rgba(45,212,191,0.05)' }}>
+            <p className="text-[10px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1.5" style={{ color: '#2DD4BF' }}>
+              <span className="w-1.5 h-1.5 rounded-full bg-teal-400 inline-block" />
+              Como poderia ser
+            </p>
+            <p className="text-sm text-slate-200 italic leading-relaxed font-medium">&ldquo;{c.como_poderia_ser}&rdquo;</p>
           </div>
         )}
         {/* DICA DE OURO */}
         {c.dica_de_ouro && (
-          <div className="rounded-lg bg-amber-900/20 border border-amber-700/30 px-3 py-2">
-            <p className="text-[10px] font-bold text-amber-400 mb-1 flex items-center gap-1">
-              <Zap size={10} className="fill-amber-400" /> Dica de Ouro
+          <div className="px-4 py-3.5" style={{ background: 'linear-gradient(90deg, rgba(245,158,11,0.1) 0%, rgba(245,158,11,0.04) 100%)' }}>
+            <p className="text-[10px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1.5" style={{ color: '#F59E0B' }}>
+              <Zap size={10} className="fill-amber-400 text-amber-400" />
+              Dica de Ouro
             </p>
-            <p className="text-xs text-amber-200/80 leading-relaxed">{c.dica_de_ouro}</p>
+            <p className="text-sm text-amber-100 leading-relaxed font-medium">{c.dica_de_ouro}</p>
           </div>
         )}
       </div>
