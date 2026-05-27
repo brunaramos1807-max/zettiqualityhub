@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { AlertTriangle, Printer, Star, ChevronDown, ChevronUp, Quote, Maximize2, Minimize2, Edit3, Share2, CheckCircle, X, Save, Award, Users, Zap } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -21,20 +21,39 @@ function statusBadge(status: string) {
     parcial: 'bg-amber-900/30 text-amber-400 border border-amber-700/30',
     nao_aderido: 'bg-red-900/30 text-red-400 border border-red-700/30',
     nao_avaliado: 'bg-slate-800/50 text-slate-500 border border-slate-700/30',
+    nao_evidenciado: 'bg-red-900/30 text-red-400 border border-red-700/30',
+    nao_aplicavel: 'bg-slate-800/50 text-slate-500 border border-slate-700/30',
   };
   const labels: Record<string, string> = {
     aderido: 'Aderido', parcial: 'Parcial',
     nao_aderido: 'Não Aderido', nao_avaliado: 'N/A',
+    nao_evidenciado: 'Não Evidenciado', nao_aplicavel: 'N/A',
   };
   return { cls: map[status] || map.nao_avaliado, label: labels[status] || status };
 }
 
+// Extract a field from snapshot trying multiple paths
+function extract(snapshot: any, ...paths: string[]): any {
+  for (const path of paths) {
+    const parts = path.split('.');
+    let val: any = snapshot;
+    for (const p of parts) {
+      if (val == null) break;
+      val = val[p];
+    }
+    if (val != null && val !== '') return val;
+  }
+  return null;
+}
+
 export default function FeedbackViewPage() {
   const params = useParams();
-  const router = useRouter();
   const supabase = createClient();
-  const [data, setData] = useState<any>(null);
+  const [snapshot, setSnapshot] = useState<any>(null);
   const [rawFeedback, setRawFeedback] = useState<any>(null);
+  const [analistaInfo, setAnalistaInfo] = useState<any>(null);
+  const [historico, setHistorico] = useState<any[]>([]);
+  const [elogios, setElogios] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [presentationMode, setPresentationMode] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -44,27 +63,75 @@ export default function FeedbackViewPage() {
   const [copied, setCopied] = useState(false);
 
   const fetchData = useCallback(async () => {
+    const id = params?.id as string;
+    if (!id) return;
+
+    // 1. Load the feedback record + analista join
     const { data: rawData } = await supabase
       .from('feedbacks')
       .select('*, analistas(*)')
-      .eq('id', params?.id as string)
+      .eq('id', id)
       .maybeSingle();
 
-    if (rawData) {
-      setRawFeedback(rawData);
-      const fullData = Array.isArray(rawData.snapshot_json_completo)
-        ? rawData.snapshot_json_completo[0]
-        : rawData.snapshot_json_completo;
-      setData({ ...fullData, analistaInfo: rawData.analistas });
-      setPublicToken(rawData.public_token || null);
-      setEditFields({
-        fechamento_ciclo: fullData?.feedback_blocks?.fechamento_ciclo || fullData?.fechamento || '',
-        coaching_dica: fullData?.coaching?.[0]?.dica_de_ouro || '',
-        evolucao_tecnica: fullData?.feedback_blocks?.evolucao_tecnica || fullData?.evolucao_tecnica || '',
-        evolucao_comportamental: fullData?.feedback_blocks?.evolucao_comportamental || fullData?.evolucao_comportamental || '',
-        atencao_evolutiva: fullData?.feedback_blocks?.atencao_evolutiva || '',
+    if (!rawData) { setLoading(false); return; }
+
+    setRawFeedback(rawData);
+    setPublicToken(rawData.public_token || null);
+
+    // 2. Normalize snapshot — Lovable sends the full payload as snapshot_json_completo
+    const snap = Array.isArray(rawData.snapshot_json_completo)
+      ? rawData.snapshot_json_completo[0]
+      : (rawData.snapshot_json_completo || {});
+
+    setSnapshot(snap);
+    setAnalistaInfo(rawData.analistas);
+
+    // 3. Set edit fields from snapshot + direct columns
+    setEditFields({
+      fechamento_ciclo: extract(snap, 'feedback_blocks.fechamento_ciclo', 'fechamento') || rawData.resumo_ciclo || '',
+      evolucao_tecnica: extract(snap, 'feedback_blocks.evolucao_tecnica', 'evolucao_tecnica') || rawData.evolucao_tecnica || '',
+      evolucao_comportamental: extract(snap, 'feedback_blocks.evolucao_comportamental', 'evolucao_comportamental') || rawData.evolucao_comportamental || '',
+      atencao_evolutiva: extract(snap, 'feedback_blocks.atencao_evolutiva', 'atencao_evolutiva') || '',
+    });
+
+    // 4. Load real historical data from feedback_historico table by analista_id
+    if (rawData.analista_id) {
+      const { data: histRows } = await supabase
+        .from('feedback_historico')
+        .select('ciclo, qa_score, iepc_score, aderencia_score')
+        .eq('analista_id', rawData.analista_id)
+        .order('created_at', { ascending: true });
+
+      // Also load from feedbacks table (all past feedbacks for this analista)
+      const { data: pastFeedbacks } = await supabase
+        .from('feedbacks')
+        .select('ciclo, qa_score, iepc_score, aderencia_score, created_at')
+        .eq('analista_id', rawData.analista_id)
+        .order('created_at', { ascending: true });
+
+      // Merge: prefer feedback_historico, supplement with feedbacks table
+      const histMap = new Map<string, any>();
+      (pastFeedbacks || []).forEach((f: any) => {
+        histMap.set(f.ciclo, { ciclo: f.ciclo, qa: Number(f.qa_score) || 0, iepc: Number(f.iepc_score) || 0 });
       });
+      (histRows || []).forEach((h: any) => {
+        histMap.set(h.ciclo, { ciclo: h.ciclo, qa: Number(h.qa_score) || 0, iepc: Number(h.iepc_score) || 0 });
+      });
+      setHistorico(Array.from(histMap.values()));
+
+      // 5. Load elogios from elogios table by analista name + ciclo
+      const analistaNome = rawData.analistas?.nome || rawData.analistas?.nome_completo;
+      if (analistaNome) {
+        const { data: elogiosRows } = await supabase
+          .from('elogios')
+          .select('elogio, protocolo, cliente, periodo')
+          .ilike('colaborador', `%${analistaNome.split(' ')[0]}%`)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        setElogios(elogiosRows || []);
+      }
     }
+
     setLoading(false);
   }, [params?.id]);
 
@@ -86,17 +153,17 @@ export default function FeedbackViewPage() {
   const handleSaveEdit = async () => {
     if (!rawFeedback) return;
     setSaving(true);
-    const snapshot = Array.isArray(rawFeedback.snapshot_json_completo)
+    const snap = Array.isArray(rawFeedback.snapshot_json_completo)
       ? rawFeedback.snapshot_json_completo[0]
-      : rawFeedback.snapshot_json_completo;
+      : (rawFeedback.snapshot_json_completo || {});
 
     const updated = {
-      ...snapshot,
+      ...snap,
       fechamento: editFields.fechamento_ciclo,
       evolucao_tecnica: editFields.evolucao_tecnica,
       evolucao_comportamental: editFields.evolucao_comportamental,
       feedback_blocks: {
-        ...(snapshot?.feedback_blocks || {}),
+        ...(snap?.feedback_blocks || {}),
         fechamento_ciclo: editFields.fechamento_ciclo,
         evolucao_tecnica: editFields.evolucao_tecnica,
         evolucao_comportamental: editFields.evolucao_comportamental,
@@ -104,7 +171,13 @@ export default function FeedbackViewPage() {
       },
     };
 
-    await supabase.from('feedbacks').update({ snapshot_json_completo: updated }).eq('id', params?.id as string);
+    await supabase.from('feedbacks').update({
+      snapshot_json_completo: updated,
+      evolucao_tecnica: editFields.evolucao_tecnica,
+      evolucao_comportamental: editFields.evolucao_comportamental,
+      resumo_ciclo: editFields.fechamento_ciclo,
+    }).eq('id', params?.id as string);
+
     setSaving(false);
     setEditOpen(false);
     fetchData();
@@ -121,20 +194,56 @@ export default function FeedbackViewPage() {
     </EnterpriseLayout>
   );
 
-  if (!data) return (
+  if (!snapshot && !rawFeedback) return (
     <EnterpriseLayout>
       <div className="flex items-center justify-center h-64 text-slate-400 text-sm">Feedback não encontrado.</div>
     </EnterpriseLayout>
   );
 
+  // ── Normalize all data fields from snapshot (Lovable payload structure) ──
+  const analista = snapshot?.analista || {};
+  const scores = snapshot?.scores || {};
+  const qa_pilares: any[] = snapshot?.qa_pilares || [];
+  const iepc_pilares: any[] = snapshot?.iepc_pilares || [];
+  const coaching: any[] = snapshot?.coaching || [];
+  const atendimentos: any[] = snapshot?.atendimentos || [];
+  const nao_conformidades: any[] = snapshot?.nao_conformidades || [];
+  const feedback_blocks = snapshot?.feedback_blocks || {};
+  const analytics = snapshot?.analytics || {};
+
+  // Scores: prefer snapshot.scores, fallback to rawFeedback columns
+  const qaScore = scores?.qa ?? rawFeedback?.qa_score ?? null;
+  const iepcScore = scores?.iepc ?? rawFeedback?.iepc_score ?? null;
+  const aderenciaScore = scores?.aderencia ?? rawFeedback?.aderencia_score ?? null;
+
+  // Analista name: prefer snapshot.analista.nome, fallback to analistas table
+  const analistaNome = analista?.nome || analistaInfo?.nome || analistaInfo?.nome_completo || '—';
+  const analistaEquipe = analista?.equipe || rawFeedback?.equipe || analistaInfo?.equipe || analistaInfo?.squad || '—';
+  const analistaCiclo = analista?.ciclo || rawFeedback?.ciclo || '—';
+
+  // Panorama blocks
+  const evolucaoTecnica = extract(snapshot, 'feedback_blocks.evolucao_tecnica', 'evolucao_tecnica') || rawFeedback?.evolucao_tecnica || '';
+  const evolucaoComportamental = extract(snapshot, 'feedback_blocks.evolucao_comportamental', 'evolucao_comportamental') || rawFeedback?.evolucao_comportamental || '';
+  const atencaoEvolutiva = extract(snapshot, 'feedback_blocks.atencao_evolutiva', 'atencao_evolutiva') || '';
+  const fechamentoCiclo = extract(snapshot, 'feedback_blocks.fechamento_ciclo', 'fechamento') || rawFeedback?.resumo_ciclo || '';
+
+  // Elogios: merge snapshot elogios + real elogios from DB
+  const snapshotElogios = snapshot?.elogios || [];
+  const allElogios = [
+    ...elogios.map((e: any) => ({ descricao: e.elogio, protocolo: e.protocolo })),
+    ...snapshotElogios,
+  ];
+
+  // NCs: merge snapshot NCs
+  const allNCs = nao_conformidades.length > 0 ? nao_conformidades : [];
+
   const content = (
-    <div className={`min-h-screen text-slate-200 pb-12 ${presentationMode ? 'bg-[#07101F]' : 'bg-[#07101F]'}`}>
+    <div className="min-h-screen text-slate-200 pb-12 bg-[#07101F]">
       <style>{`
         @media print {
           .print-hide { display: none !important; }
           body { background: white !important; color: #111 !important; }
           .print-card { background: white !important; border: 1px solid #e2e8f0 !important; color: #111 !important; break-inside: avoid; }
-          .print-text { color: #111 !important; }
           @page { size: A4; margin: 14mm 16mm; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
@@ -146,13 +255,13 @@ export default function FeedbackViewPage() {
         <div className="print-hide flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-sky-900/40 text-sky-300 border border-sky-700/30">
-              {data?.analista?.ciclo || rawFeedback?.ciclo || 'Ciclo'}
+              {analistaCiclo}
             </span>
             <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-green-900/30 text-green-400 border border-green-700/30 flex items-center gap-1">
               <CheckCircle size={10} /> Concluído
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {publicToken ? (
               <button onClick={handleCopyLink} className="print-hide flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-teal-900/30 text-teal-300 border border-teal-700/30 hover:bg-teal-800/40 transition-all">
                 <Share2 size={12} /> {copied ? 'Copiado!' : 'Copiar Link Analista'}
@@ -179,38 +288,38 @@ export default function FeedbackViewPage() {
         <div className="print-card relative overflow-hidden rounded-xl border border-[#1E3050] bg-[#0F1B31] px-5 py-4 shadow-lg">
           <div className="absolute top-0 right-0 w-64 h-64 bg-sky-500/5 blur-[80px] rounded-full pointer-events-none" />
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 relative z-10">
-            {/* Left: avatar + info */}
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 rounded-xl bg-[#16233B] border border-[#1E3050] overflow-hidden flex-shrink-0 shadow-lg">
                 <img
-                  src={data?.analistaInfo?.foto_url || '/assets/images/no_image.png'}
+                  src={analistaInfo?.foto_url || '/assets/images/no_image.png'}
                   className="w-full h-full object-cover"
-                  alt={data?.analista?.nome || 'Analista'}
+                  alt={analistaNome}
                 />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-white tracking-tight leading-tight">{data?.analista?.nome}</h1>
-                <p className="text-xs text-slate-400 mt-0.5">{data?.analistaInfo?.cargo_operacional || 'Analista de Qualidade'}</p>
+                <h1 className="text-xl font-bold text-white tracking-tight leading-tight">{analistaNome}</h1>
+                <p className="text-xs text-slate-400 mt-0.5">{analistaInfo?.cargo_operacional || analista?.cargo || 'Analista de Qualidade'}</p>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5 text-xs text-slate-500">
-                  {data?.analista?.equipe && <span>Equipe: <strong className="text-slate-300">{data.analista.equipe}</strong></span>}
-                  {data?.analistaInfo?.coordenador && <span>Coord: <strong className="text-slate-300">{data.analistaInfo.coordenador}</strong></span>}
-                  {data?.analistaInfo?.tempo_empresa && <span>Empresa: <strong className="text-slate-300">{data.analistaInfo.tempo_empresa}</strong></span>}
+                  {analistaEquipe && analistaEquipe !== '—' && <span>Equipe: <strong className="text-slate-300">{analistaEquipe}</strong></span>}
+                  {(analistaInfo?.coordenador || analista?.coordenador) && (
+                    <span>Coord: <strong className="text-slate-300">{analistaInfo?.coordenador || analista?.coordenador}</strong></span>
+                  )}
+                  {analistaInfo?.tempo_empresa && <span>Empresa: <strong className="text-slate-300">{analistaInfo.tempo_empresa}</strong></span>}
                 </div>
               </div>
             </div>
-            {/* Right: KPI scores */}
             <div className="flex items-center gap-3 lg:border-l lg:border-[#1E3050] lg:pl-5">
               <div className="text-center px-4 py-2 rounded-lg bg-[#07101F]/70 border border-[#1E3050]">
                 <p className="text-[9px] uppercase tracking-widest text-slate-500 mb-0.5">QA Score</p>
-                <p className="text-3xl font-bold text-sky-400 leading-none">{data?.scores?.qa ?? '—'}</p>
+                <p className="text-3xl font-bold text-sky-400 leading-none">{qaScore ?? '—'}</p>
               </div>
               <div className="text-center px-4 py-2 rounded-lg bg-[#07101F]/70 border border-[#1E3050]">
                 <p className="text-[9px] uppercase tracking-widest text-slate-500 mb-0.5">IEPC</p>
-                <p className="text-3xl font-bold text-teal-400 leading-none">{data?.scores?.iepc ?? '—'}<span className="text-base font-normal text-slate-500">%</span></p>
+                <p className="text-3xl font-bold text-teal-400 leading-none">{iepcScore ?? '—'}<span className="text-base font-normal text-slate-500">%</span></p>
               </div>
               <div className="text-center px-4 py-2 rounded-lg bg-[#07101F]/70 border border-[#1E3050]">
                 <p className="text-[9px] uppercase tracking-widest text-slate-500 mb-0.5">Aderência</p>
-                <p className="text-3xl font-bold text-purple-400 leading-none">{data?.scores?.aderencia ?? '—'}<span className="text-base font-normal text-slate-500">%</span></p>
+                <p className="text-3xl font-bold text-purple-400 leading-none">{aderenciaScore ?? '—'}<span className="text-base font-normal text-slate-500">%</span></p>
               </div>
             </div>
           </div>
@@ -218,29 +327,29 @@ export default function FeedbackViewPage() {
 
         {/* ── KPI CARDS ── */}
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-          <KPICard label="Aderência" value={`${data?.scores?.aderencia ?? '—'}%`} icon={<Award size={14} />} star={(data?.scores?.aderencia || 0) > 90} color={C.purple} sub={`${(data?.scores?.aderencia || 0) > 90 ? '⭐ Excelente' : 'Meta: 90%'}`} />
-          <KPICard label="Atendimentos" value={data?.atendimentos?.length ?? 0} icon={<Users size={14} />} color={C.blue} sub="Volume operacional" />
-          <KPICard label="Não Conformidades" value={data?.analytics?.total_nc ?? data?.nao_conformidades?.length ?? 0} icon={<AlertTriangle size={14} />} color={C.amber} sub="Pontos de atenção" />
-          <KPICard label="Elogios" value={data?.analytics?.total_elogios ?? data?.elogios?.length ?? 0} icon={<Star size={14} />} color={C.teal} sub="Reconhecimento" />
+          <KPICard label="Aderência" value={aderenciaScore != null ? `${aderenciaScore}%` : '—'} icon={<Award size={14} />} star={Number(aderenciaScore) > 90} color={C.purple} sub={Number(aderenciaScore) > 90 ? '⭐ Excelente' : 'Meta: 90%'} />
+          <KPICard label="Atendimentos" value={atendimentos.length || 0} icon={<Users size={14} />} color={C.blue} sub="Volume operacional" />
+          <KPICard label="Não Conformidades" value={analytics?.total_nc ?? allNCs.length} icon={<AlertTriangle size={14} />} color={C.amber} sub="Pontos de atenção" />
+          <KPICard label="Elogios" value={analytics?.total_elogios ?? allElogios.length} icon={<Star size={14} />} color={C.teal} sub="Reconhecimento" />
         </div>
 
         {/* ── RADARES + HISTÓRICO ── */}
         <div className="grid lg:grid-cols-3 gap-4">
-          <RadarChartCard title="Radar QA" pilares={data?.qa_pilares} color={C.blue} />
-          <RadarChartCard title="Radar IEPC" pilares={data?.iepc_pilares} color={C.teal} />
-          <HistoricoChart historico={data?.historico} />
+          <RadarChartCard title="Radar QA" pilares={qa_pilares} color={C.blue} />
+          <RadarChartCard title="Radar IEPC" pilares={iepc_pilares} color={C.teal} />
+          <HistoricoChart historico={historico} />
         </div>
 
         {/* ── PANORAMA DO CICLO ── */}
-        {(data?.feedback_blocks || data?.evolucao_tecnica) && (
+        {(evolucaoTecnica || evolucaoComportamental || atencaoEvolutiva || fechamentoCiclo) && (
           <div className="print-card rounded-xl border border-[#1E3050] bg-[#0F1B31] p-4">
             <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">Panorama do Ciclo</h3>
             <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3">
               {[
-                { label: 'Evolução Técnica', value: data?.feedback_blocks?.evolucao_tecnica || data?.evolucao_tecnica, color: 'text-sky-400' },
-                { label: 'Evolução Comportamental', value: data?.feedback_blocks?.evolucao_comportamental || data?.evolucao_comportamental, color: 'text-teal-400' },
-                { label: 'Atenção Evolutiva', value: data?.feedback_blocks?.atencao_evolutiva, color: 'text-amber-400' },
-                { label: 'Fechamento do Ciclo', value: data?.feedback_blocks?.fechamento_ciclo || data?.fechamento, color: 'text-purple-400' },
+                { label: 'Evolução Técnica', value: evolucaoTecnica, color: 'text-sky-400' },
+                { label: 'Evolução Comportamental', value: evolucaoComportamental, color: 'text-teal-400' },
+                { label: 'Atenção Evolutiva', value: atencaoEvolutiva, color: 'text-amber-400' },
+                { label: 'Fechamento do Ciclo', value: fechamentoCiclo, color: 'text-purple-400' },
               ].filter(b => b.value).map((block, i) => (
                 <div key={i} className="bg-[#07101F]/60 rounded-lg p-3 border border-[#1E3050]/60">
                   <p className={`text-[10px] font-semibold uppercase tracking-wider mb-1.5 ${block.color}`}>{block.label}</p>
@@ -252,11 +361,11 @@ export default function FeedbackViewPage() {
         )}
 
         {/* ── COACHING ── */}
-        {data?.coaching?.length > 0 && (
+        {coaching.length > 0 && (
           <div className="print-card rounded-xl border border-[#1E3050] bg-[#0F1B31] p-4">
             <h3 className="text-[11px] font-semibold text-amber-400 uppercase tracking-widest mb-3">Coaching de Comunicação</h3>
             <div className="grid md:grid-cols-2 gap-3">
-              {data.coaching.map((c: any, i: number) => (
+              {coaching.map((c: any, i: number) => (
                 <div key={i} className="border-l-2 border-amber-500/50 pl-3 py-1 bg-[#07101F]/40 rounded-r-lg pr-3">
                   <p className="text-xs font-semibold text-amber-300 mb-1 flex items-center gap-1.5"><Zap size={10} /> {c.categoria || 'Dica de Ouro'}</p>
                   {c.o_que_foi_dito && <p className="text-[11px] text-slate-500 mb-1"><span className="text-slate-400">Dito:</span> {c.o_que_foi_dito}</p>}
@@ -269,14 +378,17 @@ export default function FeedbackViewPage() {
         )}
 
         {/* ── MURAL DE ELOGIOS ── */}
-        {data?.elogios?.length > 0 && (
+        {allElogios.length > 0 && (
           <div className="print-card rounded-xl border border-teal-900/30 bg-[#0F1B31] p-4">
             <h3 className="text-[11px] font-semibold text-teal-400 uppercase tracking-widest mb-3">Mural de Reconhecimento</h3>
             <div className="grid md:grid-cols-3 gap-3">
-              {data.elogios.map((e: any, i: number) => (
+              {allElogios.map((e: any, i: number) => (
                 <div key={i} className="bg-teal-900/10 border border-teal-700/20 p-3 rounded-lg flex items-start gap-2 hover:border-teal-600/30 transition-all">
                   <Star size={13} className="text-teal-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-slate-300 leading-relaxed">&ldquo;{e.descricao}&rdquo;</p>
+                  <div>
+                    <p className="text-xs text-slate-300 leading-relaxed">&ldquo;{e.descricao || e.elogio}&rdquo;</p>
+                    {e.protocolo && <p className="text-[10px] text-slate-600 mt-1 font-mono">{e.protocolo}</p>}
+                  </div>
                 </div>
               ))}
             </div>
@@ -284,13 +396,13 @@ export default function FeedbackViewPage() {
         )}
 
         {/* ── ATENDIMENTOS ── */}
-        {data?.atendimentos?.length > 0 && (
+        {atendimentos.length > 0 && (
           <div className="print-card rounded-xl border border-[#1E3050] bg-[#0F1B31] p-4">
             <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
-              Atendimentos Avaliados <span className="text-slate-600 font-normal">({data.atendimentos.length})</span>
+              Atendimentos Avaliados <span className="text-slate-600 font-normal">({atendimentos.length})</span>
             </h3>
             <div className="space-y-2">
-              {data.atendimentos.map((a: any, i: number) => (
+              {atendimentos.map((a: any, i: number) => (
                 <AtendimentoAccordion key={i} atendimento={a} index={i} />
               ))}
             </div>
@@ -298,18 +410,18 @@ export default function FeedbackViewPage() {
         )}
 
         {/* ── NÃO CONFORMIDADES ── */}
-        {data?.nao_conformidades?.length > 0 && (
+        {allNCs.length > 0 && (
           <div className="print-card rounded-xl border border-amber-900/30 bg-[#0F1B31] p-4">
             <h3 className="text-[11px] font-semibold text-amber-400 uppercase tracking-widest mb-3">
-              Pontos de Atenção <span className="text-slate-600 font-normal">({data.nao_conformidades.length})</span>
+              Pontos de Atenção <span className="text-slate-600 font-normal">({allNCs.length})</span>
             </h3>
             <div className="grid md:grid-cols-2 gap-2">
-              {data.nao_conformidades.map((nc: any, i: number) => (
+              {allNCs.map((nc: any, i: number) => (
                 <div key={i} className="bg-amber-900/10 border border-amber-700/20 p-3 rounded-lg hover:border-amber-600/30 transition-all">
                   <div className="flex items-center gap-2 mb-1">
                     <AlertTriangle size={12} className="text-amber-400 flex-shrink-0" />
-                    <span className="text-xs font-semibold text-amber-300">{nc.tipo}</span>
-                    <span className="text-[10px] text-slate-600 font-mono ml-auto">{nc.protocolo}</span>
+                    <span className="text-xs font-semibold text-amber-300">{nc.tipo || nc.tipo_nc}</span>
+                    <span className="text-[10px] text-slate-600 font-mono ml-auto">{nc.protocolo || nc.protocolo_referencia}</span>
                   </div>
                   <p className="text-xs text-slate-400 leading-relaxed">{nc.descricao}</p>
                 </div>
@@ -319,11 +431,11 @@ export default function FeedbackViewPage() {
         )}
 
         {/* ── FECHAMENTO ── */}
-        {(data?.feedback_blocks?.fechamento_ciclo || data?.fechamento) && (
+        {fechamentoCiclo && (
           <div className="print-card rounded-xl border border-[#1E3050] bg-[#0F1B31] p-5 text-center">
             <Quote size={24} className="text-sky-400/20 mx-auto mb-3" />
             <p className="text-sm font-medium italic text-slate-200 max-w-2xl mx-auto leading-relaxed">
-              &ldquo;{data?.feedback_blocks?.fechamento_ciclo || data?.fechamento}&rdquo;
+              &ldquo;{fechamentoCiclo}&rdquo;
             </p>
           </div>
         )}
@@ -395,13 +507,18 @@ function KPICard({ label, value, icon, color, star, sub }: any) {
 }
 
 function RadarChartCard({ title, pilares, color }: any) {
-  const chartData = (pilares || []).map((p: any) => ({
-    subject: (p.nome || '').length > 10 ? (p.nome || '').slice(0, 10) + '…' : (p.nome || ''),
-    A: Number(p.nota) || 0,
-    fullMark: Number(p.maximo) || 100,
+  const list = pilares || [];
+  const chartData = list.map((p: any) => ({
+    subject: (p.nome || p.name || '').length > 12 ? (p.nome || p.name || '').slice(0, 12) + '…' : (p.nome || p.name || ''),
+    A: Number(p.nota ?? p.pontuacao ?? p.score) || 0,
+    fullMark: Number(p.maximo ?? p.max ?? 100) || 100,
   }));
 
-  const best = pilares?.reduce((a: any, b: any) => (Number(b.nota) > Number(a?.nota || 0) ? b : a), null);
+  const best = list.reduce((a: any, b: any) => {
+    const bScore = Number(b.nota ?? b.pontuacao ?? b.score) || 0;
+    const aScore = Number(a?.nota ?? a?.pontuacao ?? a?.score) || 0;
+    return bScore > aScore ? b : a;
+  }, null);
 
   return (
     <div className="rounded-xl border border-[#1E3050] bg-[#0F1B31] p-4">
@@ -409,28 +526,34 @@ function RadarChartCard({ title, pilares, color }: any) {
         <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">{title}</h3>
         {best && (
           <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: `${color}20`, color }}>
-            ⭐ {best.nome?.split(' ')[0]}
+            ⭐ {(best.nome || best.name || '').split(' ')[0]}
           </span>
         )}
       </div>
-      <ResponsiveContainer width="100%" height={200}>
-        <RadarChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 20 }}>
-          <PolarGrid stroke="#1E3050" />
-          <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748B', fontSize: 10 }} />
-          <Radar dataKey="A" stroke={color} fill={color} fillOpacity={0.15} strokeWidth={2} />
-        </RadarChart>
-      </ResponsiveContainer>
-      {pilares?.length > 0 && (
+      {chartData.length > 0 ? (
+        <ResponsiveContainer width="100%" height={180}>
+          <RadarChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 20 }}>
+            <PolarGrid stroke="#1E3050" />
+            <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748B', fontSize: 9 }} />
+            <Radar dataKey="A" stroke={color} fill={color} fillOpacity={0.15} strokeWidth={2} />
+          </RadarChart>
+        </ResponsiveContainer>
+      ) : (
+        <div className="flex items-center justify-center h-[180px] text-slate-600 text-xs">Sem dados de pilares</div>
+      )}
+      {list.length > 0 && (
         <div className="mt-2 space-y-1">
-          {pilares.map((p: any, i: number) => {
-            const pct = Math.round((Number(p.nota) / (Number(p.maximo) || 100)) * 100);
+          {list.map((p: any, i: number) => {
+            const nota = Number(p.nota ?? p.pontuacao ?? p.score) || 0;
+            const maximo = Number(p.maximo ?? p.max ?? 100) || 100;
+            const pct = Math.round((nota / maximo) * 100);
             return (
               <div key={i} className="flex items-center gap-2">
-                <span className="text-[10px] text-slate-500 w-20 truncate">{p.nome}</span>
+                <span className="text-[10px] text-slate-500 w-24 truncate">{p.nome || p.name}</span>
                 <div className="flex-1 h-1.5 bg-[#1E3050] rounded-full overflow-hidden">
                   <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
                 </div>
-                <span className="text-[10px] font-mono text-slate-400 w-8 text-right">{p.nota}</span>
+                <span className="text-[10px] font-mono text-slate-400 w-16 text-right">{nota}/{maximo}</span>
               </div>
             );
           })}
@@ -441,16 +564,16 @@ function RadarChartCard({ title, pilares, color }: any) {
 }
 
 function HistoricoChart({ historico }: { historico: any[] }) {
-  const data = (historico || []).slice(-8);
+  const data = (historico || []).slice(-10);
   return (
     <div className="rounded-xl border border-[#1E3050] bg-[#0F1B31] p-4">
       <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">Evolução Histórica</h3>
       {data.length > 0 ? (
-        <ResponsiveContainer width="100%" height={200}>
+        <ResponsiveContainer width="100%" height={180}>
           <LineChart data={data} margin={{ top: 5, right: 10, bottom: 5, left: -20 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#1E3050" />
-            <XAxis dataKey="ciclo" stroke="#475569" fontSize={9} tick={{ fill: '#475569' }} />
-            <YAxis domain={[0, 100]} stroke="#475569" fontSize={9} tick={{ fill: '#475569' }} />
+            <XAxis dataKey="ciclo" stroke="#475569" fontSize={8} tick={{ fill: '#475569' }} />
+            <YAxis domain={[0, 100]} stroke="#475569" fontSize={8} tick={{ fill: '#475569' }} />
             <Tooltip
               contentStyle={{ background: '#0F1B31', border: '1px solid #1E3050', borderRadius: '8px', color: '#e2e8f0', fontSize: '11px' }}
             />
@@ -459,7 +582,7 @@ function HistoricoChart({ historico }: { historico: any[] }) {
           </LineChart>
         </ResponsiveContainer>
       ) : (
-        <div className="flex items-center justify-center h-[200px] text-slate-600 text-xs">Sem histórico disponível</div>
+        <div className="flex items-center justify-center h-[180px] text-slate-600 text-xs">Sem histórico disponível</div>
       )}
       <div className="flex items-center gap-4 mt-2 justify-center">
         <span className="flex items-center gap-1.5 text-[10px] text-slate-500"><span className="w-3 h-0.5 bg-sky-400 inline-block rounded" /> QA</span>
@@ -471,7 +594,7 @@ function HistoricoChart({ historico }: { historico: any[] }) {
 
 function AtendimentoAccordion({ atendimento, index }: { atendimento: any; index: number }) {
   const [open, setOpen] = useState(false);
-  const score = Number(atendimento.nota_qa) || 0;
+  const score = Number(atendimento.nota_qa ?? atendimento.nota) || 0;
   const scoreColor = score >= 90 ? 'text-green-400' : score >= 70 ? 'text-amber-400' : 'text-red-400';
 
   return (
@@ -487,7 +610,7 @@ function AtendimentoAccordion({ atendimento, index }: { atendimento: any; index:
           {atendimento.assunto && <span className="text-[10px] text-slate-600 truncate hidden md:block">{atendimento.assunto}</span>}
         </div>
         <div className="flex items-center gap-3 flex-shrink-0 ml-2">
-          <span className={`text-xs font-bold ${scoreColor}`}>QA {atendimento.nota_qa}</span>
+          <span className={`text-xs font-bold ${scoreColor}`}>QA {atendimento.nota_qa ?? atendimento.nota ?? '—'}</span>
           {open ? <ChevronUp size={14} className="text-slate-600" /> : <ChevronDown size={14} className="text-slate-600" />}
         </div>
       </button>

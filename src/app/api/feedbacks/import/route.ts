@@ -217,6 +217,17 @@ export async function POST(req: NextRequest) {
     await supabaseAdmin.from('feedback_historico').upsert(histRows, { onConflict: 'analista_id,ciclo', ignoreDuplicates: true });
   }
 
+  // Always insert/upsert the current feedback's own cycle into feedback_historico
+  // This ensures the current cycle appears in the analyst's history chart
+  await supabaseAdmin.from('feedback_historico').upsert([{
+    analista_id: analista.id,
+    feedback_id: feedback.id,
+    ciclo: n.ciclo,
+    qa_score: n.qa,
+    iepc_score: n.iepc,
+    aderencia_score: n.aderencia,
+  }], { onConflict: 'analista_id,ciclo', ignoreDuplicates: false });
+
   // Log success
   await supabaseAdmin.from('feedback_import_logs').insert({
     origem: 'api_lovable',
