@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
 import { useParams } from 'next/navigation';
-import { AlertTriangle, Lightbulb, Printer, Star, Zap, Shield, Award, TrendingUp, ChevronDown, ChevronUp, Quote } from 'lucide-react';
+import { AlertTriangle, Printer, Star, TrendingUp, ChevronDown, ChevronUp, Quote } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis } from 'recharts';
 import { motion } from 'framer-motion';
 
@@ -37,7 +37,7 @@ export default function FeedbackViewPage() {
         @media print {
           .print-hide { display: none !important; }
           body { background: white !important; }
-          .bg-\[\#07101F\], .bg-\[\#0F1B31\], .bg-gradient-to-br { background: white !important; border: 1px solid #e2e8f0 !important; color: black !important; }
+          .bg-\\[\\#07101F\\], .bg-\\[\\#0F1B31\\], .bg-gradient-to-br { background: white !important; border: 1px solid #e2e8f0 !important; color: black !important; }
           .text-white, .text-slate-200 { color: black !important; }
           .text-slate-400 { color: #64748b !important; }
           @page { size: A4; margin: 16mm; }
@@ -62,7 +62,7 @@ export default function FeedbackViewPage() {
             <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-8 relative z-10">
               <div className="flex items-center gap-6">
                 <div className="w-24 h-24 rounded-2xl bg-[#16233B] border-2 border-[#223250] overflow-hidden shadow-2xl">
-                    <img src={data?.analistaInfo?.foto_url || '/avatar.png'} className="w-full h-full object-cover" />
+                    <img src={data?.analistaInfo?.foto_url || '/avatar.png'} className="w-full h-full object-cover" alt={data?.analista?.nome || 'Analista'} />
                 </div>
                 <div>
                   <h1 className="text-4xl font-bold text-white tracking-tight">{data?.analista?.nome}</h1>
@@ -76,11 +76,11 @@ export default function FeedbackViewPage() {
               <div className="flex items-center gap-10 border-l border-[#223250] pl-10">
                 <div className="bg-[#07101F]/70 backdrop-blur-sm px-8 py-4 rounded-2xl border border-[#223250]">
                     <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-1">QA Score</p>
-                    <p className="text-5xl font-bold text-[#38BDF8] tracking-tight">{data.scores.qa}</p>
+                    <p className="text-5xl font-bold text-[#38BDF8] tracking-tight">{data?.scores?.qa}</p>
                 </div>
                 <div className="bg-[#07101F]/70 backdrop-blur-sm px-8 py-4 rounded-2xl border border-[#223250]">
                     <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-1">IEPC</p>
-                    <p className="text-5xl font-bold text-[#2DD4BF] tracking-tight">{data.scores.iepc}%</p>
+                    <p className="text-5xl font-bold text-[#2DD4BF] tracking-tight">{data?.scores?.iepc}%</p>
                 </div>
               </div>
             </div>
@@ -88,41 +88,41 @@ export default function FeedbackViewPage() {
 
           {/* 2. KPIs */}
           <motion.div variants={itemVariants} className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-            <KPICard label="Aderência" value={`${data.scores.aderencia}%`} trend="+4.2% vs ciclo anterior" star={data.scores.aderencia > 90} color={C.purple} />
-            <KPICard label="Atendimentos" value={data.atendimentos?.length || 0} trend="Volume operacional" color={C.blue} />
-            <KPICard label="Não Conformidades" value={data.analytics?.total_nc || 0} trend="Pontos de atenção" color={C.amber} />
-            <KPICard label="Elogios" value={data.analytics?.total_elogios || 0} trend="Reconhecimento" color={C.teal} />
+            <KPICard label="Aderência" value={`${data?.scores?.aderencia}%`} trend="+4.2% vs ciclo anterior" star={data?.scores?.aderencia > 90} color={C.purple} />
+            <KPICard label="Atendimentos" value={data?.atendimentos?.length || 0} trend="Volume operacional" color={C.blue} />
+            <KPICard label="Não Conformidades" value={data?.analytics?.total_nc || 0} trend="Pontos de atenção" color={C.amber} />
+            <KPICard label="Elogios" value={data?.analytics?.total_elogios || 0} trend="Reconhecimento" color={C.teal} />
           </motion.div>
 
           {/* 3. Evolução Histórica (Centro) */}
           <motion.div variants={itemVariants} className="rounded-3xl border border-[#223250] bg-[#0F1B31] p-10 shadow-lg">
             <h3 className="text-sm font-semibold text-slate-400 mb-8 uppercase tracking-widest">Evolução Histórica (QA vs IEPC)</h3>
             <ResponsiveContainer width="100%" height={420}>
-                <LineChart data={data.historico}>
+                <LineChart data={data?.historico}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#223250" />
                     <XAxis dataKey="ciclo" stroke="#64748B" fontSize={12} />
                     <YAxis domain={[0, 100]} stroke="#64748B" fontSize={12} />
-                    <Tooltip contentStyle={{backgroundColor: '#07101F', border: '1px solid #223250', borderRadius: '16px'}} />
-                    <Line type="monotone" dataKey="qa" stroke={C.blue} strokeWidth={4} dot={{r: 6, strokeWidth: 3, fill: '#07101F', stroke: C.blue}} activeDot={{r: 8}} />
-                    <Line type="monotone" dataKey="iepc" stroke={C.teal} strokeWidth={4} dot={{r: 6, strokeWidth: 3, fill: '#07101F', stroke: C.teal}} activeDot={{r: 8}} />
+                    <Tooltip contentStyle={{ background: '#0F1B31', border: '1px solid #223250', borderRadius: '12px', color: '#e2e8f0' }} />
+                    <Line type="monotone" dataKey="qa" stroke={C.blue} strokeWidth={4} dot={{ fill: C.blue, r: 5 }} activeDot={{ r: 8 }} />
+                    <Line type="monotone" dataKey="iepc" stroke={C.teal} strokeWidth={4} dot={{ fill: C.teal, r: 5 }} activeDot={{ r: 8 }} />
                 </LineChart>
             </ResponsiveContainer>
           </motion.div>
 
           {/* 4. Radares */}
           <motion.div variants={itemVariants} className="grid md:grid-cols-2 gap-6">
-            <RadarChartCard title="Radar QA" data={data.qa_pilares} color={C.blue} />
-            <RadarChartCard title="Radar IEPC" data={data.iepc_pilares} color={C.teal} />
+            <RadarChartCard title="Radar QA" data={data?.qa_pilares} color={C.blue} />
+            <RadarChartCard title="Radar IEPC" data={data?.iepc_pilares} color={C.teal} />
           </motion.div>
 
           {/* 5. Mural */}
           <motion.section variants={itemVariants}>
             <h3 className="text-sm font-bold uppercase text-[#2DD4BF] mb-6 tracking-widest">Mural de Reconhecimento</h3>
             <div className="grid md:grid-cols-3 gap-4">
-                {data.elogios?.map((e: any, i: number) => (
+                {data?.elogios?.map((e: any, i: number) => (
                     <div key={i} className="bg-[#0F1B31] border border-[#2DD4BF]/10 p-6 rounded-2xl flex items-start gap-4 hover:border-[#2DD4BF]/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_10px_30px_rgba(45,212,191,0.12)]">
                         <Star size={20} className="text-[#2DD4BF] flex-shrink-0 mt-1" />
-                        <p className="text-sm text-slate-200 leading-relaxed">"{e.descricao}"</p>
+                        <p className="text-sm text-slate-200 leading-relaxed">&ldquo;{e.descricao}&rdquo;</p>
                     </div>
                 ))}
             </div>
@@ -133,20 +133,20 @@ export default function FeedbackViewPage() {
             <div className="rounded-3xl border border-[#223250] bg-[#0F1B31] p-10">
                 <h3 className="text-sm font-bold uppercase text-slate-400 mb-8 tracking-widest">Evolução Contínua</h3>
                 <div className="space-y-6 text-base text-slate-200 leading-relaxed">
-                    <p><span className="text-[#38BDF8] font-bold">Técnica:</span> {data.evolucao_tecnica}</p>
-                    <p><span className="text-[#2DD4BF] font-bold">Comportamental:</span> {data.evolucao_comportamental}</p>
+                    <p><span className="text-[#38BDF8] font-bold">Técnica:</span> {data?.evolucao_tecnica}</p>
+                    <p><span className="text-[#2DD4BF] font-bold">Comportamental:</span> {data?.evolucao_comportamental}</p>
                     <div className="pt-8 border-t border-[#223250]">
                         <h4 className="text-xs font-bold text-[#F59E0B] mb-4 uppercase tracking-widest">Pontos de Fortalecimento</h4>
-                        <p className="text-sm text-slate-300 italic">{data.pontos_fortes || "Continue focando na consistência técnica."}</p>
+                        <p className="text-sm text-slate-300 italic">{data?.pontos_fortes || "Continue focando na consistência técnica."}</p>
                     </div>
                 </div>
             </div>
             <div className="rounded-3xl border border-[#223250] bg-[#0F1B31] p-10">
                 <h3 className="text-sm font-bold uppercase text-[#F59E0B] mb-8 tracking-widest">Mentoria de Comunicação</h3>
-                {data.coaching?.map((c: any, i: number) => (
+                {data?.coaching?.map((c: any, i: number) => (
                     <div key={i} className="border-l-4 border-[#F59E0B] pl-6 py-1 mb-10">
                         <Quote size={24} className="text-[#F59E0B]/50 mb-3" />
-                        <p className="text-base text-white font-semibold italic mb-3">"{c.dica_de_ouro}"</p>
+                        <p className="text-base text-white font-semibold italic mb-3">&ldquo;{c.dica_de_ouro}&rdquo;</p>
                         <p className="text-xs text-slate-500 uppercase tracking-wider">Cenário: {c.o_que_foi_dito}</p>
                     </div>
                 ))}
@@ -156,12 +156,12 @@ export default function FeedbackViewPage() {
           {/* 7. Atendimentos */}
           <motion.section variants={itemVariants}>
             <h3 className="text-sm font-bold uppercase text-[#64748B] mb-6 tracking-widest">Atendimentos Avaliados</h3>
-            {data.atendimentos?.map((a: any, i: number) => <AtendimentoAccordion key={i} atendimento={a} index={i} />)}
+            {data?.atendimentos?.map((a: any, i: number) => <AtendimentoAccordion key={i} atendimento={a} index={i} />)}
           </motion.section>
 
           {/* 8. NCs */}
           <motion.section variants={itemVariants}>
-            {data.nao_conformidades?.length > 0 && (
+            {data?.nao_conformidades?.length > 0 && (
                 <>
                     <h3 className="text-sm font-bold uppercase text-[#F59E0B] mb-6 tracking-widest">Pontos de Atenção</h3>
                     {data.nao_conformidades.map((nc: any, i: number) => (
@@ -182,11 +182,11 @@ export default function FeedbackViewPage() {
           <motion.footer variants={itemVariants} className="text-center py-24 border-t border-[#223250]">
             <Quote size={40} className="text-[#38BDF8] mx-auto mb-8 opacity-20" />
             <p className="text-2xl font-serif italic text-white max-w-3xl mx-auto leading-relaxed">
-              "{data.fechamento || 'Continue a evolução constante, você está no caminho certo e contamos com seu talento para o próximo ciclo.'}"
+              &ldquo;{data?.fechamento || 'Continue a evolução constante, você está no caminho certo e contamos com seu talento para o próximo ciclo.'}&rdquo;
             </p>
           </motion.footer>
         </div>
-      </div>
+      </motion.div>
     </EnterpriseLayout>
   );
 }
@@ -215,7 +215,7 @@ function RadarChartCard({ title, data, color }: any) {
                 <RadarChart data={chartData}>
                     <defs><filter id="glow"><feDropShadow dx="0" dy="0" stdDeviation="4" floodColor={color} /></filter></defs>
                     <PolarGrid stroke="#223250" />
-                    <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748B', fontSize: 12 }} />
+                    <PolarAngleAxis dataKey="subject" tick={{ fill: '#94A3B8', fontSize: 11 }} />
                     <Radar dataKey="A" stroke={color} fill={color} fillOpacity={0.2} strokeWidth={3} filter="url(#glow)" />
                 </RadarChart>
             </ResponsiveContainer>
@@ -239,7 +239,7 @@ function AtendimentoAccordion({ atendimento, index }: { atendimento: any; index:
         </div>
       </button>
       {open && (
-        <div className="px-6 pb-6 pt-0 space-y-5 text-base text-slate-300 border-t border-[#223250] pt-6 bg-[#07101F]">
+        <div className="px-6 pb-6 pt-6 space-y-5 text-base text-slate-300 border-t border-[#223250] bg-[#07101F]">
             <p className="leading-relaxed"><strong>Síntese:</strong> {atendimento.sintese}</p>
             <div className="flex flex-wrap gap-2">
                 {atendimento.criterios?.map((c: any, i: number) => (
