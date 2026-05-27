@@ -1026,7 +1026,7 @@ export interface PDIRecord {
   analista: string;
   squad: string;
   coordenador: string;
-  status_pdi: 'Em andamento' | 'Atrasado' | 'Concluído' | 'Crítico' | 'Parcial' | 'Aderido' | 'Em reavaliação' | 'Não aderido';
+  status_pdi: 'Em andamento' | 'Atrasado' | 'Concluído' | 'Crítico' | 'Parcial' | 'Aderido' | 'Em reavaliação' | 'Não aderido' | 'aguardando alinhamento' | 'em evolucao' | 'em acompanhamento' | 'em validacao' | 'consolidado' | 'evolucao concluida' | 'reincidente';
   acoes: any[];
   metas: any[];
   evidencias: any[];
@@ -1050,6 +1050,43 @@ export interface PDIRecord {
   plano_desenvolvimento?: string;
   proxima_revisao?: string;
   ciclo?: string;
+  // Enterprise PDI fields (from feedback)
+  feedback_id?: string;
+  analista_id?: string;
+  aderencia_score?: number;
+  total_ncs?: number;
+  total_elogios?: number;
+  objetivo_desenvolvimento?: string;
+  acao_desenvolvimento?: string;
+  resultado_esperado?: string;
+  mensagem_evolutiva?: string;
+  comentario_coordenador?: string;
+  comentario_analista?: string;
+  data_acompanhamento?: string;
+  proxima_revisao_date?: string;
+  attachments?: any[];
+}
+
+export interface PDIObjective {
+  id: string;
+  pdi_id: string;
+  descricao: string;
+  categoria?: string;
+  peso: number;
+  status: 'cumprido' | 'parcial' | 'nao_cumprido';
+  observacao_coordenador?: string;
+  data_atualizacao?: string;
+  created_at?: string;
+}
+
+export interface PDITimelineEvent {
+  id: string;
+  pdi_id: string;
+  data_evento: string;
+  titulo: string;
+  descricao?: string;
+  tipo: 'criacao' | 'atualizacao' | 'melhoria' | 'validacao' | 'conclusao' | 'evento';
+  created_at?: string;
 }
 
 export async function fetchPDIRecords(filters?: { periodo?: string; squad?: string; analista?: string }): Promise<PDIRecord[]> {
@@ -1135,6 +1172,177 @@ export async function deletePDIRecord(id: string): Promise<{ success: boolean; e
     return { success: false, error: err.message };
   }
   return { success: false, error: 'Supabase não disponível' };
+}
+
+export async function fetchPDIObjectives(pdiId: string): Promise<PDIObjective[]> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('pdi_objectives')
+        .select('*')
+        .eq('pdi_id', pdiId)
+        .order('created_at', { ascending: true });
+      if (!error && data) return data as PDIObjective[];
+    }
+  } catch { /* fall through */ }
+  return [];
+}
+
+export async function savePDIObjective(obj: Omit<PDIObjective, 'id' | 'created_at'>): Promise<{ success: boolean; data?: PDIObjective; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { data, error } = await supabase.from('pdi_objectives').insert(obj).select().single();
+      if (error) return { success: false, error: error.message };
+      return { success: true, data: data as PDIObjective };
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+  return { success: false, error: 'Supabase não disponível' };
+}
+
+export async function updatePDIObjective(id: string, updates: Partial<PDIObjective>): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { error } = await supabase.from('pdi_objectives').update({ ...updates, data_atualizacao: new Date().toISOString() }).eq('id', id);
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+  return { success: false, error: 'Supabase não disponível' };
+}
+
+export async function deletePDIObjective(id: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { error } = await supabase.from('pdi_objectives').delete().eq('id', id);
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+  return { success: false, error: 'Supabase não disponível' };
+}
+
+export async function fetchPDITimeline(pdiId: string): Promise<PDITimelineEvent[]> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('pdi_timeline')
+        .select('*')
+        .eq('pdi_id', pdiId)
+        .order('data_evento', { ascending: true });
+      if (!error && data) return data as PDITimelineEvent[];
+    }
+  } catch { /* fall through */ }
+  return [];
+}
+
+export async function addPDITimelineEvent(event: Omit<PDITimelineEvent, 'id' | 'created_at'>): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { error } = await supabase.from('pdi_timeline').insert(event);
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+  return { success: false, error: 'Supabase não disponível' };
+}
+
+export async function autoCreatePDIFromFeedback(params: {
+  feedbackId: string;
+  analistaId?: string;
+  analistaNome: string;
+  squad: string;
+  coordenador: string;
+  ciclo: string;
+  qaScore?: number;
+  iepcScore?: number;
+  aderenciaScore?: number;
+  totalNcs?: number;
+  totalElogios?: number;
+  objetivoDesenvolvimento?: string;
+  acaoDesenvolvimento?: string;
+  resultadoEsperado?: string;
+  mensagemEvolutiva?: string;
+}): Promise<{ success: boolean; data?: PDIRecord; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (!supabase) return { success: false, error: 'Supabase não disponível' };
+
+    // Check if PDI already exists for this feedback
+    const { data: existing } = await supabase
+      .from('pdi_records')
+      .select('id')
+      .eq('feedback_id', params.feedbackId)
+      .maybeSingle();
+
+    if (existing) return { success: true, data: existing as any };
+
+    const pdiData = {
+      feedback_id: params.feedbackId,
+      analista_id: params.analistaId || null,
+      periodo: params.ciclo,
+      ciclo: params.ciclo,
+      analista: params.analistaNome,
+      squad: params.squad || '',
+      coordenador: params.coordenador || '',
+      status_pdi: 'aguardando alinhamento' as const,
+      acoes: [],
+      metas: [],
+      evidencias: [],
+      nc_reincidentes: [],
+      qa_score: params.qaScore || 0,
+      iepc_score: params.iepcScore || 0,
+      aderencia_score: params.aderenciaScore || 0,
+      total_ncs: params.totalNcs || 0,
+      total_elogios: params.totalElogios || 0,
+      objetivo_desenvolvimento: params.objetivoDesenvolvimento || '',
+      acao_desenvolvimento: params.acaoDesenvolvimento || '',
+      resultado_esperado: params.resultadoEsperado || '',
+      mensagem_evolutiva: params.mensagemEvolutiva || '',
+      objetivo: params.objetivoDesenvolvimento || '',
+      source: 'feedback_auto',
+      attachments: [],
+    };
+
+    const { data, error } = await supabase.from('pdi_records').insert(pdiData).select().single();
+    if (error) return { success: false, error: error.message };
+
+    // Auto-create timeline entry
+    if (data) {
+      await supabase.from('pdi_timeline').insert({
+        pdi_id: data.id,
+        data_evento: new Date().toISOString().split('T')[0],
+        titulo: 'PDI criado',
+        descricao: `PDI gerado automaticamente a partir do feedback do ciclo ${params.ciclo}`,
+        tipo: 'criacao',
+      });
+    }
+
+    dispatchDataChanged({ tipo: 'pdi_saved', analista: params.analistaNome });
+    return { success: true, data: data as PDIRecord };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
 }
 
 // ─── Analistas Supabase functions ─────────────────────────────────────────────

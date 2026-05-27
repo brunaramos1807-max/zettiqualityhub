@@ -3,11 +3,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
 import { useParams } from 'next/navigation';
-import { AlertTriangle, Printer, Star, ChevronDown, ChevronUp, Quote, Maximize2, Minimize2, Edit3, Share2, CheckCircle, X, Save, Award, Users, Zap, TrendingUp, Heart } from 'lucide-react';
+import { AlertTriangle, Printer, Star, ChevronDown, ChevronUp, Quote, Maximize2, Minimize2, Edit3, Share2, CheckCircle, X, Save, Award, Users, Zap, TrendingUp, Heart, Target, Download, BookOpen, ArrowRight } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis
 } from 'recharts';
+import { autoCreatePDIFromFeedback } from '@/lib/services/dataService';
 
 const C = {
   bg: '#07101F', surface: '#0F1B31', border: '#1E3050',
@@ -94,6 +95,8 @@ export default function FeedbackViewPage() {
   const [publicToken, setPublicToken] = useState<string | null>(null);
   const [publicEnabled, setPublicEnabled] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [pdiCreating, setPdiCreating] = useState(false);
+  const [pdiCreated, setPdiCreated] = useState(false);
 
   const fetchData = useCallback(async () => {
     const id = params?.id as string;
@@ -123,7 +126,19 @@ export default function FeedbackViewPage() {
       evolucao_tecnica: extract(snap, 'feedback_blocks.evolucao_tecnica', 'evolucao_tecnica') || rawData.evolucao_tecnica || '',
       evolucao_comportamental: extract(snap, 'feedback_blocks.evolucao_comportamental', 'evolucao_comportamental') || rawData.evolucao_comportamental || '',
       atencao_evolutiva: extract(snap, 'feedback_blocks.atencao_evolutiva', 'atencao_evolutiva') || '',
+      objetivo_desenvolvimento: extract(snap, 'feedback_blocks.objetivo_desenvolvimento', 'objetivo_desenvolvimento') || rawData.objetivo_desenvolvimento || '',
+      acao_desenvolvimento: extract(snap, 'feedback_blocks.acao_desenvolvimento', 'acao_desenvolvimento') || rawData.acao_desenvolvimento || '',
+      resultado_esperado: extract(snap, 'feedback_blocks.resultado_esperado', 'resultado_esperado') || rawData.resultado_esperado || '',
+      mensagem_evolutiva: extract(snap, 'feedback_blocks.mensagem_evolutiva', 'mensagem_evolutiva') || rawData.mensagem_evolutiva || '',
     });
+
+    // Check if PDI already exists for this feedback
+    const { data: existingPdi } = await supabase
+      .from('pdi_records')
+      .select('id')
+      .eq('feedback_id', id)
+      .maybeSingle();
+    if (existingPdi) setPdiCreated(true);
 
     if (rawData.analista_id) {
       // Load from feedback_historico
@@ -204,6 +219,10 @@ export default function FeedbackViewPage() {
         evolucao_tecnica: editFields.evolucao_tecnica,
         evolucao_comportamental: editFields.evolucao_comportamental,
         atencao_evolutiva: editFields.atencao_evolutiva,
+        objetivo_desenvolvimento: editFields.objetivo_desenvolvimento,
+        acao_desenvolvimento: editFields.acao_desenvolvimento,
+        resultado_esperado: editFields.resultado_esperado,
+        mensagem_evolutiva: editFields.mensagem_evolutiva,
       },
     };
 
@@ -217,6 +236,196 @@ export default function FeedbackViewPage() {
     setSaving(false);
     setEditOpen(false);
     fetchData();
+  };
+
+  const handleCreatePDI = async () => {
+    if (!rawFeedback || pdiCreated) return;
+    setPdiCreating(true);
+    const snap = Array.isArray(rawFeedback.snapshot_json_completo)
+      ? rawFeedback.snapshot_json_completo[0]
+      : (rawFeedback.snapshot_json_completo || {});
+    const analista = snap?.analista || {};
+    const scores = snap?.scores || {};
+    const ncs = snap?.nao_conformidades || [];
+    const elogiosSnap = snap?.elogios || [];
+
+    await autoCreatePDIFromFeedback({
+      feedbackId: rawFeedback.id,
+      analistaId: rawFeedback.analista_id,
+      analistaNome: analista?.nome || analistaInfo?.nome || analistaInfo?.nome_completo || '',
+      squad: analista?.equipe || rawFeedback?.equipe || analistaInfo?.equipe || analistaInfo?.squad || '',
+      coordenador: analistaInfo?.coordenador || analista?.coordenador || '',
+      ciclo: analista?.ciclo || rawFeedback?.ciclo || '',
+      qaScore: scores?.qa ?? rawFeedback?.qa_score,
+      iepcScore: scores?.iepc ?? rawFeedback?.iepc_score,
+      aderenciaScore: scores?.aderencia ?? rawFeedback?.aderencia_score,
+      totalNcs: ncs.length,
+      totalElogios: elogiosSnap.length,
+      objetivoDesenvolvimento: editFields.objetivo_desenvolvimento || extract(snap, 'feedback_blocks.objetivo_desenvolvimento', 'objetivo_desenvolvimento') || '',
+      acaoDesenvolvimento: editFields.acao_desenvolvimento || extract(snap, 'feedback_blocks.acao_desenvolvimento', 'acao_desenvolvimento') || '',
+      resultadoEsperado: editFields.resultado_esperado || extract(snap, 'feedback_blocks.resultado_esperado', 'resultado_esperado') || '',
+      mensagemEvolutiva: editFields.mensagem_evolutiva || extract(snap, 'feedback_blocks.mensagem_evolutiva', 'mensagem_evolutiva') || '',
+    });
+    setPdiCreating(false);
+    setPdiCreated(true);
+  };
+
+  const handleDownloadTxt = () => {
+    if (!rawFeedback) return;
+    const snap = Array.isArray(rawFeedback.snapshot_json_completo)
+      ? rawFeedback.snapshot_json_completo[0]
+      : (rawFeedback.snapshot_json_completo || {});
+    const analista = snap?.analista || {};
+    const scores = snap?.scores || {};
+    const coaching: any[] = snap?.coaching || [];
+    const atendimentos: any[] = snap?.atendimentos || [];
+    const ncs: any[] = snap?.nao_conformidades || [];
+    const elogiosSnap: any[] = snap?.elogios || [];
+    const fb = snap?.feedback_blocks || {};
+
+    const analistaNome = analista?.nome || analistaInfo?.nome || analistaInfo?.nome_completo || '—';
+    const ciclo = analista?.ciclo || rawFeedback?.ciclo || '—';
+    const qaScore = scores?.qa ?? rawFeedback?.qa_score ?? '—';
+    const iepcScore = scores?.iepc ?? rawFeedback?.iepc_score ?? '—';
+    const aderenciaScore = scores?.aderencia ?? rawFeedback?.aderencia_score ?? '—';
+
+    const lines: string[] = [];
+    const sep = '='.repeat(70);
+    const sep2 = '-'.repeat(70);
+
+    lines.push(sep);
+    lines.push('FEEDBACK INDIVIDUAL — QUALIVISÃO');
+    lines.push(sep);
+    lines.push('');
+    lines.push(`ANALISTA:     ${analistaNome}`);
+    lines.push(`CARGO:        ${analistaInfo?.cargo_operacional || analista?.cargo || 'Analista de Qualidade'}`);
+    lines.push(`EQUIPE/SQUAD: ${analista?.equipe || rawFeedback?.equipe || analistaInfo?.squad || '—'}`);
+    lines.push(`COORDENADOR:  ${analistaInfo?.coordenador || analista?.coordenador || '—'}`);
+    lines.push(`CICLO:        ${ciclo}`);
+    lines.push(`DATA:         ${new Date().toLocaleDateString('pt-BR')}`);
+    lines.push('');
+    lines.push(sep);
+    lines.push('MÉTRICAS DO CICLO');
+    lines.push(sep2);
+    lines.push(`QA Score:     ${qaScore}`);
+    lines.push(`IEPC:         ${iepcScore}%`);
+    lines.push(`Aderência:    ${aderenciaScore}%`);
+    lines.push(`Atendimentos: ${atendimentos.length}`);
+    lines.push(`NCs:          ${ncs.length}`);
+    lines.push(`Elogios:      ${elogiosSnap.length}`);
+    lines.push('');
+
+    if (fb.evolucao_tecnica || rawFeedback?.evolucao_tecnica) {
+      lines.push(sep);
+      lines.push('PANORAMA DO CICLO');
+      lines.push(sep2);
+      if (fb.evolucao_tecnica || rawFeedback?.evolucao_tecnica) {
+        lines.push('EVOLUÇÃO TÉCNICA:');
+        lines.push(fb.evolucao_tecnica || rawFeedback?.evolucao_tecnica || '');
+        lines.push('');
+      }
+      if (fb.evolucao_comportamental || rawFeedback?.evolucao_comportamental) {
+        lines.push('EVOLUÇÃO COMPORTAMENTAL:');
+        lines.push(fb.evolucao_comportamental || rawFeedback?.evolucao_comportamental || '');
+        lines.push('');
+      }
+      if (fb.atencao_evolutiva) {
+        lines.push('ATENÇÃO EVOLUTIVA:');
+        lines.push(fb.atencao_evolutiva);
+        lines.push('');
+      }
+      if (fb.fechamento_ciclo || rawFeedback?.resumo_ciclo) {
+        lines.push('FECHAMENTO DO CICLO:');
+        lines.push(fb.fechamento_ciclo || rawFeedback?.resumo_ciclo || '');
+        lines.push('');
+      }
+    }
+
+    if (coaching.length > 0) {
+      lines.push(sep);
+      lines.push('COACHING DE COMUNICAÇÃO');
+      lines.push(sep2);
+      coaching.forEach((c: any, i: number) => {
+        lines.push(`[${i + 1}] ${c.categoria || 'Coaching'}`);
+        if (c.o_que_foi_dito) lines.push(`  O que foi dito: "${c.o_que_foi_dito}"`);
+        if (c.como_poderia_ser) lines.push(`  Como poderia ser: "${c.como_poderia_ser}"`);
+        if (c.dica_de_ouro) lines.push(`  Dica de Ouro: ${c.dica_de_ouro}`);
+        lines.push('');
+      });
+    }
+
+    if (atendimentos.length > 0) {
+      lines.push(sep);
+      lines.push(`ATENDIMENTOS AVALIADOS (${atendimentos.length})`);
+      lines.push(sep2);
+      atendimentos.forEach((a: any, i: number) => {
+        lines.push(`[${i + 1}] Protocolo: ${a.protocolo || '—'} | Cliente: ${a.cliente || '—'} | QA: ${a.nota_qa || a.nota || '—'}`);
+        if (a.sintese) lines.push(`    Síntese: ${a.sintese}`);
+      });
+      lines.push('');
+    }
+
+    if (ncs.length > 0) {
+      lines.push(sep);
+      lines.push(`NÃO CONFORMIDADES (${ncs.length})`);
+      lines.push(sep2);
+      ncs.forEach((nc: any, i: number) => {
+        lines.push(`[${i + 1}] ${nc.tipo || nc.tipo_nc || 'NC'}`);
+        if (nc.descricao) lines.push(`    ${nc.descricao}`);
+        if (nc.protocolo || nc.protocolo_referencia) lines.push(`    Protocolo: ${nc.protocolo || nc.protocolo_referencia}`);
+      });
+      lines.push('');
+    }
+
+    if (elogiosSnap.length > 0) {
+      lines.push(sep);
+      lines.push(`ELOGIOS (${elogiosSnap.length})`);
+      lines.push(sep2);
+      elogiosSnap.forEach((e: any, i: number) => {
+        lines.push(`[${i + 1}] "${e.descricao || e.elogio || ''}"`);
+        if (e.protocolo) lines.push(`    Protocolo: ${e.protocolo}`);
+        if (e.cliente) lines.push(`    Cliente: ${e.cliente}`);
+      });
+      lines.push('');
+    }
+
+    const objDev = editFields.objetivo_desenvolvimento || fb.objetivo_desenvolvimento || '';
+    const acaoDev = editFields.acao_desenvolvimento || fb.acao_desenvolvimento || '';
+    const resultEsp = editFields.resultado_esperado || fb.resultado_esperado || '';
+    const msgEvol = editFields.mensagem_evolutiva || fb.mensagem_evolutiva || '';
+
+    if (objDev || acaoDev || resultEsp || msgEvol) {
+      lines.push(sep);
+      lines.push('PLANO DE DESENVOLVIMENTO DO CICLO');
+      lines.push(sep2);
+      if (objDev) { lines.push('OBJETIVO:'); lines.push(objDev); lines.push(''); }
+      if (acaoDev) { lines.push('AÇÃO ESPERADA:'); lines.push(acaoDev); lines.push(''); }
+      if (resultEsp) { lines.push('RESULTADO ESPERADO:'); lines.push(resultEsp); lines.push(''); }
+      if (msgEvol) { lines.push('MENSAGEM EVOLUTIVA:'); lines.push(msgEvol); lines.push(''); }
+    }
+
+    const motivational = getMotivationalMessage(
+      qaScore != null && qaScore !== '—' ? Number(qaScore) : null,
+      iepcScore != null && iepcScore !== '—' ? Number(iepcScore) : null,
+      ncs.length,
+      elogiosSnap.length
+    );
+    lines.push(sep);
+    lines.push(motivational.title.toUpperCase());
+    lines.push(sep2);
+    lines.push(motivational.message);
+    lines.push('');
+    lines.push(sep);
+    lines.push(`Documento gerado em ${new Date().toLocaleString('pt-BR')} — QualiVisão`);
+    lines.push(sep);
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `feedback_${analistaNome.replace(/\s+/g, '_')}_${ciclo.replace('/', '-')}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   if (loading) return (
@@ -268,6 +477,12 @@ export default function FeedbackViewPage() {
     '';
   const fechamentoCiclo = extract(snapshot, 'feedback_blocks.fechamento_ciclo', 'fechamento') || rawFeedback?.resumo_ciclo || '';
 
+  // PDI development block fields
+  const objetivoDesenvolvimento = extract(snapshot, 'feedback_blocks.objetivo_desenvolvimento', 'objetivo_desenvolvimento') || rawFeedback?.objetivo_desenvolvimento || '';
+  const acaoDesenvolvimento = extract(snapshot, 'feedback_blocks.acao_desenvolvimento', 'acao_desenvolvimento') || rawFeedback?.acao_desenvolvimento || '';
+  const resultadoEsperado = extract(snapshot, 'feedback_blocks.resultado_esperado', 'resultado_esperado') || rawFeedback?.resultado_esperado || '';
+  const mensagemEvolutiva = extract(snapshot, 'feedback_blocks.mensagem_evolutiva', 'mensagem_evolutiva') || rawFeedback?.mensagem_evolutiva || '';
+
   // Elogios: merge snapshot elogios + real elogios from DB
   const snapshotElogios = snapshot?.elogios || [];
   const allElogios = [
@@ -285,6 +500,8 @@ export default function FeedbackViewPage() {
     allNCs.length,
     allElogios.length
   );
+
+  const hasPDIBlock = objetivoDesenvolvimento || acaoDesenvolvimento || resultadoEsperado || mensagemEvolutiva;
 
   const content = (
     <div className="min-h-screen text-slate-200 pb-12 bg-[#07101F]">
@@ -335,6 +552,9 @@ export default function FeedbackViewPage() {
             <button onClick={() => setPresentationMode(!presentationMode)} className="print-hide flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-900/30 text-purple-300 border border-purple-700/30 hover:bg-purple-800/40 transition-all">
               {presentationMode ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
               {presentationMode ? 'Sair' : 'Apresentação'}
+            </button>
+            <button onClick={handleDownloadTxt} className="print-hide flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-teal-900/30 text-teal-300 border border-teal-700/30 hover:bg-teal-800/40 transition-all">
+              <Download size={12} /> Baixar TXT
             </button>
             <button onClick={() => window.print()} className="print-hide flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-900/40 text-sky-300 border border-sky-700/30 hover:bg-sky-800/50 transition-all">
               <Printer size={12} /> Baixar PDF
@@ -610,6 +830,19 @@ export default function FeedbackViewPage() {
           </div>
         )}
 
+        {/* ── PLANO DE DESENVOLVIMENTO DO CICLO (PDI BLOCK) ── */}
+        <PDIDevBlock
+          objetivoDesenvolvimento={objetivoDesenvolvimento}
+          acaoDesenvolvimento={acaoDesenvolvimento}
+          resultadoEsperado={resultadoEsperado}
+          mensagemEvolutiva={mensagemEvolutiva}
+          analistaNome={analistaNome}
+          ciclo={analistaCiclo}
+          pdiCreated={pdiCreated}
+          pdiCreating={pdiCreating}
+          onCreatePDI={handleCreatePDI}
+        />
+
         {/* ── BLOCO MOTIVACIONAL DE ENCERRAMENTO ── */}
         <MotivationalClosingBlock
           motivational={motivational}
@@ -648,6 +881,28 @@ export default function FeedbackViewPage() {
                   />
                 </div>
               ))}
+              {/* PDI Development fields */}
+              <div className="pt-2 border-t border-[#1E3050]">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-sky-300 mb-3 flex items-center gap-2">
+                  <Target size={12} /> Plano de Desenvolvimento do Ciclo
+                </p>
+                {[
+                  { key: 'objetivo_desenvolvimento', label: 'Objetivo de Desenvolvimento', color: 'text-sky-400' },
+                  { key: 'acao_desenvolvimento', label: 'Ação Esperada', color: 'text-teal-400' },
+                  { key: 'resultado_esperado', label: 'Resultado Esperado', color: 'text-green-400' },
+                  { key: 'mensagem_evolutiva', label: 'Mensagem Evolutiva', color: 'text-purple-400' },
+                ].map(({ key, label, color }) => (
+                  <div key={key} className="mb-3">
+                    <label className={`block text-[11px] font-semibold uppercase tracking-wider mb-1.5 ${color}`}>{label}</label>
+                    <textarea
+                      value={editFields[key] || ''}
+                      onChange={(e) => setEditFields((p: any) => ({ ...p, [key]: e.target.value }))}
+                      rows={3}
+                      className="w-full bg-[#07101F] border border-[#1E3050] rounded-lg px-3 py-2 text-sm text-slate-200 resize-none focus:outline-none focus:border-sky-500/50 transition-colors"
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="flex items-center justify-end gap-3 mt-5">
               <button onClick={() => setEditOpen(false)} className="px-4 py-2 rounded-lg text-sm text-slate-400 hover:bg-slate-700 transition-colors">Cancelar</button>
@@ -670,6 +925,131 @@ export default function FeedbackViewPage() {
   }
 
   return <EnterpriseLayout>{content}</EnterpriseLayout>;
+}
+
+// ── PDI DEVELOPMENT BLOCK ──
+function PDIDevBlock({ objetivoDesenvolvimento, acaoDesenvolvimento, resultadoEsperado, mensagemEvolutiva, analistaNome, ciclo, pdiCreated, pdiCreating, onCreatePDI }: any) {
+  const hasContent = objetivoDesenvolvimento || acaoDesenvolvimento || resultadoEsperado || mensagemEvolutiva;
+
+  return (
+    <div className="print-card relative overflow-hidden rounded-2xl"
+      style={{
+        background: 'linear-gradient(135deg, #0B1E35 0%, #091828 60%, #071525 100%)',
+        border: '1px solid rgba(56,189,248,0.3)',
+        boxShadow: '0 0 32px rgba(56,189,248,0.06), 0 4px 24px rgba(0,0,0,0.4)',
+      }}>
+      {/* Top accent line */}
+      <div className="absolute top-0 left-0 right-0 h-0.5" style={{ background: 'linear-gradient(90deg, transparent, rgba(56,189,248,0.6), rgba(45,212,191,0.4), transparent)' }} />
+
+      {/* Header */}
+      <div className="px-6 py-5 flex items-center justify-between gap-4"
+        style={{ borderBottom: '1px solid rgba(56,189,248,0.12)', background: 'linear-gradient(90deg, rgba(56,189,248,0.08) 0%, transparent 100%)' }}>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: 'linear-gradient(135deg, rgba(56,189,248,0.2), rgba(45,212,191,0.15))', border: '1px solid rgba(56,189,248,0.35)' }}>
+            <Target size={18} className="text-sky-300" />
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-widest font-semibold text-sky-400/70 mb-0.5">Continuidade Evolutiva · {ciclo}</p>
+            <h2 className="text-base font-black text-white tracking-tight">Plano de Desenvolvimento do Ciclo</h2>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 print-hide">
+          {pdiCreated ? (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-900/30 text-green-300 border border-green-700/30">
+              <CheckCircle size={12} /> PDI Gerado
+            </span>
+          ) : (
+            <button
+              onClick={onCreatePDI}
+              disabled={pdiCreating}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-60"
+              style={{ background: 'linear-gradient(135deg, rgba(56,189,248,0.2), rgba(45,212,191,0.15))', border: '1px solid rgba(56,189,248,0.35)', color: '#38BDF8' }}
+            >
+              {pdiCreating ? (
+                <div className="w-3 h-3 border border-sky-400 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <BookOpen size={12} />
+              )}
+              {pdiCreating ? 'Gerando...' : 'Gerar PDI'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="p-6">
+        {!hasContent ? (
+          <div className="text-center py-8">
+            <Target size={32} className="mx-auto mb-3 text-sky-800" />
+            <p className="text-sm text-slate-500 mb-1">Plano de desenvolvimento não preenchido</p>
+            <p className="text-xs text-slate-600">Clique em "Editar Feedback" para adicionar o plano de desenvolvimento do ciclo</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Grid: Objetivo + Ação */}
+            <div className="grid md:grid-cols-2 gap-4">
+              {objetivoDesenvolvimento && (
+                <div className="rounded-xl p-4" style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.18)' }}>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ background: 'rgba(56,189,248,0.2)' }}>
+                      <Target size={11} className="text-sky-400" />
+                    </div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-sky-400">Objetivo</p>
+                  </div>
+                  <p className="text-sm text-slate-200 leading-relaxed">{objetivoDesenvolvimento}</p>
+                </div>
+              )}
+              {acaoDesenvolvimento && (
+                <div className="rounded-xl p-4" style={{ background: 'rgba(45,212,191,0.06)', border: '1px solid rgba(45,212,191,0.18)' }}>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ background: 'rgba(45,212,191,0.2)' }}>
+                      <ArrowRight size={11} className="text-teal-400" />
+                    </div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-teal-400">Ação Esperada</p>
+                  </div>
+                  <p className="text-sm text-slate-200 leading-relaxed">{acaoDesenvolvimento}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Resultado Esperado */}
+            {resultadoEsperado && (
+              <div className="rounded-xl p-4" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.18)' }}>
+                <div className="flex items-center gap-2 mb-2.5">
+                  <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ background: 'rgba(34,197,94,0.2)' }}>
+                    <TrendingUp size={11} className="text-green-400" />
+                  </div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-green-400">Resultado Esperado</p>
+                </div>
+                <p className="text-sm text-slate-200 leading-relaxed">{resultadoEsperado}</p>
+              </div>
+            )}
+
+            {/* Mensagem Evolutiva — destaque emocional */}
+            {mensagemEvolutiva && (
+              <div className="rounded-xl p-5 relative overflow-hidden"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(167,139,250,0.1) 0%, rgba(56,189,248,0.06) 100%)',
+                  border: '1px solid rgba(167,139,250,0.3)',
+                }}>
+                <div className="absolute top-0 right-0 w-32 h-32 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(167,139,250,0.08) 0%, transparent 70%)' }} />
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: 'rgba(167,139,250,0.2)', border: '1px solid rgba(167,139,250,0.3)' }}>
+                    <Heart size={12} className="text-purple-400" />
+                  </div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Mensagem Evolutiva</p>
+                </div>
+                <Quote size={20} className="text-purple-700/40 mb-2" />
+                <p className="text-sm text-slate-100 leading-relaxed font-medium italic pl-2">{mensagemEvolutiva}</p>
+                <p className="text-[10px] text-slate-600 mt-3 text-right">— {analistaNome} · {ciclo}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ── MOTIVATIONAL CLOSING BLOCK ──
