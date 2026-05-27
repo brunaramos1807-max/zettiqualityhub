@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
 import { useParams } from 'next/navigation';
-import { AlertTriangle, Printer, Star, ChevronDown, ChevronUp, Quote, Maximize2, Minimize2, Edit3, Share2, CheckCircle, X, Save, Award, Users, Zap } from 'lucide-react';
+import { AlertTriangle, Printer, Star, ChevronDown, ChevronUp, Quote, Maximize2, Minimize2, Edit3, Share2, CheckCircle, X, Save, Award, Users, Zap, TrendingUp, Heart } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis
@@ -41,6 +41,43 @@ function extract(snapshot: any, ...paths: string[]): any {
   return null;
 }
 
+// Sort ciclos like "01/2026", "02/2026" etc
+function sortByCiclo(a: any, b: any): number {
+  const parseC = (c: string) => {
+    if (!c) return 0;
+    const m = c.match(/^(\d{2})\/(\d{4})$/);
+    if (m) return parseInt(m[2]) * 100 + parseInt(m[1]);
+    return 0;
+  };
+  return parseC(a.ciclo) - parseC(b.ciclo);
+}
+
+// Generate motivational closing message based on scores
+function getMotivationalMessage(qa: number | null, iepc: number | null, ncs: number, elogios: number): { title: string; message: string; level: 'high' | 'mid' | 'low' } {
+  const score = qa ?? iepc ?? 0;
+  if (score >= 90) {
+    return {
+      level: 'high',
+      title: 'Excelência Operacional Reconhecida',
+      message: elogios > 0
+        ? `Seu ciclo demonstrou alto nível de consistência técnica e excelência relacional${elogios > 0 ? `, com ${elogios} elogio${elogios > 1 ? 's' : ''} registrado${elogios > 1 ? 's' : ''}` : ''}. Continue evoluindo nessa trajetória, pois sua atuação gera impacto positivo direto na experiência do cliente e nos resultados da operação.`
+        : 'Seu ciclo demonstrou alto nível de consistência técnica e excelência relacional. Continue evoluindo nessa trajetória, pois sua atuação gera impacto positivo direto na experiência do cliente e nos resultados da operação.',
+    };
+  }
+  if (score >= 80) {
+    return {
+      level: 'mid',
+      title: 'Evolução Consistente',
+      message: `Você apresentou evolução consistente ao longo do ciclo e possui potencial para elevar ainda mais sua performance${ncs > 0 ? `. O acompanhamento das ${ncs} não conformidade${ncs > 1 ? 's' : ''} identificada${ncs > 1 ? 's' : ''} será fundamental` : ''}. O refinamento técnico e o fortalecimento da condução operacional são os próximos passos para alcançar a excelência.`,
+    };
+  }
+  return {
+    level: 'low',
+    title: 'Oportunidade de Crescimento',
+    message: `Este ciclo evidencia oportunidades importantes de evolução${ncs > 0 ? `, com ${ncs} ponto${ncs > 1 ? 's' : ''} de atenção registrado${ncs > 1 ? 's' : ''}` : ''}. O foco contínuo na comunicação, rastreabilidade e aprofundamento técnico será fundamental para elevar sua consistência operacional e alcançar novos patamares de desempenho.`,
+  };
+}
+
 export default function FeedbackViewPage() {
   const params = useParams();
   const supabase = createClient();
@@ -55,13 +92,13 @@ export default function FeedbackViewPage() {
   const [editFields, setEditFields] = useState<any>({});
   const [saving, setSaving] = useState(false);
   const [publicToken, setPublicToken] = useState<string | null>(null);
+  const [publicEnabled, setPublicEnabled] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const fetchData = useCallback(async () => {
     const id = params?.id as string;
     if (!id) return;
 
-    // 1. Load the feedback record + analista join
     const { data: rawData } = await supabase
       .from('feedbacks')
       .select('*, analistas(*)')
@@ -72,8 +109,8 @@ export default function FeedbackViewPage() {
 
     setRawFeedback(rawData);
     setPublicToken(rawData.public_token || null);
+    setPublicEnabled(rawData.public_enabled || false);
 
-    // 2. Normalize snapshot — Lovable sends the full payload as snapshot_json_completo
     const snap = Array.isArray(rawData.snapshot_json_completo)
       ? rawData.snapshot_json_completo[0]
       : (rawData.snapshot_json_completo || {});
@@ -81,7 +118,6 @@ export default function FeedbackViewPage() {
     setSnapshot(snap);
     setAnalistaInfo(rawData.analistas);
 
-    // 3. Set edit fields from snapshot + direct columns
     setEditFields({
       fechamento_ciclo: extract(snap, 'feedback_blocks.fechamento_ciclo', 'fechamento') || rawData.resumo_ciclo || '',
       evolucao_tecnica: extract(snap, 'feedback_blocks.evolucao_tecnica', 'evolucao_tecnica') || rawData.evolucao_tecnica || '',
@@ -89,32 +125,30 @@ export default function FeedbackViewPage() {
       atencao_evolutiva: extract(snap, 'feedback_blocks.atencao_evolutiva', 'atencao_evolutiva') || '',
     });
 
-    // 4. Load real historical data from feedback_historico table by analista_id
     if (rawData.analista_id) {
+      // Load from feedback_historico
       const { data: histRows } = await supabase
         .from('feedback_historico')
         .select('ciclo, qa_score, iepc_score, aderencia_score')
-        .eq('analista_id', rawData.analista_id)
-        .order('created_at', { ascending: true });
+        .eq('analista_id', rawData.analista_id);
 
-      // Also load from feedbacks table (all past feedbacks for this analista)
+      // Load from feedbacks table (all past feedbacks for this analista)
       const { data: pastFeedbacks } = await supabase
         .from('feedbacks')
         .select('ciclo, qa_score, iepc_score, aderencia_score, created_at')
-        .eq('analista_id', rawData.analista_id)
-        .order('created_at', { ascending: true });
+        .eq('analista_id', rawData.analista_id);
 
       // Merge: prefer feedback_historico, supplement with feedbacks table
       const histMap = new Map<string, any>();
       (pastFeedbacks || []).forEach((f: any) => {
-        histMap.set(f.ciclo, { ciclo: f.ciclo, qa: Number(f.qa_score) || 0, iepc: Number(f.iepc_score) || 0 });
+        if (f.ciclo) histMap.set(f.ciclo, { ciclo: f.ciclo, qa: Number(f.qa_score) || 0, iepc: Number(f.iepc_score) || 0 });
       });
       (histRows || []).forEach((h: any) => {
-        histMap.set(h.ciclo, { ciclo: h.ciclo, qa: Number(h.qa_score) || 0, iepc: Number(h.iepc_score) || 0 });
+        if (h.ciclo) histMap.set(h.ciclo, { ciclo: h.ciclo, qa: Number(h.qa_score) || 0, iepc: Number(h.iepc_score) || 0 });
       });
-      setHistorico(Array.from(histMap.values()));
+      const sorted = Array.from(histMap.values()).sort(sortByCiclo);
+      setHistorico(sorted);
 
-      // 5. Load elogios from elogios table by analista name + ciclo
       const analistaNome = rawData.analistas?.nome || rawData.analistas?.nome_completo;
       if (analistaNome) {
         const { data: elogiosRows } = await supabase
@@ -134,8 +168,15 @@ export default function FeedbackViewPage() {
 
   const handleGeneratePublicLink = async () => {
     const token = crypto.randomUUID();
-    await supabase.from('feedbacks').update({ public_token: token }).eq('id', params?.id as string);
+    await supabase.from('feedbacks').update({ public_token: token, public_enabled: true }).eq('id', params?.id as string);
     setPublicToken(token);
+    setPublicEnabled(true);
+  };
+
+  const handleTogglePublicLink = async () => {
+    const newEnabled = !publicEnabled;
+    await supabase.from('feedbacks').update({ public_enabled: newEnabled }).eq('id', params?.id as string);
+    setPublicEnabled(newEnabled);
   };
 
   const handleCopyLink = () => {
@@ -236,8 +277,14 @@ export default function FeedbackViewPage() {
 
   // NCs: merge snapshot NCs
   const allNCs = nao_conformidades.length > 0 ? nao_conformidades : [];
-
   const isHighScore = Number(qaScore) >= 90;
+
+  const motivational = getMotivationalMessage(
+    qaScore != null ? Number(qaScore) : null,
+    iepcScore != null ? Number(iepcScore) : null,
+    allNCs.length,
+    allElogios.length
+  );
 
   const content = (
     <div className="min-h-screen text-slate-200 pb-12 bg-[#07101F]">
@@ -251,7 +298,8 @@ export default function FeedbackViewPage() {
         }
       `}</style>
 
-      <div className="px-5 py-4 max-w-screen-xl mx-auto space-y-4">
+      {/* Widescreen container */}
+      <div className="px-4 py-4 w-full max-w-[1600px] mx-auto space-y-4">
 
         {/* ── TOP ACTION BAR ── */}
         <div className="print-hide flex items-center justify-between gap-3 flex-wrap">
@@ -265,9 +313,17 @@ export default function FeedbackViewPage() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {publicToken ? (
-              <button onClick={handleCopyLink} className="print-hide flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-teal-900/30 text-teal-300 border border-teal-700/30 hover:bg-teal-800/40 transition-all">
-                <Share2 size={12} /> {copied ? 'Copiado!' : 'Copiar Link Analista'}
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={handleTogglePublicLink}
+                  className={`print-hide flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${publicEnabled ? 'bg-green-900/30 text-green-300 border-green-700/30 hover:bg-green-800/40' : 'bg-slate-800 text-slate-400 border-slate-700/50 hover:bg-slate-700'}`}
+                >
+                  {publicEnabled ? '🔓 Link Ativo' : '🔒 Link Inativo'}
+                </button>
+                <button onClick={handleCopyLink} className="print-hide flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-teal-900/30 text-teal-300 border border-teal-700/30 hover:bg-teal-800/40 transition-all">
+                  <Share2 size={12} /> {copied ? 'Copiado!' : 'Copiar Link'}
+                </button>
+              </div>
             ) : (
               <button onClick={handleGeneratePublicLink} className="print-hide flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700/50 hover:bg-slate-700 transition-all">
                 <Share2 size={12} /> Gerar Link Analista
@@ -286,7 +342,7 @@ export default function FeedbackViewPage() {
           </div>
         </div>
 
-        {/* ── HERO EXECUTIVO — LARGER, MORE IMPACT ── */}
+        {/* ── HERO EXECUTIVO ── */}
         <div className="print-card relative overflow-hidden rounded-2xl border border-[#1E3050] shadow-2xl"
           style={{ background: 'linear-gradient(135deg, #0F1B31 0%, #0B1426 60%, #071020 100%)' }}>
           <div className="absolute top-0 right-0 w-96 h-96 bg-sky-500/5 blur-[100px] rounded-full pointer-events-none" />
@@ -329,12 +385,6 @@ export default function FeedbackViewPage() {
                       <span className="flex items-center gap-1">
                         <span className="text-slate-600">Empresa</span>
                         <strong className="text-slate-200">{analistaInfo.tempo_empresa}</strong>
-                      </span>
-                    )}
-                    {(analistaInfo?.empresa || analista?.empresa) && (
-                      <span className="flex items-center gap-1">
-                        <span className="text-slate-600">Org.</span>
-                        <strong className="text-slate-200">{analistaInfo?.empresa || analista?.empresa}</strong>
                       </span>
                     )}
                   </div>
@@ -483,28 +533,62 @@ export default function FeedbackViewPage() {
           </div>
         )}
 
-        {/* ── NÃO CONFORMIDADES ── */}
+        {/* ── NÃO CONFORMIDADES — AMBER VISUAL DESTACADO ── */}
         {allNCs.length > 0 && (
-          <div className="print-card rounded-xl border border-amber-900/30 bg-[#0F1B31] p-4">
-            <h3 className="text-[11px] font-semibold text-amber-400 uppercase tracking-widest mb-3">
-              Pontos de Atenção <span className="text-slate-600 font-normal">({allNCs.length})</span>
-            </h3>
-            <div className="grid md:grid-cols-2 gap-2">
+          <div className="print-card rounded-xl border-2 border-amber-700/50 bg-[#0F1B31] overflow-hidden"
+            style={{ boxShadow: '0 0 24px rgba(245,158,11,0.08)' }}>
+            {/* Header */}
+            <div className="px-5 py-3 border-b border-amber-700/30 flex items-center justify-between"
+              style={{ background: 'linear-gradient(90deg, rgba(245,158,11,0.12) 0%, rgba(245,158,11,0.04) 100%)' }}>
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center">
+                  <AlertTriangle size={16} className="text-amber-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-amber-300 uppercase tracking-wider">Não Conformidades</h3>
+                  <p className="text-[10px] text-amber-500/70">{allNCs.length} ponto{allNCs.length > 1 ? 's' : ''} de atenção registrado{allNCs.length > 1 ? 's' : ''}</p>
+                </div>
+              </div>
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                {allNCs.length} NC{allNCs.length > 1 ? 's' : ''}
+              </span>
+            </div>
+            {/* Grid */}
+            <div className="p-4 grid md:grid-cols-2 xl:grid-cols-3 gap-3">
               {allNCs.map((nc: any, i: number) => (
-                <div key={i} className="bg-amber-900/10 border border-amber-700/20 p-3 rounded-lg hover:border-amber-600/30 transition-all">
-                  <div className="flex items-center gap-2 mb-1">
-                    <AlertTriangle size={12} className="text-amber-400 flex-shrink-0" />
-                    <span className="text-xs font-semibold text-amber-300">{nc.tipo || nc.tipo_nc}</span>
-                    <span className="text-[10px] text-slate-600 font-mono ml-auto">{nc.protocolo || nc.protocolo_referencia}</span>
+                <div key={i} className="rounded-lg border border-amber-700/30 bg-amber-900/10 p-3.5 hover:border-amber-600/50 hover:bg-amber-900/15 transition-all group">
+                  {/* Top row: type + protocol */}
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <div className="w-5 h-5 rounded bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                        <AlertTriangle size={11} className="text-amber-400" />
+                      </div>
+                      <span className="text-xs font-bold text-amber-300 truncate">{nc.tipo || nc.tipo_nc || 'NC'}</span>
+                    </div>
+                    {(nc.protocolo || nc.protocolo_referencia) && (
+                      <span className="text-[10px] text-amber-600/80 font-mono bg-amber-900/30 px-1.5 py-0.5 rounded border border-amber-700/20 flex-shrink-0">
+                        {nc.protocolo || nc.protocolo_referencia}
+                      </span>
+                    )}
                   </div>
-                  <p className="text-xs text-slate-400 leading-relaxed">{nc.descricao}</p>
+                  {/* Description */}
+                  {nc.descricao && (
+                    <p className="text-xs text-slate-300 leading-relaxed">{nc.descricao}</p>
+                  )}
+                  {/* Points deducted if available */}
+                  {nc.pontos_deduzidos != null && (
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <span className="text-[10px] text-amber-500/70">Dedução:</span>
+                      <span className="text-[10px] font-bold text-amber-400">{nc.pontos_deduzidos} pts</span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* ── FECHAMENTO ── */}
+        {/* ── FECHAMENTO QUOTE ── */}
         {fechamentoCiclo && (
           <div className="print-card rounded-xl border border-[#1E3050] bg-[#0F1B31] p-5 text-center">
             <Quote size={24} className="text-sky-400/20 mx-auto mb-3" />
@@ -513,6 +597,18 @@ export default function FeedbackViewPage() {
             </p>
           </div>
         )}
+
+        {/* ── BLOCO MOTIVACIONAL DE ENCERRAMENTO ── */}
+        <MotivationalClosingBlock
+          motivational={motivational}
+          analistaNome={analistaNome}
+          ciclo={analistaCiclo}
+          qaScore={qaScore}
+          iepcScore={iepcScore}
+          aderenciaScore={aderenciaScore}
+          ncsCount={allNCs.length}
+          elogiosCount={allElogios.length}
+        />
       </div>
 
       {/* ── EDIT MODAL ── */}
@@ -564,6 +660,106 @@ export default function FeedbackViewPage() {
   return <EnterpriseLayout>{content}</EnterpriseLayout>;
 }
 
+// ── MOTIVATIONAL CLOSING BLOCK ──
+function MotivationalClosingBlock({ motivational, analistaNome, ciclo, qaScore, iepcScore, aderenciaScore, ncsCount, elogiosCount }: any) {
+  const levelColors = {
+    high: { border: 'border-sky-500/40', glow: 'rgba(56,189,248,0.08)', accent: '#38BDF8', badge: 'bg-sky-900/40 text-sky-300 border-sky-700/40', icon: '⭐' },
+    mid: { border: 'border-teal-500/40', glow: 'rgba(45,212,191,0.08)', accent: '#2DD4BF', badge: 'bg-teal-900/40 text-teal-300 border-teal-700/40', icon: '📈' },
+    low: { border: 'border-purple-500/40', glow: 'rgba(167,139,250,0.08)', accent: '#A78BFA', badge: 'bg-purple-900/40 text-purple-300 border-purple-700/40', icon: '🌱' },
+  };
+  const lc = levelColors[motivational.level as keyof typeof levelColors];
+
+  return (
+    <div
+      className={`print-card relative overflow-hidden rounded-2xl border-2 ${lc.border} w-full`}
+      style={{
+        background: `linear-gradient(135deg, #0F1B31 0%, #0B1426 60%, #071020 100%)`,
+        boxShadow: `0 0 40px ${lc.glow}, 0 4px 24px rgba(0,0,0,0.4)`,
+      }}
+    >
+      {/* Ambient glow */}
+      <div className="absolute top-0 right-0 w-80 h-80 rounded-full pointer-events-none" style={{ background: `radial-gradient(circle, ${lc.glow} 0%, transparent 70%)` }} />
+      <div className="absolute bottom-0 left-0 w-60 h-60 rounded-full pointer-events-none" style={{ background: `radial-gradient(circle, ${lc.glow} 0%, transparent 70%)` }} />
+
+      <div className="relative z-10 px-8 py-8">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl border"
+              style={{ background: `${lc.accent}15`, borderColor: `${lc.accent}30` }}>
+              {lc.icon}
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-widest font-semibold mb-0.5" style={{ color: `${lc.accent}80` }}>
+                Encerramento do Ciclo · {ciclo}
+              </p>
+              <h2 className="text-xl font-black text-white leading-tight">{motivational.title}</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Mensagem de desenvolvimento e evolução profissional</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {qaScore != null && (
+              <span className={`px-3 py-1 rounded-full text-xs font-bold border ${lc.badge}`}>
+                QA {qaScore}
+              </span>
+            )}
+            {iepcScore != null && (
+              <span className="px-3 py-1 rounded-full text-xs font-bold border bg-teal-900/40 text-teal-300 border-teal-700/40">
+                IEPC {iepcScore}%
+              </span>
+            )}
+            {aderenciaScore != null && (
+              <span className="px-3 py-1 rounded-full text-xs font-bold border bg-purple-900/40 text-purple-300 border-purple-700/40">
+                Aderência {aderenciaScore}%
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div className="h-px w-full mb-6" style={{ background: `linear-gradient(90deg, transparent, ${lc.accent}30, transparent)` }} />
+
+        {/* Message */}
+        <div className="relative">
+          <Quote size={32} className="absolute -top-2 -left-1 opacity-10" style={{ color: lc.accent }} />
+          <p className="text-base text-slate-200 leading-relaxed pl-6 font-medium">
+            {motivational.message}
+          </p>
+        </div>
+
+        {/* Stats row */}
+        <div className="mt-6 flex flex-wrap gap-4">
+          {ncsCount > 0 && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-900/20 border border-amber-700/20">
+              <AlertTriangle size={13} className="text-amber-400" />
+              <span className="text-xs text-amber-300 font-medium">{ncsCount} NC{ncsCount > 1 ? 's' : ''} para acompanhamento</span>
+            </div>
+          )}
+          {elogiosCount > 0 && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-teal-900/20 border border-teal-700/20">
+              <Star size={13} className="text-teal-400" />
+              <span className="text-xs text-teal-300 font-medium">{elogiosCount} elogio{elogiosCount > 1 ? 's' : ''} registrado{elogiosCount > 1 ? 's' : ''}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/60 border border-slate-700/30">
+            <TrendingUp size={13} style={{ color: lc.accent }} />
+            <span className="text-xs text-slate-400 font-medium">Próximo ciclo: foco em evolução contínua</span>
+          </div>
+        </div>
+
+        {/* Footer signature */}
+        <div className="mt-6 pt-4 border-t border-slate-700/30 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Heart size={12} className="text-slate-600" />
+            <span className="text-[10px] text-slate-600">Documento oficial de desenvolvimento — QualiVisão</span>
+          </div>
+          <span className="text-[10px] text-slate-700 font-mono">{analistaNome} · {ciclo}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── SUB-COMPONENTS ──
 
 function KPICard({ label, value, icon, color, star, sub }: any) {
@@ -604,17 +800,39 @@ function pillarBarColor(pct: number) {
   return '#EF4444';
 }
 
+// Custom label for radar chart that shows percentage directly on the drawing
+function CustomRadarLabel(props: any) {
+  const { x, y, payload } = props;
+  if (!payload) return null;
+  const nota = payload.nota ?? 0;
+  const maximo = payload.maximo ?? 100;
+  const pct = Math.round((nota / maximo) * 100);
+  const color = pillarBarColor(pct);
+  return (
+    <g>
+      <text x={x} y={y - 2} textAnchor="middle" fill="#94A3B8" fontSize={7} fontWeight="500">
+        {(payload.subject || '').length > 12 ? (payload.subject || '').slice(0, 12) + '…' : (payload.subject || '')}
+      </text>
+      <text x={x} y={y + 9} textAnchor="middle" fill={color} fontSize={8} fontWeight="700">
+        {pct}%
+      </text>
+    </g>
+  );
+}
+
 function RadarChartCard({ title, subtitle, pilares, color, totalScore }: any) {
   const list = pilares || [];
   const chartData = list.map((p: any) => {
     const nota = Number(p.nota ?? p.pontuacao ?? p.score) || 0;
     const maximo = Number(p.maximo ?? p.max ?? 100) || 100;
+    const pct = Math.round((nota / maximo) * 100);
     return {
-      subject: (p.nome || p.name || '').length > 14 ? (p.nome || p.name || '').slice(0, 14) + '…' : (p.nome || p.name || ''),
+      subject: (p.nome || p.name || '').length > 12 ? (p.nome || p.name || '').slice(0, 12) + '…' : (p.nome || p.name || ''),
       A: nota,
       fullMark: maximo,
       nota,
       maximo,
+      pct,
     };
   });
 
@@ -629,7 +847,6 @@ function RadarChartCard({ title, subtitle, pilares, color, totalScore }: any) {
 
   return (
     <div className="rounded-xl border border-[#1E3050] bg-[#0F1B31] p-4">
-      {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div>
           <p className="text-[9px] uppercase tracking-widest text-slate-500 mb-0.5">{title}</p>
@@ -647,7 +864,6 @@ function RadarChartCard({ title, subtitle, pilares, color, totalScore }: any) {
         </div>
       </div>
 
-      {/* Body: pillar list LEFT + radar RIGHT */}
       <div className="flex gap-4 items-start">
         {/* Pillar list */}
         <div className="flex-1 space-y-2 min-w-0">
@@ -681,13 +897,16 @@ function RadarChartCard({ title, subtitle, pilares, color, totalScore }: any) {
           )}
         </div>
 
-        {/* Radar chart */}
+        {/* Radar chart with inline % labels */}
         {chartData.length > 0 && (
-          <div className="flex-shrink-0 w-[160px]">
-            <ResponsiveContainer width="100%" height={160}>
-              <RadarChart data={chartData} margin={{ top: 8, right: 16, bottom: 8, left: 16 }}>
+          <div className="flex-shrink-0 w-[180px]">
+            <ResponsiveContainer width="100%" height={180}>
+              <RadarChart data={chartData} margin={{ top: 16, right: 20, bottom: 16, left: 20 }}>
                 <PolarGrid stroke="#1E3050" />
-                <PolarAngleAxis dataKey="subject" tick={{ fill: '#475569', fontSize: 7 }} />
+                <PolarAngleAxis
+                  dataKey="subject"
+                  tick={(props: any) => <CustomRadarLabel {...props} payload={chartData[props.index]} />}
+                />
                 <PolarRadiusAxis tick={false} axisLine={false} />
                 <Radar dataKey="A" stroke={color} fill={color} fillOpacity={0.2} strokeWidth={2} />
                 <RechartsTooltip content={<CustomRadarTooltip />} />
@@ -701,18 +920,23 @@ function RadarChartCard({ title, subtitle, pilares, color, totalScore }: any) {
 }
 
 function HistoricoChart({ historico }: { historico: any[] }) {
-  const data = (historico || []).slice(-10);
+  const data = (historico || []).slice(-12);
   return (
     <div className="rounded-xl border border-[#1E3050] bg-[#0F1B31] p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">Evolução Histórica</h3>
+        <div>
+          <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">Evolução Histórica</h3>
+          {data.length > 0 && (
+            <p className="text-[10px] text-slate-600 mt-0.5">{data.length} ciclo{data.length > 1 ? 's' : ''} registrado{data.length > 1 ? 's' : ''}</p>
+          )}
+        </div>
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-1.5 text-[10px] text-slate-500"><span className="w-3 h-0.5 bg-sky-400 inline-block rounded" /> QA</span>
           <span className="flex items-center gap-1.5 text-[10px] text-slate-500"><span className="w-3 h-0.5 bg-teal-400 inline-block rounded" /> IEPC</span>
         </div>
       </div>
       {data.length > 0 ? (
-        <ResponsiveContainer width="100%" height={160}>
+        <ResponsiveContainer width="100%" height={180}>
           <LineChart data={data} margin={{ top: 5, right: 10, bottom: 5, left: -20 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#1E3050" />
             <XAxis dataKey="ciclo" stroke="#475569" fontSize={8} tick={{ fill: '#475569' }} />
@@ -725,7 +949,7 @@ function HistoricoChart({ historico }: { historico: any[] }) {
           </LineChart>
         </ResponsiveContainer>
       ) : (
-        <div className="flex items-center justify-center h-[160px] text-slate-600 text-xs">Sem histórico disponível</div>
+        <div className="flex items-center justify-center h-[180px] text-slate-600 text-xs">Sem histórico disponível</div>
       )}
     </div>
   );
