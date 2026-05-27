@@ -548,9 +548,10 @@ interface AnalistaFormProps {
   onSave: (data: AnalistaFormState) => Promise<void>;
   onClose: () => void;
   saving: boolean;
+  saveError?: string | null;
 }
 
-function AnalistaFormModal({ initial, onSave, onClose, saving }: AnalistaFormProps) {
+function AnalistaFormModal({ initial, onSave, onClose, saving, saveError }: AnalistaFormProps) {
   const [form, setForm] = useState<AnalistaFormState>(() => {
     if (!initial) return EMPTY_FORM;
     return {
@@ -700,6 +701,11 @@ function AnalistaFormModal({ initial, onSave, onClose, saving }: AnalistaFormPro
               {saving ? 'Salvando...' : initial ? 'Salvar Alterações' : 'Cadastrar Analista'}
             </button>
           </div>
+          {saveError && (
+            <div className="mt-2 p-3 rounded-lg text-xs font-medium" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>
+              ⚠️ {saveError}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -719,6 +725,7 @@ function AnalistasContent() {
   const [analistas, setAnalistas] = useState<AnalistaRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEquipe, setFilterEquipe] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -769,6 +776,7 @@ function AnalistasContent() {
 
   const handleSave = async (form: AnalistaFormState) => {
     setSaving(true);
+    setSaveError(null);
     const tempoEmpresa = form.data_admissao ? calcTempoEmpresa(form.data_admissao) : { texto: '', meses: 0 };
     const payload: Omit<AnalistaRecord, 'id' | 'created_at' | 'updated_at'> = {
       nome: form.nome.trim(),
@@ -797,6 +805,8 @@ function AnalistasContent() {
       setShowForm(false);
       setEditingAnalista(null);
       await reload();
+    } else {
+      setSaveError(result.error || 'Erro ao salvar analista. Tente novamente.');
     }
   };
 
@@ -1197,8 +1207,9 @@ function AnalistasContent() {
         <AnalistaFormModal
           initial={editingAnalista}
           onSave={handleSave}
-          onClose={() => { setShowForm(false); setEditingAnalista(null); }}
+          onClose={() => { setShowForm(false); setEditingAnalista(null); setSaveError(null); }}
           saving={saving}
+          saveError={saveError}
         />
       )}
 

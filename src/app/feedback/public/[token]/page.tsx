@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
   AlertTriangle, Printer, Star, ChevronDown, ChevronUp,
-  Quote, Award, Users, CheckCircle, TrendingUp, Heart, Zap
+  Quote, Award, Users, CheckCircle, TrendingUp, Heart, Zap, Clock, Briefcase
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -38,6 +38,23 @@ function sortByCiclo(a: any, b: any): number {
     return 0;
   };
   return parseC(a.ciclo) - parseC(b.ciclo);
+}
+
+function calcTempoEmpresaStr(dataAdmissao: string | null | undefined): string {
+  if (!dataAdmissao) return '';
+  try {
+    const admissao = new Date(dataAdmissao + 'T00:00:00');
+    const now = new Date();
+    let anos = now.getFullYear() - admissao.getFullYear();
+    let meses = now.getMonth() - admissao.getMonth();
+    if (meses < 0) { anos--; meses += 12; }
+    if (anos < 0) return '';
+    if (anos === 0 && meses === 0) return 'Menos de 1 mês';
+    const partes: string[] = [];
+    if (anos > 0) partes.push(`${anos} ano${anos !== 1 ? 's' : ''}`);
+    if (meses > 0) partes.push(`${meses} mês${meses !== 1 ? 'es' : ''}`);
+    return partes.join(' e ');
+  } catch { return ''; }
 }
 
 function getMotivationalMessage(qa: number | null, iepc: number | null, ncs: number, elogios: number): { title: string; message: string; level: 'high' | 'mid' | 'low' } {
@@ -83,6 +100,7 @@ export default function PublicFeedbackPage() {
 
   useEffect(() => {
     (async () => {
+      // Fetch feedback with analista and user_profiles joined
       const { data: rawData } = await supabase
         .from('feedbacks')
         .select('*, analistas(*)')
@@ -94,6 +112,22 @@ export default function PublicFeedbackPage() {
         setNotFound(true);
         setLoading(false);
         return;
+      }
+
+      // Also try to fetch user_profiles for richer data
+      let userProfile: any = null;
+      if (rawData.analistas?.email) {
+        const { data: up } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('email', rawData.analistas.email)
+          .maybeSingle();
+        userProfile = up;
+      }
+
+      // Merge user_profile data into rawData for hero display
+      if (userProfile) {
+        rawData._userProfile = userProfile;
       }
 
       setRawFeedback(rawData);
@@ -161,7 +195,53 @@ export default function PublicFeedbackPage() {
   const qaScore = scores?.qa ?? rawFeedback?.qa_score ?? null;
   const iepcScore = scores?.iepc ?? rawFeedback?.iepc_score ?? null;
   const aderenciaScore = scores?.aderencia ?? rawFeedback?.aderencia_score ?? null;
-  const analistaNome = analista?.nome || rawFeedback?.analistas?.nome || rawFeedback?.analistas?.nome_completo || '—';
+
+  // Hero data — merge from multiple sources with priority: snapshot > analistas table > user_profiles
+  const analistaNome =
+    analista?.nome ||
+    rawFeedback?.analistas?.nome_completo ||
+    rawFeedback?.analistas?.nome ||
+    rawFeedback?._userProfile?.nome ||
+    '—';
+
+  const analistaCargo =
+    analista?.cargo ||
+    rawFeedback?.analistas?.cargo_operacional ||
+    rawFeedback?._userProfile?.cargo_nome ||
+    'Analista de Qualidade';
+
+  const analistaSquad =
+    analista?.equipe ||
+    analista?.squad ||
+    rawFeedback?.analistas?.squad ||
+    rawFeedback?.analistas?.equipe ||
+    rawFeedback?._userProfile?.squad ||
+    '';
+
+  const analistaCoordenador =
+    analista?.coordenador ||
+    rawFeedback?.analistas?.coordenador ||
+    rawFeedback?._userProfile?.coordenador ||
+    '';
+
+  const analistaFoto =
+    rawFeedback?.analistas?.foto_url ||
+    rawFeedback?._userProfile?.avatar_url ||
+    '/assets/images/no_image.png';
+
+  // Tempo de empresa — calculate automatically from data_admissao
+  const dataAdmissao =
+    rawFeedback?.analistas?.data_admissao ||
+    rawFeedback?._userProfile?.data_admissao ||
+    analista?.data_admissao;
+
+  const tempoEmpresaCalc = calcTempoEmpresaStr(dataAdmissao);
+  const tempoEmpresa =
+    tempoEmpresaCalc ||
+    rawFeedback?.analistas?.tempo_empresa_calculado ||
+    rawFeedback?.analistas?.tempo_empresa ||
+    '';
+
   const ciclo = analista?.ciclo || rawFeedback?.ciclo || '—';
 
   const motivational = getMotivationalMessage(
@@ -214,26 +294,46 @@ export default function PublicFeedbackPage() {
           </span>
         </div>
 
-        {/* Hero */}
-        <div className="print-card relative overflow-hidden rounded-xl border border-[#1E3050] bg-[#0F1B31] px-5 py-4 shadow-lg">
+        {/* Hero — full analyst data */}
+        <div className="print-card relative overflow-hidden rounded-xl border border-[#1E3050] bg-[#0F1B31] px-5 py-5 shadow-lg">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div className="flex items-center gap-4">
+              {/* Avatar */}
               <div className="w-20 h-20 rounded-xl bg-[#16233B] border border-[#1E3050] overflow-hidden flex-shrink-0">
                 <img
-                  src={rawFeedback?.analistas?.foto_url || '/assets/images/no_image.png'}
+                  src={analistaFoto}
                   className="w-full h-full object-cover"
                   alt={analistaNome}
+                  onError={(e) => { (e.target as HTMLImageElement).src = '/assets/images/no_image.png'; }}
                 />
               </div>
+              {/* Identity */}
               <div>
                 <h1 className="text-xl font-bold text-white">{analistaNome}</h1>
-                <p className="text-xs text-slate-400 mt-0.5">{rawFeedback?.analistas?.cargo_operacional || 'Analista de Qualidade'}</p>
-                <div className="flex flex-wrap gap-x-4 mt-1.5 text-xs text-slate-500">
-                  {analista?.equipe && <span>Equipe: <strong className="text-slate-300">{analista.equipe}</strong></span>}
-                  {rawFeedback?.analistas?.coordenador && <span>Coord: <strong className="text-slate-300">{rawFeedback.analistas.coordenador}</strong></span>}
+                <p className="text-sm text-slate-400 mt-0.5 font-medium">{analistaCargo}</p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-slate-500">
+                  {analistaSquad && (
+                    <span className="flex items-center gap-1">
+                      <Users size={10} className="text-sky-500" />
+                      Squad: <strong className="text-slate-300 ml-1">{analistaSquad}</strong>
+                    </span>
+                  )}
+                  {analistaCoordenador && (
+                    <span className="flex items-center gap-1">
+                      <Briefcase size={10} className="text-purple-400" />
+                      Coord: <strong className="text-slate-300 ml-1">{analistaCoordenador}</strong>
+                    </span>
+                  )}
+                  {tempoEmpresa && (
+                    <span className="flex items-center gap-1">
+                      <Clock size={10} className="text-teal-400" />
+                      Tempo de empresa: <strong className="text-slate-300 ml-1">{tempoEmpresa}</strong>
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
+            {/* Scores */}
             <div className="flex items-center gap-3 lg:border-l lg:border-[#1E3050] lg:pl-5">
               <div className="text-center px-4 py-2 rounded-lg bg-[#07101F]/70 border border-[#1E3050]">
                 <p className="text-[9px] uppercase tracking-widest text-slate-500 mb-0.5">QA Score</p>

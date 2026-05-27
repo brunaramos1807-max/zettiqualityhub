@@ -105,7 +105,7 @@ function calcTrend(values: number[]): 'up' | 'down' | 'stable' {
   return 'stable';
 }
 
-// ─── Operational Highlights Block ────────────────────────────────────────────
+// ─── Operational Highlights Block — REDESIGNED ────────────────────────────────
 interface OperationalHighlightsProps {
   lastPeriod: PeriodSummary | undefined;
   history: PeriodSummary[];
@@ -113,111 +113,289 @@ interface OperationalHighlightsProps {
 
 function OperationalHighlights({ lastPeriod, history }: OperationalHighlightsProps) {
   const [analysts, setAnalysts] = useState<any[]>([]);
+  const [ncRecords, setNcRecords] = useState<any[]>([]);
 
   useEffect(() => {
     if (!lastPeriod) return;
-    import('@/lib/services/dataService').then(({ fetchCycleScores }) => {
-      fetchCycleScores(lastPeriod.periodo).then((scores) => {
+    import('@/lib/services/dataService').then(({ fetchCycleScores, fetchNCRecords }) => {
+      Promise.all([
+        fetchCycleScores(lastPeriod.periodo),
+        fetchNCRecords(),
+      ]).then(([scores, ncs]) => {
         setAnalysts(scores || []);
+        setNcRecords((ncs || []).filter((n: any) => n.periodo === lastPeriod.periodo));
       }).catch(() => {});
     });
   }, [lastPeriod?.periodo]);
 
-  if (!lastPeriod || analysts.length === 0) return null;
+  if (!lastPeriod) return null;
 
-  const eligible = analysts.filter((a) => (a.nota_final_qa || 0) >= 80);
-  const qaAbove90 = eligible.filter((a) => (a.nota_final_qa || 0) >= 90);
-  const iepcAbove90 = eligible.filter((a) => (a.iepc_total || 0) >= 90);
+  const total = analysts.length;
+  const qaAbove90 = analysts.filter((a) => (a.nota_final_qa || 0) >= 90);
+  const iepcAbove90 = analysts.filter((a) => (a.iepc_total || 0) >= 90);
+  const qaAbove80 = analysts.filter((a) => (a.nota_final_qa || 0) >= 80);
+  const qaBelow70 = analysts.filter((a) => (a.nota_final_qa || 0) < 70);
 
-  // Find biggest QA evolution (compare with previous period)
-  const prevPeriod = history.length >= 2 ? history[history.length - 2] : null;
-  let biggestQAEvolution: { analista: string; delta: number } | null = null;
-  let biggestIEPCEvolution: { analista: string; delta: number } | null = null;
+  // Pilar QA com menor aderência
+  const QA_PILAR_NAMES: Record<string, string> = {
+    p1: 'Gestão do Fluxo e Rastreabilidade',
+    p2: 'Gestão da Tratativa da Demanda',
+    p3: 'Análise e Assertividade Técnica',
+    p4: 'Qualidade da Comunicação',
+    p5: 'Conduta Relacional',
+  };
+  const QA_PILAR_MAX: Record<string, number> = { p1: 22, p2: 34, p3: 18, p4: 14, p5: 12 };
+  const QA_PILAR_CODES: Record<string, string> = { p1: 'P1', p2: 'P2', p3: 'P3', p4: 'P4', p5: 'P5' };
 
-  if (prevPeriod) {
-    import('@/lib/services/dataService').then(({ fetchCycleScores }) => {
-      // This is async but we already have the data we need from current period
+  const IEPC_PILAR_NAMES: Record<string, string> = {
+    e1: 'Resolução Percebida',
+    e2: 'Compreensão e Segurança Percebida',
+    e3: 'Esforço Percebido pelo Cliente',
+    e4: 'Tempo e Fluidez',
+    e5: 'Experiência Relacional',
+  };
+  const IEPC_PILAR_MAX: Record<string, number> = { e1: 30, e2: 20, e3: 20, e4: 15, e5: 15 };
+  const IEPC_PILAR_CODES: Record<string, string> = { e1: 'E1', e2: 'E2', e3: 'E3', e4: 'E4', e5: 'E5' };
+
+  let worstQAPilar: { code: string; name: string; pct: number } | null = null;
+  let worstIEPCPilar: { code: string; name: string; pct: number } | null = null;
+
+  if (analysts.length > 0) {
+    const qaKeys = ['p1', 'p2', 'p3', 'p4', 'p5'];
+    const iepcKeys = ['e1', 'e2', 'e3', 'e4', 'e5'];
+
+    let minQAPct = Infinity;
+    qaKeys.forEach((k) => {
+      const avg = analysts.reduce((s, a) => s + (a[k] || 0), 0) / analysts.length;
+      const pct = Math.round((avg / QA_PILAR_MAX[k]) * 100);
+      if (pct < minQAPct) {
+        minQAPct = pct;
+        worstQAPilar = { code: QA_PILAR_CODES[k], name: QA_PILAR_NAMES[k], pct };
+      }
+    });
+
+    let minIEPCPct = Infinity;
+    iepcKeys.forEach((k) => {
+      const avg = analysts.reduce((s, a) => s + (a[k] || 0), 0) / analysts.length;
+      const pct = Math.round((avg / IEPC_PILAR_MAX[k]) * 100);
+      if (pct < minIEPCPct) {
+        minIEPCPct = pct;
+        worstIEPCPilar = { code: IEPC_PILAR_CODES[k], name: IEPC_PILAR_NAMES[k], pct };
+      }
     });
   }
 
-  const highlights = [
-    {
-      label: 'QA acima de 90',
-      count: qaAbove90.length,
-      color: '#10b981',
-      bg: 'rgba(16,185,129,0.1)',
-      border: 'rgba(16,185,129,0.25)',
-      icon: '🏆',
-      names: qaAbove90.slice(0, 3).map((a) => a.analista).join(', '),
-    },
-    {
-      label: 'IEPC acima de 90',
-      count: iepcAbove90.length,
-      color: '#06B6D4',
-      bg: 'rgba(6,182,212,0.1)',
-      border: 'rgba(6,182,212,0.25)',
-      icon: '⭐',
-      names: iepcAbove90.slice(0, 3).map((a) => a.analista).join(', '),
-    },
-    {
-      label: 'Analistas elegíveis (≥80)',
-      count: eligible.length,
-      color: '#F59E0B',
-      bg: 'rgba(245,158,11,0.1)',
-      border: 'rgba(245,158,11,0.25)',
-      icon: '📊',
-      names: `${eligible.length} de ${analysts.length} analistas`,
-    },
-    {
-      label: 'Excelência Operacional',
-      count: qaAbove90.length + iepcAbove90.length,
-      color: '#8B5CF6',
-      bg: 'rgba(139,92,246,0.1)',
-      border: 'rgba(139,92,246,0.25)',
-      icon: '🎯',
-      names: `${qaAbove90.length} em QA · ${iepcAbove90.length} em IEPC`,
-    },
-  ];
+  // NC mais recorrente
+  let mostFrequentNC: { code: string; desc: string; count: number } | null = null;
+  if (ncRecords.length > 0) {
+    const ncCount: Record<string, number> = {};
+    ncRecords.forEach((nc: any) => {
+      const raw = nc.tipo_nc || nc.tipo || '';
+      const upper = raw.toUpperCase().trim();
+      let code = raw.trim();
+      if (upper.includes('NC-1') || upper.includes('NC1') || upper.includes('POSTURA') || upper.includes('ÉTICA') || upper.includes('ETICA')) code = 'NC-1';
+      else if (upper.includes('NC-2') || upper.includes('NC2') || upper.includes('ACURAC') || upper.includes('TÉCNIC') || upper.includes('TECNIC')) code = 'NC-2';
+      else if (upper.includes('NC-3') || upper.includes('NC3') || upper.includes('REGISTRO') || upper.includes('RASTREAB')) code = 'NC-3';
+      else if (upper.includes('NC-4') || upper.includes('NC4') || upper.includes('FLUXO') || upper.includes('OPERAC')) code = 'NC-4';
+      else if (upper.includes('NC-5') || upper.includes('NC5') || upper.includes('SEGURANÇA') || upper.includes('SEGURANCA') || upper.includes('INFORMA')) code = 'NC-5';
+      ncCount[code] = (ncCount[code] || 0) + 1;
+    });
+    const NC_DESC: Record<string, string> = {
+      'NC-1': 'Postura e Ética',
+      'NC-2': 'Acuracidade Técnica',
+      'NC-3': 'Registro e Rastreabilidade',
+      'NC-4': 'Fluxo Operacional',
+      'NC-5': 'Segurança da Informação',
+    };
+    const sorted = Object.entries(ncCount).sort((a, b) => b[1] - a[1]);
+    if (sorted.length > 0) {
+      const [topCode, topCount] = sorted[0];
+      mostFrequentNC = { code: topCode, desc: NC_DESC[topCode] || topCode, count: topCount };
+    }
+  }
 
-  if (qaAbove90.length === 0 && iepcAbove90.length === 0) return null;
+  // Squads afetadas por analistas críticos
+  const affectedSquads = Array.from(new Set(qaBelow70.map((a) => a.squad).filter(Boolean)));
+
+  const pctSaudavel = total > 0 ? Math.round((qaAbove80.length / total) * 100) : 0;
 
   return (
-    <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-      <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <div className="flex items-center gap-2">
-          <Star size={14} style={{ color: '#F59E0B' }} />
-          <h3 className="text-sm font-bold text-white">Destaques Operacionais</h3>
-          <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.25)' }}>
-            Ciclo {lastPeriod.periodo}
+    <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#0D1829', border: '1px solid rgba(255,255,255,0.08)' }}>
+      {/* Header */}
+      <div className="px-5 py-3.5 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'linear-gradient(90deg, rgba(245,158,11,0.08) 0%, transparent 60%)' }}>
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.25)' }}>
+            <Star size={13} style={{ color: '#F59E0B' }} />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-white">Destaques Operacionais</h3>
+            <p className="text-[10px]" style={{ color: '#64748B' }}>Análise executiva do ciclo · Governança e Risco</p>
+          </div>
+          <span className="text-xs px-2 py-0.5 rounded-full font-semibold ml-1" style={{ backgroundColor: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.2)' }}>
+            {lastPeriod.periodo}
           </span>
         </div>
-        <p className="text-xs" style={{ color: '#64748B' }}>Analistas com performance acima de 80 pontos</p>
+        <span className="text-xs font-medium" style={{ color: '#475569' }}>
+          {total > 0 ? `${total} analistas avaliados` : 'Aguardando dados'}
+        </span>
       </div>
-      <div className="p-4 grid grid-cols-4 gap-3">
-        {highlights.map((h) => (
-          <div key={h.label} className="rounded-xl p-4" style={{ backgroundColor: h.bg, border: `1px solid ${h.border}` }}>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-lg">{h.icon}</span>
-              <span className="text-2xl font-bold" style={{ color: h.color }}>{h.count}</span>
-            </div>
-            <p className="text-xs font-semibold mb-1" style={{ color: h.color }}>{h.label}</p>
-            <p className="text-xs leading-relaxed" style={{ color: 'rgba(255,255,255,0.4)', fontSize: '10px' }}>{h.names || '—'}</p>
-          </div>
-        ))}
-      </div>
-      {qaAbove90.length > 0 && (
-        <div className="px-5 pb-4">
-          <p className="text-xs font-semibold mb-2" style={{ color: '#64748B' }}>Analistas com QA ≥ 90 neste ciclo</p>
-          <div className="flex flex-wrap gap-2">
-            {qaAbove90.map((a) => (
-              <div key={a.analista} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
-                style={{ backgroundColor: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.25)' }}>
-                <span>🏆</span>
-                <span>{a.analista}</span>
-                <span className="font-bold">{(a.nota_final_qa || 0).toFixed(1)}</span>
+
+      {total === 0 ? (
+        <div className="p-6 text-center text-xs" style={{ color: '#475569' }}>Carregando dados do ciclo...</div>
+      ) : (
+        <div className="p-4 grid grid-cols-4 gap-3">
+
+          {/* CARD 1 — Excelência QA */}
+          <div className="rounded-xl p-4" style={{ backgroundColor: '#0A1F14', border: '1px solid rgba(16,185,129,0.25)' }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.25)' }}>
+                🏆
               </div>
-            ))}
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.2)' }}>
+                QA ≥ 90
+              </span>
+            </div>
+            <p className="text-3xl font-black mb-0.5" style={{ color: '#10b981' }}>{qaAbove90.length}</p>
+            <p className="text-xs font-bold text-white mb-1">Excelência QA</p>
+            <p className="text-[10px] leading-relaxed mb-3" style={{ color: '#6EE7B7' }}>
+              {qaAbove90.length > 0
+                ? `${qaAbove90.length} de ${total} analistas acima da meta de excelência`
+                : 'Nenhum analista atingiu excelência neste ciclo'}
+            </p>
+            {qaAbove90.length > 0 && (
+              <div className="space-y-1">
+                {qaAbove90.slice(0, 3).map((a) => (
+                  <div key={a.analista} className="flex items-center justify-between">
+                    <span className="text-[10px] truncate" style={{ color: 'rgba(255,255,255,0.5)', maxWidth: '70%' }}>{a.analista}</span>
+                    <span className="text-[10px] font-bold" style={{ color: '#10b981' }}>{(a.nota_final_qa || 0).toFixed(1)}</span>
+                  </div>
+                ))}
+                {qaAbove90.length > 3 && (
+                  <p className="text-[10px]" style={{ color: '#6EE7B7' }}>+{qaAbove90.length - 3} outros</p>
+                )}
+              </div>
+            )}
           </div>
+
+          {/* CARD 2 — Excelência IEPC */}
+          <div className="rounded-xl p-4" style={{ backgroundColor: '#071B1F', border: '1px solid rgba(6,182,212,0.25)' }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.25)' }}>
+                ⭐
+              </div>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(6,182,212,0.12)', color: '#06B6D4', border: '1px solid rgba(6,182,212,0.2)' }}>
+                IEPC ≥ 90
+              </span>
+            </div>
+            <p className="text-3xl font-black mb-0.5" style={{ color: '#06B6D4' }}>{iepcAbove90.length}</p>
+            <p className="text-xs font-bold text-white mb-1">Excelência IEPC</p>
+            <p className="text-[10px] leading-relaxed mb-3" style={{ color: '#67E8F9' }}>
+              {iepcAbove90.length > 0
+                ? `${iepcAbove90.length} analistas com impacto percebido pelo cliente acima de 90%`
+                : 'Nenhum analista atingiu excelência IEPC neste ciclo'}
+            </p>
+            {iepcAbove90.length > 0 && (
+              <div className="space-y-1">
+                {iepcAbove90.slice(0, 3).map((a) => (
+                  <div key={a.analista} className="flex items-center justify-between">
+                    <span className="text-[10px] truncate" style={{ color: 'rgba(255,255,255,0.5)', maxWidth: '70%' }}>{a.analista}</span>
+                    <span className="text-[10px] font-bold" style={{ color: '#06B6D4' }}>{(a.iepc_total || 0).toFixed(1)}%</span>
+                  </div>
+                ))}
+                {iepcAbove90.length > 3 && (
+                  <p className="text-[10px]" style={{ color: '#67E8F9' }}>+{iepcAbove90.length - 3} outros</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* CARD 3 — Performance Saudável */}
+          <div className="rounded-xl p-4" style={{ backgroundColor: '#1A1500', border: '1px solid rgba(250,204,21,0.25)' }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: 'rgba(250,204,21,0.12)', border: '1px solid rgba(250,204,21,0.2)' }}>
+                📈
+              </div>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(250,204,21,0.1)', color: '#facc15', border: '1px solid rgba(250,204,21,0.2)' }}>
+                QA ≥ 80
+              </span>
+            </div>
+            <p className="text-3xl font-black mb-0.5" style={{ color: '#facc15' }}>{qaAbove80.length}</p>
+            <p className="text-xs font-bold text-white mb-1">Performance Saudável</p>
+            <p className="text-[10px] leading-relaxed mb-3" style={{ color: '#FDE68A' }}>
+              {qaAbove80.length} de {total} analistas — {pctSaudavel}% da operação saudável
+            </p>
+            {/* Mini progress bar */}
+            <div className="w-full h-2 rounded-full mb-2" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
+              <div className="h-2 rounded-full transition-all" style={{ width: `${pctSaudavel}%`, backgroundColor: '#facc15' }} />
+            </div>
+            <p className="text-[10px]" style={{ color: '#FDE68A' }}>
+              {pctSaudavel >= 80 ? '✓ Operação estável' : pctSaudavel >= 60 ? '⚠ Atenção requerida' : '⚠ Risco operacional'}
+            </p>
+          </div>
+
+          {/* CARD 4 — Risco Operacional (2x2 grid) */}
+          <div className="rounded-xl p-4" style={{ backgroundColor: '#1A0A0A', border: '1px solid rgba(239,68,68,0.25)' }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.25)' }}>
+                ⚠️
+              </div>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}>
+                Risco
+              </span>
+            </div>
+            <p className="text-xs font-bold text-white mb-2">Risco Operacional</p>
+
+            {/* 2x2 grid */}
+            <div className="grid grid-cols-2 gap-1.5">
+              {/* 1. Analistas Críticos */}
+              <div className="rounded-lg p-2" style={{ backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)' }}>
+                <p className="text-[9px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#ef4444' }}>Críticos QA&lt;70</p>
+                <p className="text-lg font-black" style={{ color: '#ef4444' }}>{qaBelow70.length}</p>
+                {affectedSquads.length > 0 && (
+                  <p className="text-[9px] mt-0.5 truncate" style={{ color: 'rgba(239,68,68,0.6)' }}>
+                    {affectedSquads.slice(0, 2).join(', ')}{affectedSquads.length > 2 ? '…' : ''}
+                  </p>
+                )}
+              </div>
+
+              {/* 2. Pilar QA menor aderência */}
+              <div className="rounded-lg p-2" style={{ backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.15)' }}>
+                <p className="text-[9px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#f59e0b' }}>Pilar QA Crítico</p>
+                {worstQAPilar ? (
+                  <>
+                    <p className="text-xs font-bold" style={{ color: '#f59e0b' }}>{worstQAPilar.code}</p>
+                    <p className="text-[9px] truncate" style={{ color: 'rgba(245,158,11,0.7)' }}>{worstQAPilar.name.split(' ').slice(0, 3).join(' ')}</p>
+                    <p className="text-[9px] font-bold mt-0.5" style={{ color: '#f59e0b' }}>{worstQAPilar.pct}%</p>
+                  </>
+                ) : <p className="text-[9px]" style={{ color: '#475569' }}>—</p>}
+              </div>
+
+              {/* 3. Pilar IEPC menor aderência */}
+              <div className="rounded-lg p-2" style={{ backgroundColor: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.15)' }}>
+                <p className="text-[9px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#8b5cf6' }}>Pilar IEPC Crítico</p>
+                {worstIEPCPilar ? (
+                  <>
+                    <p className="text-xs font-bold" style={{ color: '#8b5cf6' }}>{worstIEPCPilar.code}</p>
+                    <p className="text-[9px] truncate" style={{ color: 'rgba(139,92,246,0.7)' }}>{worstIEPCPilar.name.split(' ').slice(0, 3).join(' ')}</p>
+                    <p className="text-[9px] font-bold mt-0.5" style={{ color: '#8b5cf6' }}>{worstIEPCPilar.pct}%</p>
+                  </>
+                ) : <p className="text-[9px]" style={{ color: '#475569' }}>—</p>}
+              </div>
+
+              {/* 4. NC mais recorrente */}
+              <div className="rounded-lg p-2" style={{ backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.12)' }}>
+                <p className="text-[9px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#ef4444' }}>NC Recorrente</p>
+                {mostFrequentNC ? (
+                  <>
+                    <p className="text-xs font-bold" style={{ color: '#ef4444' }}>{mostFrequentNC.code}</p>
+                    <p className="text-[9px] truncate" style={{ color: 'rgba(239,68,68,0.6)' }}>{mostFrequentNC.desc.split(' ').slice(0, 3).join(' ')}</p>
+                    <p className="text-[9px] font-bold mt-0.5" style={{ color: '#ef4444' }}>{mostFrequentNC.count} ocorrências</p>
+                  </>
+                ) : <p className="text-[9px]" style={{ color: '#475569' }}>Sem NCs</p>}
+              </div>
+            </div>
+          </div>
+
         </div>
       )}
     </div>
@@ -1347,189 +1525,106 @@ export default function HomeExecutiveView() {
             {/* ── Row 1: KPI Cards ── */}
             <div className="grid grid-cols-5 gap-3">
               {/* QA Médio */}
-              <div className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: `1px solid ${qaClass.border}` }}>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(56,189,248,0.15)' }}>
-                    <BarChart2 size={13} style={{ color: '#38BDF8' }} />
+              <div className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: `2px solid ${qaClass.border}` }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(56,189,248,0.18)' }}>
+                    <BarChart2 size={14} style={{ color: '#38BDF8' }} />
                   </div>
-                  <span className="text-xs font-medium uppercase tracking-wide" style={{ color: '#64748B' }}>QA MÉDIO</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>QA MÉDIO</span>
                 </div>
-                <p className="text-3xl font-bold mb-1" style={{ color: qaClass.color }}>{qaMedia.toFixed(1)}</p>
-                <div className="flex items-center justify-between mb-1">
+                <p className="text-4xl font-black mb-2 leading-none" style={{ color: qaClass.color }}>{qaMedia.toFixed(1)}</p>
+                <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1">
                     {qaDelta !== null && qaDelta >= 0 ? <TrendingUp size={11} style={{ color: '#22C55E' }} /> : <TrendingDown size={11} style={{ color: '#EF4444' }} />}
-                    <span className="text-xs" style={{ color: qaDelta !== null && qaDelta >= 0 ? '#22C55E' : '#EF4444' }}>
+                    <span className="text-xs font-medium" style={{ color: qaDelta !== null && qaDelta >= 0 ? '#22C55E' : '#EF4444' }}>
                       {qaDelta !== null ? `${qaDelta > 0 ? '+' : ''}${qaDelta.toFixed(1)} vs ${prevPeriod?.periodo || 'Ciclo Anterior'}` : 'Sem ciclo anterior'}
                     </span>
                   </div>
                   {qaSparkline.length > 1 && <Sparkline data={qaSparkline} color="#38BDF8" />}
                 </div>
-                <PerformanceBadge score={qaMedia} size="xs" />
+                <PerformanceBadge score={qaMedia} size="sm" />
               </div>
 
               {/* IEPC Médio */}
-              <div className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: `1px solid ${iepcClass.border}` }}>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(6,182,212,0.15)' }}>
-                    <Star size={13} style={{ color: '#06B6D4' }} />
+              <div className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: `2px solid ${iepcClass.border}` }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(6,182,212,0.18)' }}>
+                    <Star size={14} style={{ color: '#06B6D4' }} />
                   </div>
-                  <span className="text-xs font-medium uppercase tracking-wide" style={{ color: '#64748B' }}>IEPC MÉDIO</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>IEPC MÉDIO</span>
                 </div>
-                <p className="text-3xl font-bold mb-1" style={{ color: iepcClass.color }}>{iepcMedia.toFixed(1)}</p>
-                <div className="flex items-center justify-between mb-1">
+                <p className="text-4xl font-black mb-2 leading-none" style={{ color: iepcClass.color }}>{iepcMedia.toFixed(1)}</p>
+                <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1">
                     {iepcDelta !== null && iepcDelta >= 0 ? <TrendingUp size={11} style={{ color: '#22C55E' }} /> : <TrendingDown size={11} style={{ color: '#EF4444' }} />}
-                    <span className="text-xs" style={{ color: iepcDelta !== null && iepcDelta >= 0 ? '#22C55E' : '#EF4444' }}>
+                    <span className="text-xs font-medium" style={{ color: iepcDelta !== null && iepcDelta >= 0 ? '#22C55E' : '#EF4444' }}>
                       {iepcDelta !== null ? `${iepcDelta > 0 ? '+' : ''}${iepcDelta.toFixed(1)} vs ${prevPeriod?.periodo || 'Ciclo Anterior'}` : 'Sem ciclo anterior'}
                     </span>
                   </div>
                   {iepcSparkline.length > 1 && <Sparkline data={iepcSparkline} color="#06B6D4" />}
                 </div>
-                <PerformanceBadge score={iepcMedia} size="xs" />
+                <PerformanceBadge score={iepcMedia} size="sm" />
               </div>
 
               {/* NCs */}
-              <div className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(239,68,68,0.15)' }}>
-                    <AlertTriangle size={13} style={{ color: '#EF4444' }} />
+              <div className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '2px solid rgba(239,68,68,0.2)' }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(239,68,68,0.18)' }}>
+                    <AlertTriangle size={14} style={{ color: '#EF4444' }} />
                   </div>
-                  <span className="text-xs font-medium uppercase tracking-wide" style={{ color: '#64748B' }}>NÃO CONFORMIDADES</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>NÃO CONFORMIDADES</span>
                 </div>
-                <p className="text-3xl font-bold text-white mb-1">{totalNCs}</p>
+                <p className="text-4xl font-black text-white mb-2 leading-none">{totalNCs}</p>
                 <div className="flex items-center gap-1">
                   {ncDelta !== null && ncDelta <= 0 ? <TrendingDown size={11} style={{ color: '#22C55E' }} /> : <TrendingUp size={11} style={{ color: '#EF4444' }} />}
-                  <span className="text-xs" style={{ color: ncDelta !== null && ncDelta <= 0 ? '#22C55E' : '#EF4444' }}>
+                  <span className="text-xs font-medium" style={{ color: ncDelta !== null && ncDelta <= 0 ? '#22C55E' : '#EF4444' }}>
                     {ncDelta !== null ? `${ncDelta > 0 ? '+' : ''}${ncDelta} vs ${prevPeriod?.periodo || 'Ciclo Anterior'}` : 'Sem ciclo anterior'}
                   </span>
                 </div>
               </div>
 
               {/* Elogios */}
-              <div className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(245,158,11,0.15)' }}>
-                    <Star size={13} style={{ color: '#F59E0B' }} />
+              <div className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '2px solid rgba(245,158,11,0.2)' }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(245,158,11,0.18)' }}>
+                    <Star size={14} style={{ color: '#F59E0B' }} />
                   </div>
-                  <span className="text-xs font-medium uppercase tracking-wide" style={{ color: '#64748B' }}>ELOGIOS</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>ELOGIOS</span>
                 </div>
-                <p className="text-3xl font-bold text-white mb-1">{totalElogios}</p>
+                <p className="text-4xl font-black text-white mb-2 leading-none">{totalElogios}</p>
                 <div className="flex items-center gap-1">
                   {elogioDelta !== null && elogioDelta >= 0 ? <TrendingUp size={11} style={{ color: '#22C55E' }} /> : <TrendingDown size={11} style={{ color: '#EF4444' }} />}
-                  <span className="text-xs" style={{ color: elogioDelta !== null && elogioDelta >= 0 ? '#22C55E' : '#EF4444' }}>
+                  <span className="text-xs font-medium" style={{ color: elogioDelta !== null && elogioDelta >= 0 ? '#22C55E' : '#EF4444' }}>
                     {elogioDelta !== null ? `${elogioDelta > 0 ? '+' : ''}${elogioDelta} vs ${prevPeriod?.periodo || 'Ciclo Anterior'}` : 'Sem ciclo anterior'}
                   </span>
                 </div>
               </div>
 
               {/* Avaliações */}
-              <div className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(34,197,94,0.15)' }}>
-                    <CheckCircle size={13} style={{ color: '#22C55E' }} />
+              <div className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '2px solid rgba(34,197,94,0.2)' }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(34,197,94,0.18)' }}>
+                    <CheckCircle size={14} style={{ color: '#22C55E' }} />
                   </div>
-                  <span className="text-xs font-medium uppercase tracking-wide" style={{ color: '#64748B' }}>AVALIAÇÕES</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>AVALIAÇÕES</span>
                 </div>
-                <p className="text-3xl font-bold text-white mb-1">{totalAvaliacoes}</p>
-                <div className="w-full rounded-full h-1.5 mt-2" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
-                  <div className="h-1.5 rounded-full" style={{ width: '100%', backgroundColor: '#22C55E' }} />
+                <p className="text-4xl font-black text-white mb-2 leading-none">{totalAvaliacoes}</p>
+                <div className="w-full rounded-full h-2 mt-2" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
+                  <div className="h-2 rounded-full" style={{ width: '100%', backgroundColor: '#22C55E' }} />
                 </div>
-                <p className="text-xs mt-1" style={{ color: '#64748B' }}>100% do Ciclo</p>
+                <p className="text-xs mt-1.5 font-medium" style={{ color: '#22C55E' }}>100% do Ciclo</p>
               </div>
             </div>
 
-            {/* ── Row 1B: DESTAQUES OPERACIONAIS ── */}
-            {lastPeriod && lastPeriod.analistas > 0 && (() => {
-              // Build highlights from cycle scores data
-              // We need to compute per-analyst data from the current period
-              return null; // placeholder — rendered below via OperationalHighlights
-            })()}
-            <OperationalHighlights lastPeriod={lastPeriod} history={filteredHistory} />
-
-            {/* ── Row 2: Mapa Estratégico QA + IEPC ── */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* Mapa Estratégico QA */}
-              <div
-                className="rounded-xl p-5 cursor-pointer transition-all hover:border-sky-500/40"
-                style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(56,189,248,0.2)', boxShadow: '0 0 20px rgba(56,189,248,0.05)' }}
-                onClick={() => setPilarModal('QA')}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Target size={14} style={{ color: '#38BDF8' }} />
-                      <h3 className="text-sm font-bold text-white">Mapa Estratégico QA</h3>
-                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8' }}>Distribuição Estratégica</span>
-                    </div>
-                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Peso oficial dos pilares · Total: 100 pts</p>
-                  </div>
-                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: '#94A3B8' }}>
-                    <Info size={10} />
-                    <span>Ver detalhes</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div style={{ flex: '0 0 55%' }}>
-                    <StrategicRadarChart data={qaStrategicPillars} type="QA" maxScale={40} />
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    {qaStrategicPillars.map((p) => (
-                      <div key={p.subject} className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
-                        <span className="text-xs flex-1 truncate" style={{ color: '#94A3B8' }}>{p.subject}</span>
-                        <span className="text-xs font-bold" style={{ color: p.color }}>{p.weight}%</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Mapa Estratégico IEPC */}
-              <div
-                className="rounded-xl p-5 cursor-pointer transition-all hover:border-cyan-500/40"
-                style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(6,182,212,0.2)', boxShadow: '0 0 20px rgba(6,182,212,0.05)' }}
-                onClick={() => setPilarModal('IEPC')}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Zap size={14} style={{ color: '#06B6D4' }} />
-                      <h3 className="text-sm font-bold text-white">Mapa Estratégico IEPC</h3>
-                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(6,182,212,0.1)', color: '#06B6D4' }}>Distribuição Estratégica</span>
-                    </div>
-                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Peso oficial dos pilares · Total: 100 pts</p>
-                  </div>
-                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: '#94A3B8' }}>
-                    <Info size={10} />
-                    <span>Ver detalhes</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div style={{ flex: '0 0 55%' }}>
-                    <StrategicRadarChart data={iepcStrategicPillars} type="IEPC" maxScale={35} />
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    {iepcStrategicPillars.map((p) => (
-                      <div key={p.subject} className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
-                        <span className="text-xs flex-1 truncate" style={{ color: '#94A3B8' }}>{p.subject}</span>
-                        <span className="text-xs font-bold" style={{ color: p.color }}>{p.weight}%</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* ── Row 3: Evolution Chart + Cycle Summary ── */}
+            {/* ── Row 2: Evolution Chart + Cycle Summary ── */}
             <div className="grid grid-cols-12 gap-4">
-              <div className="col-span-9 rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(56,189,248,0.15)', boxShadow: '0 0 30px rgba(56,189,248,0.04)' }}>
+              <div className="col-span-9 rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(56,189,248,0.18)' }}>
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <div className="flex items-center gap-2">
                       <Activity size={15} style={{ color: '#38BDF8' }} />
                       <h3 className="text-sm font-bold text-white">Evolução QA × IEPC</h3>
-                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8' }}>Gráfico Estratégico Principal</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(56,189,248,0.12)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}>Gráfico Estratégico Principal</span>
                     </div>
                     <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>
                       {prevPeriod ? `Comparando ${lastPeriod?.periodo} vs ${prevPeriod.periodo}` : 'Tendência histórica'}
@@ -1574,8 +1669,8 @@ export default function HomeExecutiveView() {
               </div>
 
               {/* Cycle Summary */}
-              <div className="col-span-3 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <h3 className="text-sm font-semibold text-white mb-3">Resumo do Ciclo Atual</h3>
+              <div className="col-span-3 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <h3 className="text-sm font-bold text-white mb-3">Resumo do Ciclo Atual</h3>
                 <div className="space-y-2.5">
                   {[
                     { label: 'Período', value: lastPeriod ? lastPeriod.periodo : '—' },
@@ -1588,13 +1683,13 @@ export default function HomeExecutiveView() {
                     <div key={row.label}>
                       <div className="flex items-center justify-between">
                         <span className="text-xs" style={{ color: '#64748B' }}>{row.label}</span>
-                        <span className="text-xs font-medium text-white">{row.value}</span>
+                        <span className="text-xs font-semibold text-white">{row.value}</span>
                       </div>
                     </div>
                   ))}
                 </div>
-                <div className="mt-4 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                  <p className="text-xs font-semibold mb-2" style={{ color: '#64748B' }}>Classificação de Performance</p>
+                <div className="mt-4 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+                  <p className="text-xs font-bold mb-2" style={{ color: '#94A3B8' }}>Classificação de Performance</p>
                   {[
                     { label: 'Excelência', range: '≥ 90', color: '#10b981' },
                     { label: 'Performance', range: '80–89', color: '#facc15' },
@@ -1606,19 +1701,97 @@ export default function HomeExecutiveView() {
                         <div className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
                         <span className="text-xs" style={{ color: '#94A3B8' }}>{c.label}</span>
                       </div>
-                      <span className="text-xs" style={{ color: '#64748B' }}>{c.range}</span>
+                      <span className="text-xs font-medium" style={{ color: '#64748B' }}>{c.range}</span>
                     </div>
                   ))}
                 </div>
               </div>
             </div>
 
-            {/* ── Row 4: Squad Ranking + Coordinator Ranking + Heatmap ── */}
+            {/* ── Row 3: Mapa Estratégico QA + IEPC ── */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Mapa Estratégico QA */}
+              <div
+                className="rounded-xl p-5 cursor-pointer transition-all hover:border-sky-500/40"
+                style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(56,189,248,0.2)' }}
+                onClick={() => setPilarModal('QA')}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Target size={14} style={{ color: '#38BDF8' }} />
+                      <h3 className="text-sm font-bold text-white">Mapa Estratégico QA</h3>
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(56,189,248,0.12)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}>Distribuição Estratégica</span>
+                    </div>
+                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Peso oficial dos pilares · Total: 100 pts</p>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: '#94A3B8' }}>
+                    <Info size={10} />
+                    <span>Ver detalhes</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div style={{ flex: '0 0 55%' }}>
+                    <StrategicRadarChart data={qaStrategicPillars} type="QA" maxScale={40} />
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    {qaStrategicPillars.map((p) => (
+                      <div key={p.subject} className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+                        <span className="text-xs flex-1 truncate" style={{ color: '#94A3B8' }}>{p.subject}</span>
+                        <span className="text-xs font-bold" style={{ color: p.color }}>{p.weight}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Mapa Estratégico IEPC */}
+              <div
+                className="rounded-xl p-5 cursor-pointer transition-all hover:border-cyan-500/40"
+                style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(6,182,212,0.2)' }}
+                onClick={() => setPilarModal('IEPC')}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Zap size={14} style={{ color: '#06B6D4' }} />
+                      <h3 className="text-sm font-bold text-white">Mapa Estratégico IEPC</h3>
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(6,182,212,0.12)', color: '#06B6D4', border: '1px solid rgba(6,182,212,0.2)' }}>Distribuição Estratégica</span>
+                    </div>
+                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Peso oficial dos pilares · Total: 100 pts</p>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: '#94A3B8' }}>
+                    <Info size={10} />
+                    <span>Ver detalhes</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div style={{ flex: '0 0 55%' }}>
+                    <StrategicRadarChart data={iepcStrategicPillars} type="IEPC" maxScale={35} />
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    {iepcStrategicPillars.map((p) => (
+                      <div key={p.subject} className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+                        <span className="text-xs flex-1 truncate" style={{ color: '#94A3B8' }}>{p.subject}</span>
+                        <span className="text-xs font-bold" style={{ color: p.color }}>{p.weight}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ── Row 4: Destaques Operacionais ── */}
+            <OperationalHighlights lastPeriod={lastPeriod} history={filteredHistory} />
+
+            {/* ── Row 5: Squad Ranking + Coordinator Ranking + Heatmap ── */}
             <div className="grid grid-cols-12 gap-4">
-              <div className="col-span-4 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="col-span-4 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)' }}>
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h3 className="text-sm font-semibold text-white">Ranking de Squads</h3>
+                    <h3 className="text-sm font-bold text-white">Ranking de Squads</h3>
                     <p className="text-xs" style={{ color: '#64748B' }}>Por QA Médio</p>
                   </div>
                   <Link href="/cycle-dashboard" className="text-xs flex items-center gap-1" style={{ color: '#38BDF8' }}>
@@ -1644,10 +1817,10 @@ export default function HomeExecutiveView() {
                 </div>
               </div>
 
-              <div className="col-span-4 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="col-span-4 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)' }}>
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h3 className="text-sm font-semibold text-white">Ranking de Coordenadores</h3>
+                    <h3 className="text-sm font-bold text-white">Ranking de Coordenadores</h3>
                     <p className="text-xs" style={{ color: '#64748B' }}>Por QA Médio</p>
                   </div>
                   <Link href="/cycle-dashboard" className="text-xs flex items-center gap-1" style={{ color: '#38BDF8' }}>
@@ -1673,9 +1846,9 @@ export default function HomeExecutiveView() {
                 </div>
               </div>
 
-              <div className="col-span-4 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="col-span-4 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)' }}>
                 <div className="mb-3">
-                  <h3 className="text-sm font-semibold text-white">Heatmap QA Médio</h3>
+                  <h3 className="text-sm font-bold text-white">Heatmap QA Médio</h3>
                   <p className="text-xs" style={{ color: '#64748B' }}>Por Squad × Pilares QA</p>
                 </div>
                 <div className="overflow-x-auto">
@@ -1715,19 +1888,19 @@ export default function HomeExecutiveView() {
               </div>
             </div>
 
-            {/* ── Row 5: NC Donut + Risk Alerts ── */}
+            {/* ── Row 6: NC Donut + Risk Alerts ── */}
             <div className="grid grid-cols-12 gap-4">
               {/* NC Donut — Distribuição de Não Conformidades */}
               <div
                 className="col-span-5 rounded-xl p-4 cursor-pointer transition-all hover:border-red-500/30"
-                style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+                style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)' }}
                 onClick={() => setPilarModal('NC')}
               >
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <div className="flex items-center gap-2">
                       <AlertTriangle size={13} style={{ color: '#EF4444' }} />
-                      <h3 className="text-sm font-semibold text-white">Distribuição de Não Conformidades</h3>
+                      <h3 className="text-sm font-bold text-white">Distribuição de Não Conformidades</h3>
                     </div>
                     <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>NCs por Categoria · Total no ciclo: {totalNCs}</p>
                   </div>
@@ -1739,9 +1912,9 @@ export default function HomeExecutiveView() {
               </div>
 
               {/* Risk Alerts */}
-              <div className="col-span-7 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="col-span-7 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)' }}>
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-white">Alertas e Indicadores de Risco</h3>
+                  <h3 className="text-sm font-bold text-white">Alertas e Indicadores de Risco</h3>
                   <Link href="/nao-conformidades" className="text-xs flex items-center gap-1" style={{ color: '#38BDF8' }}>
                     Ver todos <ChevronRight size={11} />
                   </Link>
