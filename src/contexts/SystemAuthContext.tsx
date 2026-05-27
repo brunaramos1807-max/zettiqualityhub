@@ -420,6 +420,16 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
   }, [session, applyProfile]);
 
   useEffect(() => {
+    let didFinish = false;
+
+    // Safety timeout: if session check takes > 5s, force loading=false
+    const safetyTimer = setTimeout(() => {
+      if (!didFinish) {
+        console.warn('[AUTH] Session check timed out — forcing loading=false');
+        setLoading(false);
+      }
+    }, 5000);
+
     const init = async () => {
       await seedDefaultAdmin();
 
@@ -431,10 +441,14 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
           const allowed = await checkWhitelist(supaSession.user.email || '');
           if (!allowed) {
             await supabase.auth.signOut();
+            didFinish = true;
+            clearTimeout(safetyTimer);
             setLoading(false);
             return;
           }
           await applySupabaseUser(supaSession.user);
+          didFinish = true;
+          clearTimeout(safetyTimer);
           setLoading(false);
 
           const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
@@ -500,6 +514,8 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
             setModulePermissions(buildDefaultPermissions(derivedRole, isAdminLocal));
           }
 
+          didFinish = true;
+          clearTimeout(safetyTimer);
           setLoading(false);
           return;
         }
@@ -526,16 +542,21 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
           setLoading(false);
         });
 
+        didFinish = true;
+        clearTimeout(safetyTimer);
         setLoading(false);
         return () => subscription.unsubscribe();
       }
 
+      didFinish = true;
+      clearTimeout(safetyTimer);
       setLoading(false);
     };
 
     const cleanup = init();
     return () => {
       clearTimer();
+      clearTimeout(safetyTimer);
       cleanup?.then?.((fn: any) => fn?.());
     };
   }, [applySupabaseUser, startInactivityTimer]);
