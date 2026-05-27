@@ -5,8 +5,8 @@ import { createClient } from '@/lib/supabase/client';
 import { useParams } from 'next/navigation';
 import { AlertTriangle, Printer, Star, ChevronDown, ChevronUp, Quote, Maximize2, Minimize2, Edit3, Share2, CheckCircle, X, Save, Award, Users, Zap } from 'lucide-react';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
+  ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis
 } from 'recharts';
 
 const C = {
@@ -16,20 +16,15 @@ const C = {
 };
 
 function statusBadge(status: string) {
-  const map: Record<string, string> = {
-    aderido: 'bg-green-900/30 text-green-400 border border-green-700/30',
-    parcial: 'bg-amber-900/30 text-amber-400 border border-amber-700/30',
-    nao_aderido: 'bg-red-900/30 text-red-400 border border-red-700/30',
-    nao_avaliado: 'bg-slate-800/50 text-slate-500 border border-slate-700/30',
-    nao_evidenciado: 'bg-red-900/30 text-red-400 border border-red-700/30',
-    nao_aplicavel: 'bg-slate-800/50 text-slate-500 border border-slate-700/30',
+  const map: Record<string, { cls: string; dot: string; label: string }> = {
+    aderido: { cls: 'bg-green-900/30 text-green-400 border border-green-700/40', dot: 'bg-green-400', label: 'Aderido' },
+    parcial: { cls: 'bg-amber-900/30 text-amber-400 border border-amber-700/40', dot: 'bg-amber-400', label: 'Parcial' },
+    nao_aderido: { cls: 'bg-red-900/30 text-red-400 border border-red-700/40', dot: 'bg-red-400', label: 'Não Aderido' },
+    nao_avaliado: { cls: 'bg-slate-800/50 text-slate-500 border border-slate-700/30', dot: 'bg-slate-500', label: 'N/A' },
+    nao_evidenciado: { cls: 'bg-red-900/30 text-red-400 border border-red-700/40', dot: 'bg-red-400', label: 'Não evidenciado' },
+    nao_aplicavel: { cls: 'bg-slate-800/50 text-slate-500 border border-slate-700/30', dot: 'bg-slate-500', label: 'N/A' },
   };
-  const labels: Record<string, string> = {
-    aderido: 'Aderido', parcial: 'Parcial',
-    nao_aderido: 'Não Aderido', nao_avaliado: 'N/A',
-    nao_evidenciado: 'Não Evidenciado', nao_aplicavel: 'N/A',
-  };
-  return { cls: map[status] || map.nao_avaliado, label: labels[status] || status };
+  return map[status] || map.nao_avaliado;
 }
 
 // Extract a field from snapshot trying multiple paths
@@ -237,6 +232,8 @@ export default function FeedbackViewPage() {
   // NCs: merge snapshot NCs
   const allNCs = nao_conformidades.length > 0 ? nao_conformidades : [];
 
+  const isHighScore = Number(qaScore) >= 90;
+
   const content = (
     <div className="min-h-screen text-slate-200 pb-12 bg-[#07101F]">
       <style>{`
@@ -284,42 +281,89 @@ export default function FeedbackViewPage() {
           </div>
         </div>
 
-        {/* ── HERO EXECUTIVO COMPACTO ── */}
-        <div className="print-card relative overflow-hidden rounded-xl border border-[#1E3050] bg-[#0F1B31] px-5 py-4 shadow-lg">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-sky-500/5 blur-[80px] rounded-full pointer-events-none" />
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 relative z-10">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-xl bg-[#16233B] border border-[#1E3050] overflow-hidden flex-shrink-0 shadow-lg">
-                <img
-                  src={analistaInfo?.foto_url || '/assets/images/no_image.png'}
-                  className="w-full h-full object-cover"
-                  alt={analistaNome}
-                />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-white tracking-tight leading-tight">{analistaNome}</h1>
-                <p className="text-xs text-slate-400 mt-0.5">{analistaInfo?.cargo_operacional || analista?.cargo || 'Analista de Qualidade'}</p>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5 text-xs text-slate-500">
-                  {analistaEquipe && analistaEquipe !== '—' && <span>Equipe: <strong className="text-slate-300">{analistaEquipe}</strong></span>}
-                  {(analistaInfo?.coordenador || analista?.coordenador) && (
-                    <span>Coord: <strong className="text-slate-300">{analistaInfo?.coordenador || analista?.coordenador}</strong></span>
+        {/* ── HERO EXECUTIVO — LARGER, MORE IMPACT ── */}
+        <div className="print-card relative overflow-hidden rounded-2xl border border-[#1E3050] shadow-2xl"
+          style={{ background: 'linear-gradient(135deg, #0F1B31 0%, #0B1426 60%, #071020 100%)' }}>
+          <div className="absolute top-0 right-0 w-96 h-96 bg-sky-500/5 blur-[100px] rounded-full pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-64 h-64 bg-teal-500/5 blur-[80px] rounded-full pointer-events-none" />
+          <div className="relative z-10 px-6 py-6">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+              {/* LEFT: Photo + Info */}
+              <div className="flex items-center gap-5">
+                <div className="relative flex-shrink-0">
+                  <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-sky-500/30 shadow-xl shadow-sky-900/30">
+                    <img
+                      src={analistaInfo?.foto_url || '/assets/images/no_image.png'}
+                      className="w-full h-full object-cover"
+                      alt={analistaNome}
+                    />
+                  </div>
+                  {isHighScore && (
+                    <div className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-yellow-500 flex items-center justify-center shadow-lg">
+                      <Star size={12} className="text-yellow-900 fill-yellow-900" />
+                    </div>
                   )}
-                  {analistaInfo?.tempo_empresa && <span>Empresa: <strong className="text-slate-300">{analistaInfo.tempo_empresa}</strong></span>}
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-white tracking-tight leading-tight">{analistaNome}</h1>
+                  <p className="text-sm text-sky-300/80 mt-0.5 font-medium">{analistaInfo?.cargo_operacional || analista?.cargo || 'Analista de Qualidade'}</p>
+                  <div className="flex flex-wrap gap-x-5 gap-y-1 mt-2 text-xs text-slate-400">
+                    {analistaEquipe && analistaEquipe !== '—' && (
+                      <span className="flex items-center gap-1">
+                        <span className="text-slate-600">Equipe</span>
+                        <strong className="text-slate-200">{analistaEquipe}</strong>
+                      </span>
+                    )}
+                    {(analistaInfo?.coordenador || analista?.coordenador) && (
+                      <span className="flex items-center gap-1">
+                        <span className="text-slate-600">Coord.</span>
+                        <strong className="text-slate-200">{analistaInfo?.coordenador || analista?.coordenador}</strong>
+                      </span>
+                    )}
+                    {analistaInfo?.tempo_empresa && (
+                      <span className="flex items-center gap-1">
+                        <span className="text-slate-600">Empresa</span>
+                        <strong className="text-slate-200">{analistaInfo.tempo_empresa}</strong>
+                      </span>
+                    )}
+                    {(analistaInfo?.empresa || analista?.empresa) && (
+                      <span className="flex items-center gap-1">
+                        <span className="text-slate-600">Org.</span>
+                        <strong className="text-slate-200">{analistaInfo?.empresa || analista?.empresa}</strong>
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-sky-900/50 text-sky-300 border border-sky-700/40">{analistaCiclo}</span>
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-green-900/40 text-green-400 border border-green-700/30 flex items-center gap-1">
+                      <CheckCircle size={9} /> Concluído
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="flex items-center gap-3 lg:border-l lg:border-[#1E3050] lg:pl-5">
-              <div className="text-center px-4 py-2 rounded-lg bg-[#07101F]/70 border border-[#1E3050]">
-                <p className="text-[9px] uppercase tracking-widest text-slate-500 mb-0.5">QA Score</p>
-                <p className="text-3xl font-bold text-sky-400 leading-none">{qaScore ?? '—'}</p>
-              </div>
-              <div className="text-center px-4 py-2 rounded-lg bg-[#07101F]/70 border border-[#1E3050]">
-                <p className="text-[9px] uppercase tracking-widest text-slate-500 mb-0.5">IEPC</p>
-                <p className="text-3xl font-bold text-teal-400 leading-none">{iepcScore ?? '—'}<span className="text-base font-normal text-slate-500">%</span></p>
-              </div>
-              <div className="text-center px-4 py-2 rounded-lg bg-[#07101F]/70 border border-[#1E3050]">
-                <p className="text-[9px] uppercase tracking-widest text-slate-500 mb-0.5">Aderência</p>
-                <p className="text-3xl font-bold text-purple-400 leading-none">{aderenciaScore ?? '—'}<span className="text-base font-normal text-slate-500">%</span></p>
+
+              {/* RIGHT: Big Scores */}
+              <div className="flex items-stretch gap-3 lg:border-l lg:border-[#1E3050] lg:pl-6">
+                <div className="text-center px-5 py-4 rounded-xl bg-[#07101F]/80 border border-sky-800/30 min-w-[100px]">
+                  <p className="text-[9px] uppercase tracking-widest text-slate-500 mb-1">QA Score</p>
+                  <p className="text-4xl font-black text-sky-400 leading-none tracking-tight">{qaScore ?? '—'}</p>
+                  <p className="text-[10px] text-slate-600 mt-1">/ 100</p>
+                  {isHighScore && <p className="text-[9px] text-yellow-400 mt-1 font-semibold">⭐ Destaque</p>}
+                </div>
+                <div className="text-center px-5 py-4 rounded-xl bg-[#07101F]/80 border border-teal-800/30 min-w-[100px]">
+                  <p className="text-[9px] uppercase tracking-widest text-slate-500 mb-1">IEPC</p>
+                  <p className="text-4xl font-black text-teal-400 leading-none tracking-tight">
+                    {iepcScore ?? '—'}<span className="text-lg font-normal text-slate-500">%</span>
+                  </p>
+                  <p className="text-[10px] text-slate-600 mt-1">Experiência</p>
+                </div>
+                <div className="text-center px-5 py-4 rounded-xl bg-[#07101F]/80 border border-purple-800/30 min-w-[100px]">
+                  <p className="text-[9px] uppercase tracking-widest text-slate-500 mb-1">Aderência</p>
+                  <p className="text-4xl font-black text-purple-400 leading-none tracking-tight">
+                    {aderenciaScore ?? '—'}<span className="text-lg font-normal text-slate-500">%</span>
+                  </p>
+                  <p className="text-[10px] text-slate-600 mt-1">Critérios</p>
+                </div>
               </div>
             </div>
           </div>
@@ -333,12 +377,14 @@ export default function FeedbackViewPage() {
           <KPICard label="Elogios" value={analytics?.total_elogios ?? allElogios.length} icon={<Star size={14} />} color={C.teal} sub="Reconhecimento" />
         </div>
 
-        {/* ── RADARES + HISTÓRICO ── */}
-        <div className="grid lg:grid-cols-3 gap-4">
-          <RadarChartCard title="Radar QA" pilares={qa_pilares} color={C.blue} />
-          <RadarChartCard title="Radar IEPC" pilares={iepc_pilares} color={C.teal} />
-          <HistoricoChart historico={historico} />
+        {/* ── RADARES SIDE BY SIDE ── */}
+        <div className="grid lg:grid-cols-2 gap-4">
+          <RadarChartCard title="ÍNDICE DE QUALIDADE DO ATENDIMENTO" subtitle="QA" pilares={qa_pilares} color={C.blue} totalScore={qaScore} />
+          <RadarChartCard title="ÍNDICE DE EXPERIÊNCIA PERCEBIDA PELO CLIENTE" subtitle="IEPC" pilares={iepc_pilares} color={C.teal} totalScore={iepcScore} />
         </div>
+
+        {/* ── HISTÓRICO ── */}
+        <HistoricoChart historico={historico} />
 
         {/* ── PANORAMA DO CICLO ── */}
         {(evolucaoTecnica || evolucaoComportamental || atencaoEvolutiva || fechamentoCiclo) && (
@@ -360,18 +406,13 @@ export default function FeedbackViewPage() {
           </div>
         )}
 
-        {/* ── COACHING ── */}
+        {/* ── COACHING DE COMUNICAÇÃO ── */}
         {coaching.length > 0 && (
           <div className="print-card rounded-xl border border-[#1E3050] bg-[#0F1B31] p-4">
-            <h3 className="text-[11px] font-semibold text-amber-400 uppercase tracking-widest mb-3">Coaching de Comunicação</h3>
-            <div className="grid md:grid-cols-2 gap-3">
+            <h3 className="text-[11px] font-semibold text-amber-400 uppercase tracking-widest mb-4">Coaching de Comunicação</h3>
+            <div className={`grid gap-4 ${coaching.length === 1 ? 'grid-cols-1 max-w-2xl mx-auto' : coaching.length === 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3'}`}>
               {coaching.map((c: any, i: number) => (
-                <div key={i} className="border-l-2 border-amber-500/50 pl-3 py-1 bg-[#07101F]/40 rounded-r-lg pr-3">
-                  <p className="text-xs font-semibold text-amber-300 mb-1 flex items-center gap-1.5"><Zap size={10} /> {c.categoria || 'Dica de Ouro'}</p>
-                  {c.o_que_foi_dito && <p className="text-[11px] text-slate-500 mb-1"><span className="text-slate-400">Dito:</span> {c.o_que_foi_dito}</p>}
-                  {c.como_poderia_ser && <p className="text-[11px] text-slate-400 mb-1"><span className="text-slate-300">Melhor:</span> {c.como_poderia_ser}</p>}
-                  {c.dica_de_ouro && <p className="text-[11px] text-amber-200 italic">&ldquo;{c.dica_de_ouro}&rdquo;</p>}
-                </div>
+                <CoachingCard key={i} coaching={c} />
               ))}
             </div>
           </div>
@@ -506,13 +547,43 @@ function KPICard({ label, value, icon, color, star, sub }: any) {
   );
 }
 
-function RadarChartCard({ title, pilares, color }: any) {
+// Custom tooltip for radar
+function CustomRadarTooltip({ active, payload }: any) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0]?.payload;
+  if (!d) return null;
+  const nota = d.nota ?? 0;
+  const maximo = d.maximo ?? 100;
+  const pct = Math.round((nota / maximo) * 100);
+  return (
+    <div className="bg-[#0F1B31] border border-[#1E3050] rounded-lg px-3 py-2 text-xs shadow-xl">
+      <p className="font-semibold text-white mb-1">{d.subject}</p>
+      <p className="text-slate-300">{nota} / {maximo}</p>
+      <p className="font-bold" style={{ color: pct >= 90 ? '#22C55E' : pct >= 80 ? '#2DD4BF' : pct >= 70 ? '#F59E0B' : '#EF4444' }}>{pct}%</p>
+    </div>
+  );
+}
+
+function pillarBarColor(pct: number) {
+  if (pct >= 90) return '#22C55E';
+  if (pct >= 80) return '#2DD4BF';
+  if (pct >= 70) return '#F59E0B';
+  return '#EF4444';
+}
+
+function RadarChartCard({ title, subtitle, pilares, color, totalScore }: any) {
   const list = pilares || [];
-  const chartData = list.map((p: any) => ({
-    subject: (p.nome || p.name || '').length > 12 ? (p.nome || p.name || '').slice(0, 12) + '…' : (p.nome || p.name || ''),
-    A: Number(p.nota ?? p.pontuacao ?? p.score) || 0,
-    fullMark: Number(p.maximo ?? p.max ?? 100) || 100,
-  }));
+  const chartData = list.map((p: any) => {
+    const nota = Number(p.nota ?? p.pontuacao ?? p.score) || 0;
+    const maximo = Number(p.maximo ?? p.max ?? 100) || 100;
+    return {
+      subject: (p.nome || p.name || '').length > 14 ? (p.nome || p.name || '').slice(0, 14) + '…' : (p.nome || p.name || ''),
+      A: nota,
+      fullMark: maximo,
+      nota,
+      maximo,
+    };
+  });
 
   const best = list.reduce((a: any, b: any) => {
     const bScore = Number(b.nota ?? b.pontuacao ?? b.score) || 0;
@@ -520,45 +591,78 @@ function RadarChartCard({ title, pilares, color }: any) {
     return bScore > aScore ? b : a;
   }, null);
 
+  const scoreDisplay = totalScore != null ? String(totalScore) : '—';
+  const isPercent = subtitle === 'IEPC';
+
   return (
     <div className="rounded-xl border border-[#1E3050] bg-[#0F1B31] p-4">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">{title}</h3>
-        {best && (
-          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: `${color}20`, color }}>
-            ⭐ {(best.nome || best.name || '').split(' ')[0]}
-          </span>
-        )}
+      {/* Header */}
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <p className="text-[9px] uppercase tracking-widest text-slate-500 mb-0.5">{title}</p>
+          <p className="text-sm font-bold text-slate-300">{subtitle}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-3xl font-black leading-none" style={{ color }}>
+            {scoreDisplay}{isPercent && totalScore != null ? '%' : ''}
+          </p>
+          {best && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold mt-1 inline-block" style={{ backgroundColor: `${color}20`, color }}>
+              ⭐ {(best.nome || best.name || '').split(' ')[0]}
+            </span>
+          )}
+        </div>
       </div>
-      {chartData.length > 0 ? (
-        <ResponsiveContainer width="100%" height={180}>
-          <RadarChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 20 }}>
-            <PolarGrid stroke="#1E3050" />
-            <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748B', fontSize: 9 }} />
-            <Radar dataKey="A" stroke={color} fill={color} fillOpacity={0.15} strokeWidth={2} />
-          </RadarChart>
-        </ResponsiveContainer>
-      ) : (
-        <div className="flex items-center justify-center h-[180px] text-slate-600 text-xs">Sem dados de pilares</div>
-      )}
-      {list.length > 0 && (
-        <div className="mt-2 space-y-1">
-          {list.map((p: any, i: number) => {
+
+      {/* Body: pillar list LEFT + radar RIGHT */}
+      <div className="flex gap-4 items-start">
+        {/* Pillar list */}
+        <div className="flex-1 space-y-2 min-w-0">
+          {list.length > 0 ? list.map((p: any, i: number) => {
             const nota = Number(p.nota ?? p.pontuacao ?? p.score) || 0;
             const maximo = Number(p.maximo ?? p.max ?? 100) || 100;
             const pct = Math.round((nota / maximo) * 100);
+            const barColor = pillarBarColor(pct);
             return (
-              <div key={i} className="flex items-center gap-2">
-                <span className="text-[10px] text-slate-500 w-24 truncate">{p.nome || p.name}</span>
-                <div className="flex-1 h-1.5 bg-[#1E3050] rounded-full overflow-hidden">
-                  <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+              <div key={i} className="group">
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className="text-[11px] text-slate-300 truncate flex-1 mr-2 font-medium">
+                    <span className="text-slate-600 mr-1">{i + 1}</span>
+                    {p.nome || p.name}
+                  </span>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <span className="text-[10px] text-slate-400 font-mono">{nota}/{maximo}</span>
+                    <span className="text-[11px] font-bold" style={{ color: barColor }}>{pct}%</span>
+                  </div>
                 </div>
-                <span className="text-[10px] font-mono text-slate-400 w-16 text-right">{nota}/{maximo}</span>
+                <div className="h-1.5 bg-[#1E3050] rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{ width: `${pct}%`, backgroundColor: barColor }}
+                  />
+                </div>
               </div>
             );
-          })}
+          }) : (
+            <div className="text-slate-600 text-xs py-4">Sem dados de pilares</div>
+          )}
         </div>
-      )}
+
+        {/* Radar chart */}
+        {chartData.length > 0 && (
+          <div className="flex-shrink-0 w-[160px]">
+            <ResponsiveContainer width="100%" height={160}>
+              <RadarChart data={chartData} margin={{ top: 8, right: 16, bottom: 8, left: 16 }}>
+                <PolarGrid stroke="#1E3050" />
+                <PolarAngleAxis dataKey="subject" tick={{ fill: '#475569', fontSize: 7 }} />
+                <PolarRadiusAxis tick={false} axisLine={false} />
+                <Radar dataKey="A" stroke={color} fill={color} fillOpacity={0.2} strokeWidth={2} />
+                <RechartsTooltip content={<CustomRadarTooltip />} />
+              </RadarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -567,35 +671,90 @@ function HistoricoChart({ historico }: { historico: any[] }) {
   const data = (historico || []).slice(-10);
   return (
     <div className="rounded-xl border border-[#1E3050] bg-[#0F1B31] p-4">
-      <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest mb-3">Evolução Histórica</h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">Evolução Histórica</h3>
+        <div className="flex items-center gap-4">
+          <span className="flex items-center gap-1.5 text-[10px] text-slate-500"><span className="w-3 h-0.5 bg-sky-400 inline-block rounded" /> QA</span>
+          <span className="flex items-center gap-1.5 text-[10px] text-slate-500"><span className="w-3 h-0.5 bg-teal-400 inline-block rounded" /> IEPC</span>
+        </div>
+      </div>
       {data.length > 0 ? (
-        <ResponsiveContainer width="100%" height={180}>
+        <ResponsiveContainer width="100%" height={160}>
           <LineChart data={data} margin={{ top: 5, right: 10, bottom: 5, left: -20 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#1E3050" />
             <XAxis dataKey="ciclo" stroke="#475569" fontSize={8} tick={{ fill: '#475569' }} />
             <YAxis domain={[0, 100]} stroke="#475569" fontSize={8} tick={{ fill: '#475569' }} />
-            <Tooltip
+            <RechartsTooltip
               contentStyle={{ background: '#0F1B31', border: '1px solid #1E3050', borderRadius: '8px', color: '#e2e8f0', fontSize: '11px' }}
             />
-            <Line type="monotone" dataKey="qa" stroke={C.blue} strokeWidth={2} dot={{ fill: C.blue, r: 3 }} name="QA" />
-            <Line type="monotone" dataKey="iepc" stroke={C.teal} strokeWidth={2} dot={{ fill: C.teal, r: 3 }} name="IEPC" />
+            <Line type="monotone" dataKey="qa" stroke="#38BDF8" strokeWidth={2} dot={{ fill: '#38BDF8', r: 3 }} name="QA" />
+            <Line type="monotone" dataKey="iepc" stroke="#2DD4BF" strokeWidth={2} dot={{ fill: '#2DD4BF', r: 3 }} name="IEPC" />
           </LineChart>
         </ResponsiveContainer>
       ) : (
-        <div className="flex items-center justify-center h-[180px] text-slate-600 text-xs">Sem histórico disponível</div>
+        <div className="flex items-center justify-center h-[160px] text-slate-600 text-xs">Sem histórico disponível</div>
       )}
-      <div className="flex items-center gap-4 mt-2 justify-center">
-        <span className="flex items-center gap-1.5 text-[10px] text-slate-500"><span className="w-3 h-0.5 bg-sky-400 inline-block rounded" /> QA</span>
-        <span className="flex items-center gap-1.5 text-[10px] text-slate-500"><span className="w-3 h-0.5 bg-teal-400 inline-block rounded" /> IEPC</span>
+    </div>
+  );
+}
+
+// ── COACHING CARD — Premium dark card with 3 sections ──
+function CoachingCard({ coaching: c }: { coaching: any }) {
+  return (
+    <div className="rounded-xl border border-[#1E3050] bg-[#07101F]/80 overflow-hidden hover:border-slate-600/40 transition-all">
+      {/* Category tag */}
+      {c.categoria && (
+        <div className="px-4 pt-3 pb-2 border-b border-[#1E3050]/60">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700/50">
+            {c.categoria}
+          </span>
+        </div>
+      )}
+      <div className="p-4 space-y-3">
+        {/* O QUE FOI DITO */}
+        {c.o_que_foi_dito && (
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-red-400 mb-1">O QUE FOI DITO</p>
+            <p className="text-xs text-slate-400 italic leading-relaxed">&ldquo;{c.o_que_foi_dito}&rdquo;</p>
+          </div>
+        )}
+        {/* COMO PODERIA SER */}
+        {c.como_poderia_ser && (
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-teal-400 mb-1">COMO PODERIA SER</p>
+            <p className="text-xs text-slate-300 italic leading-relaxed">&ldquo;{c.como_poderia_ser}&rdquo;</p>
+          </div>
+        )}
+        {/* DICA DE OURO */}
+        {c.dica_de_ouro && (
+          <div className="rounded-lg bg-amber-900/20 border border-amber-700/30 px-3 py-2">
+            <p className="text-[10px] font-bold text-amber-400 mb-1 flex items-center gap-1">
+              <Zap size={10} className="fill-amber-400" /> Dica de Ouro
+            </p>
+            <p className="text-xs text-amber-200/80 leading-relaxed">{c.dica_de_ouro}</p>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
+// ── ATENDIMENTO ACCORDION — Criteria grouped by pilar ──
 function AtendimentoAccordion({ atendimento, index }: { atendimento: any; index: number }) {
   const [open, setOpen] = useState(false);
   const score = Number(atendimento.nota_qa ?? atendimento.nota) || 0;
   const scoreColor = score >= 90 ? 'text-green-400' : score >= 70 ? 'text-amber-400' : 'text-red-400';
+  const scoreBg = score >= 90 ? 'bg-green-900/30 border-green-700/30' : score >= 70 ? 'bg-amber-900/30 border-amber-700/30' : 'bg-red-900/30 border-red-700/30';
+
+  // Group criteria by pilar
+  const criteriosByPilar = (atendimento.criterios || []).reduce((acc: Record<string, any[]>, c: any) => {
+    const key = c.pilar_nome || c.pilar_codigo || 'Outros';
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(c);
+    return acc;
+  }, {});
+
+  const pilarEntries = Object.entries(criteriosByPilar) as [string, any[]][];
 
   return (
     <div className="rounded-lg border border-[#1E3050] bg-[#07101F]/60 overflow-hidden transition-all duration-200 hover:border-sky-900/40">
@@ -603,35 +762,83 @@ function AtendimentoAccordion({ atendimento, index }: { atendimento: any; index:
         className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-[#0F1B31]/60 transition-all text-left"
         onClick={() => setOpen(!open)}
       >
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="text-[10px] text-slate-600 font-mono flex-shrink-0">#{index + 1}</span>
-          <span className="font-mono text-xs font-bold text-sky-400 flex-shrink-0">{atendimento.protocolo}</span>
-          <span className="text-xs text-slate-300 truncate">{atendimento.cliente}</span>
-          {atendimento.assunto && <span className="text-[10px] text-slate-600 truncate hidden md:block">{atendimento.assunto}</span>}
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <span className="font-mono text-xs font-bold text-sky-400 flex-shrink-0">#{atendimento.protocolo || index + 1}</span>
+          {atendimento.sup && <span className="text-[10px] text-slate-500 flex-shrink-0 font-mono">{atendimento.sup}</span>}
+          <span className="text-xs text-slate-300 truncate">{atendimento.cliente || 'Cliente'}</span>
+          {atendimento.assunto && <span className="text-[10px] text-slate-500 truncate hidden md:block">{atendimento.assunto}</span>}
         </div>
-        <div className="flex items-center gap-3 flex-shrink-0 ml-2">
-          <span className={`text-xs font-bold ${scoreColor}`}>QA {atendimento.nota_qa ?? atendimento.nota ?? '—'}</span>
+        <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+          {score > 0 && (
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${scoreBg} ${scoreColor}`}>
+              QA {score}
+            </span>
+          )}
+          {atendimento.data && <span className="text-[10px] text-slate-600 hidden sm:block">{atendimento.data}</span>}
           {open ? <ChevronUp size={14} className="text-slate-600" /> : <ChevronDown size={14} className="text-slate-600" />}
         </div>
       </button>
+
       {open && (
-        <div className="px-4 pb-3 pt-2 border-t border-[#1E3050] space-y-2.5 bg-[#0A1525]/60">
-          {atendimento.sintese && (
-            <p className="text-xs text-slate-300 leading-relaxed"><span className="text-slate-500 font-medium">Síntese:</span> {atendimento.sintese}</p>
-          )}
-          {atendimento.solucao && (
-            <p className="text-xs text-slate-400 leading-relaxed"><span className="text-slate-500 font-medium">Solução:</span> {atendimento.solucao}</p>
-          )}
-          {atendimento.criterios?.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              {atendimento.criterios.map((c: any, i: number) => {
-                const { cls, label } = statusBadge(c.status);
-                return (
-                  <span key={i} className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${cls}`}>
-                    {c.criterio_nome || c.nome || label}
-                  </span>
-                );
-              })}
+        <div className="border-t border-[#1E3050] bg-[#0A1525]/60">
+          {/* Meta info row */}
+          <div className="px-4 py-2 flex flex-wrap gap-x-5 gap-y-1 text-[10px] text-slate-500 border-b border-[#1E3050]/50">
+            {atendimento.sup && <span>SUP: <strong className="text-slate-400">{atendimento.sup}</strong></span>}
+            {atendimento.duracao && <span>Duração: <strong className="text-slate-400">Aprox. {atendimento.duracao}</strong></span>}
+            {atendimento.data && <span>Data: <strong className="text-slate-400">{atendimento.data}</strong></span>}
+            {atendimento.informou_sup != null && (
+              <span className={atendimento.informou_sup ? 'text-green-400' : 'text-slate-500'}>
+                {atendimento.informou_sup ? '✓ Informou SUP ao cliente' : '✗ Não informou SUP'}
+              </span>
+            )}
+          </div>
+
+          {/* Síntese + Solução */}
+          <div className="px-4 py-3 space-y-2">
+            {atendimento.sintese && (
+              <div>
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Síntese</p>
+                <p className="text-xs text-slate-300 leading-relaxed">{atendimento.sintese}</p>
+              </div>
+            )}
+            {atendimento.solucao && (
+              <div>
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Solução Aplicada</p>
+                <p className="text-xs text-slate-400 leading-relaxed">{atendimento.solucao}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Critérios grouped by pilar */}
+          {pilarEntries.length > 0 && (
+            <div className="px-4 pb-4">
+              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Critérios Avaliados por Pilar</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                {pilarEntries.map(([pilarNome, criterios], pi) => (
+                  <div key={pi} className="rounded-lg border border-[#1E3050] bg-[#07101F]/80 overflow-hidden">
+                    <div className="px-3 py-2 border-b border-[#1E3050]/60 bg-[#0F1B31]/60">
+                      <p className="text-[10px] font-bold text-slate-300 leading-tight">{pilarNome}</p>
+                    </div>
+                    <div className="p-2 space-y-1">
+                      {(criterios as any[]).sort((a, b) => (a.criterio_codigo || '').localeCompare(b.criterio_codigo || '')).map((c: any, ci: number) => {
+                        const badge = statusBadge(c.status);
+                        return (
+                          <div key={ci} className="flex items-center justify-between gap-2 py-0.5">
+                            <span className="text-[10px] text-slate-400 truncate flex-1">
+                              {c.criterio_codigo && <span className="text-slate-600 mr-1">{c.criterio_codigo}</span>}
+                              {c.criterio_nome || c.nome}
+                            </span>
+                            <span className={`flex-shrink-0 flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-semibold ${badge.cls}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${badge.dot}`} />
+                              {badge.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
