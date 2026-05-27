@@ -34,6 +34,7 @@ interface AnalistaGestao {
   pdiAtivo: boolean;
   reincidencia: number;
   scores: { periodo: string; qa: number; iepc: number }[];
+  avatar_url?: string;
 }
 
 function calcTempoEmpresa(dataAdmissao?: string): { label: string; meses: number } {
@@ -98,6 +99,7 @@ function formatBirthday(dataNascimento?: string): string {
 
 function AnalystDetailDrawer({ analista, onClose }: { analista: AnalistaGestao; onClose: () => void }) {
   const initials = (analista.nome_completo || analista.nome || 'AN').substring(0, 2).toUpperCase();
+  const avatarUrl = (analista as any).avatar_url || (analista as any).foto_url || null;
 
   return (
     <div
@@ -112,9 +114,15 @@ function AnalystDetailDrawer({ analista, onClose }: { analista: AnalistaGestao; 
         <div className="sticky top-0 z-10 p-6" style={{ backgroundColor: '#0D1117', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-lg font-bold text-white flex-shrink-0"
-                style={{ background: 'linear-gradient(135deg, #1E40AF, #3B82F6)' }}>
-                {initials}
+              <div className="w-14 h-14 rounded-2xl overflow-hidden flex-shrink-0 relative">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt={`Foto de ${analista.nome}`} className="w-full h-full object-cover"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).parentElement?.querySelector('.fallback-initials')?.removeAttribute('style'); }} />
+                ) : null}
+                <div className="fallback-initials w-14 h-14 rounded-2xl flex items-center justify-center text-lg font-bold text-white"
+                  style={{ background: 'linear-gradient(135deg, #1E40AF, #3B82F6)', display: avatarUrl ? 'none' : 'flex' }}>
+                  {initials}
+                </div>
               </div>
               <div>
                 <h2 className="text-lg font-bold text-white">{analista.nome_completo || analista.nome}</h2>
@@ -252,6 +260,7 @@ function AnalystCard({ analista, onClick }: { analista: AnalistaGestao; onClick:
   const currentMonth = new Date().getMonth();
   const birthdayMonth = getBirthdayMonth(analista.data_nascimento);
   const isBirthdayMonth = birthdayMonth === currentMonth;
+  const avatarUrl = (analista as any).avatar_url || (analista as any).foto_url || null;
 
   return (
     <div
@@ -263,8 +272,18 @@ function AnalystCard({ analista, onClick }: { analista: AnalistaGestao; onClick:
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="w-11 h-11 rounded-xl flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #1E3A5F, #2563EB)' }}>
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt={`Foto de ${analista.nome}`}
+                className="w-11 h-11 rounded-xl object-cover flex-shrink-0"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.removeAttribute('style'); }}
+              />
+            ) : null}
+            <div
+              className="w-11 h-11 rounded-xl flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg, #1E3A5F, #2563EB)', display: avatarUrl ? 'none' : 'flex' }}
+            >
               {initials}
             </div>
             <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 flex items-center justify-center"
@@ -425,15 +444,24 @@ function GestaoContent() {
       const supabase = createClient();
       if (!supabase) return;
 
-      const [analistasRes, scoresRes, pdisRes] = await Promise.all([
+      const [analistasRes, scoresRes, pdisRes, profilesRes] = await Promise.all([
         supabase.from('analistas').select('*').order('nome'),
         supabase.from('cycle_scores').select('analista, periodo, nota_final_qa, iepc_total, total_ncs').order('periodo'),
         supabase.from('pdi_records').select('analista, status').eq('status', 'ativo'),
+        supabase.from('user_profiles').select('id, email, avatar_url, full_name').catch(() => ({ data: [] })),
       ]);
 
       const analistasData = analistasRes.data || [];
       const scoresData = scoresRes.data || [];
       const pdisData = pdisRes.data || [];
+      const profilesData = (profilesRes as any)?.data || [];
+
+      // Build email→avatar map from user_profiles
+      const profileAvatarMap: Record<string, string> = {};
+      profilesData.forEach((p: any) => {
+        if (p.email && p.avatar_url) profileAvatarMap[p.email.toLowerCase()] = p.avatar_url;
+        if (p.full_name && p.avatar_url) profileAvatarMap[p.full_name.toLowerCase()] = p.avatar_url;
+      });
 
       const activePdis = new Set((pdisData as any[]).map((p: any) => (p.analista || '').toLowerCase().trim()));
 
@@ -473,6 +501,11 @@ function GestaoContent() {
         const pdiAtivo = activePdis.has(nomeLower) || activePdis.has(nomeShort);
         const { label: tempoLabel, meses: mesesEmpresa } = calcTempoEmpresa(a.data_admissao);
 
+        // Resolve avatar: analistas.avatar_url > user_profiles by email/name
+        const resolvedAvatar = a.avatar_url || a.foto_url ||
+          (a.email ? profileAvatarMap[a.email.toLowerCase()] : null) ||
+          profileAvatarMap[nomeLower] || null;
+
         return {
           id: a.id,
           analista_id: a.analista_id,
@@ -506,7 +539,8 @@ function GestaoContent() {
             qa: Number((s.nota_final_qa || 0).toFixed(1)),
             iepc: Number((s.iepc_total || 0).toFixed(1)),
           })),
-        };
+          avatar_url: resolvedAvatar,
+        } as any;
       });
 
       setAnalistas(computed);

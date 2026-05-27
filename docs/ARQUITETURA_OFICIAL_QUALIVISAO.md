@@ -957,3 +957,130 @@ Com base na análise do código, as seguintes tabelas são utilizadas:
 ---
 
 *Documento gerado automaticamente por análise estática do código-fonte. Versão 1.0 — 26/05/2026.*
+
+---
+
+## 6. REGISTRO DE ALTERAÇÕES — AJUSTES FINAIS PDI ENTERPRISE (27/05/2026)
+
+> **Versão:** 2.0  
+> **Data:** 27/05/2026  
+> **Responsável:** Área de Qualidade — Zetti Tech  
+> **Classificação:** Documento Interno — Conformidade ISO 9001
+
+### 6.1 Módulo PDI — Reestruturação Enterprise
+
+#### 6.1.1 Nova Estrutura Multi-Objetivo
+
+O modal de criação/edição de PDI foi reestruturado para suportar **múltiplos objetivos por ciclo**, substituindo o modelo anterior de objetivo único.
+
+**Estrutura de cada bloco de objetivo:**
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `categoria` | string | Classificação do objetivo (Técnico, Comportamental, Operacional, etc.) |
+| `objetivo` | string | Descrição do objetivo a ser alcançado |
+| `acao_esperada` | string | Ação concreta esperada do analista |
+| `resultado_esperado` | string | Resultado mensurável esperado ao final do ciclo |
+| `status` | enum | `cumprido` / `parcial` / `nao_cumprido` |
+| `observacao_coordenador` | string | Observação do coordenador sobre este objetivo específico |
+
+**Armazenamento:** Os objetivos são persistidos no campo `enterprise_objectives` (JSONB) da tabela `pdi_records` e `feedback_pdi`.
+
+#### 6.1.2 Progresso Automático
+
+O progresso do PDI é calculado **automaticamente** com base nos status dos objetivos, eliminando o campo manual de progresso:
+
+```
+Cumprido     = 100% de contribuição
+Parcial      = 50% de contribuição
+Não Cumprido = 0% de contribuição
+
+Progresso Total = Soma das contribuições / Número de objetivos
+```
+
+**Exemplo:** 3 objetivos (1 Cumprido + 1 Parcial + 1 Não Cumprido) = (100 + 50 + 0) / 3 = **50%**
+
+#### 6.1.3 Exclusão de PDI com Confirmação
+
+Adicionado modal de confirmação para exclusão de PDI com:
+- Exibição do nome do analista para confirmação visual
+- Registro em log de auditoria via `deletePDIRecord`
+- Soft delete (marcação como excluído, não remoção física)
+- Botão de exclusão destacado em vermelho para prevenção de erros
+
+#### 6.1.4 Mensagem Evolutiva Automática
+
+A mensagem evolutiva pode ser:
+- **Manual:** preenchida diretamente pelo coordenador
+- **Automática:** gerada pelo sistema se o campo estiver vazio ao salvar
+
+A geração automática utiliza os seguintes dados do analista:
+- Nota QA do último ciclo
+- IEPC (Índice de Eficiência e Performance do Ciclo)
+- Total de Não Conformidades (NCs)
+- Total de Elogios
+- Aderência ao ciclo
+
+O texto gerado segue padrão corporativo/coaching com linguagem profissional.
+
+### 6.2 Módulo Feedback — Bloco PDI Atualizado
+
+O bloco PDI dentro do módulo de Feedback (`/feedback/pdi`) foi atualizado para seguir **exatamente a mesma estrutura enterprise** do módulo PDI principal:
+
+- Suporte a múltiplos objetivos por ciclo
+- Botão "Adicionar Objetivo" para inclusão dinâmica de blocos
+- Cada objetivo com: Categoria, Objetivo, Ação Esperada, Resultado Esperado, Status, Observação do Coordenador
+- Progresso calculado automaticamente
+- Mensagem evolutiva com geração automática baseada em QA/IEPC/NCs/Elogios
+- Exibição de resumo dos objetivos nos cards da listagem
+
+### 6.3 Módulo Gestão de Pessoas — Fotos dos Analistas
+
+Corrigida a exibição de fotos dos analistas no módulo **Desenvolvimento Humano → Gestão de Pessoas**:
+
+**Ordem de resolução da foto:**
+1. `analistas.avatar_url` — campo direto na tabela de analistas
+2. `analistas.foto_url` — campo alternativo na tabela de analistas
+3. `user_profiles.avatar_url` — buscado por correspondência de email
+4. `user_profiles.avatar_url` — buscado por correspondência de nome completo
+5. **Fallback:** Iniciais do nome em gradiente azul
+
+A foto é exibida em:
+- Cards da listagem principal (grid de analistas)
+- Drawer de detalhes do analista (painel lateral)
+
+### 6.4 Impacto nas Tabelas Supabase
+
+| Tabela | Alteração | Campo |
+|---|---|---|
+| `pdi_records` | Novo campo JSONB | `enterprise_objectives` — array de ObjectiveBlock |
+| `pdi_records` | Novo campo | `mensagem_evolutiva` — texto gerado manual ou automaticamente |
+| `pdi_records` | Novo campo | `progresso` — calculado automaticamente (não manual) |
+| `feedback_pdi` | Novo campo JSONB | `enterprise_objectives` — mesma estrutura |
+| `feedback_pdi` | Novo campo | `mensagem_evolutiva` |
+| `analistas` | Leitura | `avatar_url`, `foto_url` — para exibição de fotos |
+| `user_profiles` | Leitura | `avatar_url` — fallback para fotos |
+
+### 6.5 Arquivos Modificados
+
+| Arquivo | Tipo de Alteração |
+|---|---|
+| `src/app/pdis/page.tsx` | Reestruturação completa do modal PDI — multi-objetivo enterprise |
+| `src/app/feedback/pdi/page.tsx` | Atualização do bloco PDI para estrutura enterprise |
+| `src/app/gestao/page.tsx` | Correção da exibição de fotos dos analistas |
+
+### 6.6 Conformidade ISO 9001
+
+As alterações realizadas estão alinhadas com os seguintes requisitos da norma ISO 9001:2015:
+
+| Cláusula ISO 9001 | Requisito | Implementação |
+|---|---|---|
+| **7.2** | Competência | PDI enterprise com múltiplos objetivos estruturados por categoria |
+| **7.3** | Conscientização | Mensagem evolutiva corporativa gerada por dados reais de performance |
+| **9.1.3** | Análise e avaliação | Progresso automático baseado em status objetivos — elimina subjetividade |
+| **10.3** | Melhoria contínua | Ciclo de PDI com rastreabilidade completa (timeline, auditoria, soft delete) |
+| **6.1** | Ações para abordar riscos | Exclusão com confirmação e log de auditoria — controle de integridade |
+
+---
+
+*Documento atualizado em 27/05/2026 — Versão 2.0*

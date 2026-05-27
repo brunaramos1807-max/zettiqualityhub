@@ -5,7 +5,6 @@ import { fetchCycleScores, fetchAllPeriodos, fetchPDIRecords, savePDIRecord, upd
 import { BookOpen, Plus, TrendingUp, CheckCircle, X, AlertTriangle, RefreshCw, Loader2, Trash2, Edit2, Paperclip, Upload, FileText, ChevronDown, ChevronUp, Search, Filter, Clock, Activity, Target, Users, Award, Calendar, ArrowRight, Circle, CheckSquare, Shield, Eye } from 'lucide-react';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
 
-
 // ── Enterprise Status Config ──
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
   'aguardando alinhamento': { label: 'Aguardando Alinhamento', color: '#94A3B8', bg: 'rgba(148,163,184,0.1)', border: 'rgba(148,163,184,0.3)' },
@@ -15,7 +14,6 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
   'consolidado': { label: 'Consolidado', color: '#2DD4BF', bg: 'rgba(45,212,191,0.1)', border: 'rgba(45,212,191,0.3)' },
   'evolucao concluida': { label: 'Evolução Concluída', color: '#22C55E', bg: 'rgba(34,197,94,0.1)', border: 'rgba(34,197,94,0.3)' },
   'reincidente': { label: 'Reincidente', color: '#EF4444', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.3)' },
-  // Legacy statuses
   'Em andamento': { label: 'Em Andamento', color: '#38BDF8', bg: 'rgba(56,189,248,0.1)', border: 'rgba(56,189,248,0.3)' },
   'Atrasado': { label: 'Atrasado', color: '#F59E0B', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.3)' },
   'Concluído': { label: 'Concluído', color: '#22C55E', bg: 'rgba(34,197,94,0.1)', border: 'rgba(34,197,94,0.3)' },
@@ -32,6 +30,39 @@ const OBJECTIVE_STATUS_CONFIG = {
   nao_cumprido: { label: 'Não Cumprido', color: '#EF4444', bg: 'rgba(239,68,68,0.12)', icon: <X size={12} /> },
 };
 
+// ── Objective block for the form (multi-objective enterprise structure) ──
+interface ObjectiveBlock {
+  id: string;
+  categoria: string;
+  objetivo: string;
+  acao_esperada: string;
+  resultado_esperado: string;
+  status: 'cumprido' | 'parcial' | 'nao_cumprido';
+  observacao_coordenador: string;
+}
+
+function newObjectiveBlock(): ObjectiveBlock {
+  return {
+    id: Math.random().toString(36).slice(2),
+    categoria: '',
+    objetivo: '',
+    acao_esperada: '',
+    resultado_esperado: '',
+    status: 'nao_cumprido',
+    observacao_coordenador: '',
+  };
+}
+
+function calcProgressFromObjectives(objectives: ObjectiveBlock[]): number {
+  if (objectives.length === 0) return 0;
+  const total = objectives.reduce((acc, o) => {
+    if (o.status === 'cumprido') return acc + 100;
+    if (o.status === 'parcial') return acc + 50;
+    return acc;
+  }, 0);
+  return Math.round(total / objectives.length);
+}
+
 interface AttachmentItem {
   name: string;
   url: string;
@@ -45,46 +76,33 @@ interface FormState {
   squad: string;
   coordenador: string;
   periodo: string;
-  objetivo: string;
-  objetivo_desenvolvimento: string;
-  acao_desenvolvimento: string;
-  resultado_esperado: string;
   mensagem_evolutiva: string;
   comentario_coordenador: string;
   comentario_analista: string;
   prazo: string;
   observacoes: string;
   status_pdi: PDIRecord['status_pdi'];
-  evolucao_tecnica: string;
-  evolucao_comportamental: string;
-  performance_operacional: string;
-  risco_operacional: string;
-  plano_desenvolvimento: string;
   proxima_revisao: string;
   data_acompanhamento: string;
+  objectives: ObjectiveBlock[];
 }
 
 const EMPTY_FORM: FormState = {
   analista: '', squad: '', coordenador: '', periodo: '',
-  objetivo: '', objetivo_desenvolvimento: '', acao_desenvolvimento: '',
-  resultado_esperado: '', mensagem_evolutiva: '', comentario_coordenador: '',
+  mensagem_evolutiva: '', comentario_coordenador: '',
   comentario_analista: '', prazo: '', observacoes: '',
   status_pdi: 'aguardando alinhamento' as any,
-  evolucao_tecnica: '', evolucao_comportamental: '',
-  performance_operacional: '', risco_operacional: '',
-  plano_desenvolvimento: '', proxima_revisao: '', data_acompanhamento: '',
+  proxima_revisao: '', data_acompanhamento: '',
+  objectives: [newObjectiveBlock()],
 };
 
 function AccordionSection({ title, children, defaultOpen = false }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
+      <button type="button" onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center justify-between px-4 py-3 text-left transition-colors hover:bg-white/5"
-        style={{ backgroundColor: 'rgba(255,255,255,0.03)' }}
-      >
+        style={{ backgroundColor: 'rgba(255,255,255,0.03)' }}>
         <span className="text-xs font-semibold text-white uppercase tracking-wider">{title}</span>
         {open ? <ChevronUp size={14} style={{ color: '#94A3B8' }} /> : <ChevronDown size={14} style={{ color: '#94A3B8' }} />}
       </button>
@@ -97,13 +115,9 @@ function FieldInput({ label, value, onChange, placeholder, required }: { label: 
   return (
     <div>
       <label className="block text-xs font-semibold text-white mb-1.5">{label}{required && ' *'}</label>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
+      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
         className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none"
-        style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }}
-      />
+        style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }} />
     </div>
   );
 }
@@ -112,19 +126,13 @@ function FieldTextarea({ label, value, onChange, placeholder, rows = 3 }: { labe
   return (
     <div>
       <label className="block text-xs font-semibold text-white mb-1.5">{label}</label>
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        rows={rows}
+      <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} rows={rows}
         className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none resize-y"
-        style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', minHeight: `${rows * 24}px` }}
-      />
+        style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', minHeight: `${rows * 24}px` }} />
     </div>
   );
 }
 
-// ── Status Badge ──
 function StatusBadge({ status }: { status: string }) {
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG['Em andamento'];
   return (
@@ -135,17 +143,146 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// ── Multi-Objective Block Component ──
+function ObjectiveBlockCard({
+  block,
+  index,
+  onChange,
+  onRemove,
+  canRemove,
+}: {
+  block: ObjectiveBlock;
+  index: number;
+  onChange: (updated: ObjectiveBlock) => void;
+  onRemove: () => void;
+  canRemove: boolean;
+}) {
+  const statusCfg = OBJECTIVE_STATUS_CONFIG[block.status];
+  const inputStyle: React.CSSProperties = { backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' };
+  const inputCls = 'w-full px-3 py-2 rounded-lg text-sm text-white outline-none';
+
+  return (
+    <div className="rounded-xl p-4 space-y-3 relative" style={{ background: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.18)' }}>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-bold text-sky-400 uppercase tracking-wider">Objetivo {index + 1}</span>
+        {canRemove && (
+          <button type="button" onClick={onRemove} className="p-1 rounded hover:bg-red-500/10 transition-colors" style={{ color: '#EF4444' }}>
+            <Trash2 size={13} />
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-semibold text-white mb-1.5">Categoria</label>
+          <input value={block.categoria} onChange={(e) => onChange({ ...block, categoria: e.target.value })}
+            placeholder="Ex: Técnico, Comportamental..." className={inputCls} style={inputStyle} />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-white mb-1.5">Status</label>
+          <select value={block.status} onChange={(e) => onChange({ ...block, status: e.target.value as ObjectiveBlock['status'] })}
+            className={inputCls} style={{ ...inputStyle, color: statusCfg.color }}>
+            <option value="nao_cumprido">Não Cumprido</option>
+            <option value="parcial">Parcial</option>
+            <option value="cumprido">Cumprido</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-white mb-1.5">Objetivo *</label>
+        <input value={block.objetivo} onChange={(e) => onChange({ ...block, objetivo: e.target.value })}
+          placeholder="Descreva o objetivo..." className={inputCls} style={inputStyle} />
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-white mb-1.5">Ação Esperada</label>
+        <textarea value={block.acao_esperada} onChange={(e) => onChange({ ...block, acao_esperada: e.target.value })}
+          placeholder="Descreva a ação esperada..." rows={2}
+          className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none resize-none"
+          style={inputStyle} />
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-white mb-1.5">Resultado Esperado</label>
+        <textarea value={block.resultado_esperado} onChange={(e) => onChange({ ...block, resultado_esperado: e.target.value })}
+          placeholder="Qual resultado se espera alcançar..." rows={2}
+          className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none resize-none"
+          style={inputStyle} />
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-white mb-1.5">Observação do Coordenador</label>
+        <textarea value={block.observacao_coordenador} onChange={(e) => onChange({ ...block, observacao_coordenador: e.target.value })}
+          placeholder="Observações do coordenador sobre este objetivo..." rows={2}
+          className="w-full px-3 py-2 rounded-lg text-sm text-white outline-none resize-none"
+          style={inputStyle} />
+      </div>
+
+      {/* Status indicator */}
+      <div className="flex items-center gap-2 pt-1">
+        <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+          style={{ backgroundColor: statusCfg.bg, color: statusCfg.color }}>
+          {statusCfg.icon} {statusCfg.label}
+        </span>
+        <span className="text-xs" style={{ color: '#64748B' }}>
+          {block.status === 'cumprido' ? '100%' : block.status === 'parcial' ? '50%' : '0%'} de contribuição
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Delete Confirmation Modal ──
+function DeleteConfirmModal({ pdiName, onConfirm, onCancel, deleting }: {
+  pdiName: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  deleting: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.9)' }}>
+      <div className="w-full max-w-md rounded-2xl p-6" style={{ backgroundColor: '#0A1628', border: '1px solid rgba(239,68,68,0.3)' }}>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(239,68,68,0.12)' }}>
+            <AlertTriangle size={18} style={{ color: '#EF4444' }} />
+          </div>
+          <div>
+            <h3 className="font-bold text-white">Excluir PDI</h3>
+            <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Esta ação não pode ser desfeita</p>
+          </div>
+        </div>
+        <p className="text-sm mb-6" style={{ color: '#94A3B8' }}>
+          Tem certeza que deseja excluir o PDI de <span className="font-semibold text-white">{pdiName}</span>?
+          O registro será marcado como excluído e registrado no log de auditoria.
+        </p>
+        <div className="flex gap-3">
+          <button onClick={onCancel} disabled={deleting}
+            className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors hover:bg-white/5"
+            style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>
+            Cancelar
+          </button>
+          <button onClick={onConfirm} disabled={deleting}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
+            style={{ backgroundColor: '#DC2626' }}>
+            {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+            {deleting ? 'Excluindo...' : 'Confirmar Exclusão'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Timeline Component ──
 function PDITimeline({ events }: { events: PDITimelineEvent[] }) {
   if (!events.length) return (
     <div className="text-center py-6 text-slate-600 text-xs">Nenhum evento na timeline</div>
   );
-
   const typeColors: Record<string, string> = {
     criacao: '#38BDF8', atualizacao: '#A78BFA', melhoria: '#22C55E',
     validacao: '#F59E0B', conclusao: '#2DD4BF', evento: '#94A3B8',
   };
-
   return (
     <div className="relative pl-6">
       <div className="absolute left-2 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(180deg, rgba(56,189,248,0.4), rgba(56,189,248,0.05))' }} />
@@ -154,8 +291,7 @@ function PDITimeline({ events }: { events: PDITimelineEvent[] }) {
           const color = typeColors[ev.tipo] || '#94A3B8';
           return (
             <div key={ev.id || i} className="relative">
-              <div className="absolute -left-4 top-1.5 w-3 h-3 rounded-full border-2 border-[#07101F]"
-                style={{ backgroundColor: color }} />
+              <div className="absolute -left-4 top-1.5 w-3 h-3 rounded-full border-2 border-[#07101F]" style={{ backgroundColor: color }} />
               <div className="rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-semibold" style={{ color }}>{ev.titulo}</span>
@@ -171,7 +307,7 @@ function PDITimeline({ events }: { events: PDITimelineEvent[] }) {
   );
 }
 
-// ── Objectives Checklist ──
+// ── Objectives Checklist (detail modal) ──
 function PDIObjectivesChecklist({ pdiId, canEdit }: { pdiId: string; canEdit: boolean }) {
   const [objectives, setObjectives] = useState<PDIObjective[]>([]);
   const [loading, setLoading] = useState(true);
@@ -191,10 +327,7 @@ function PDIObjectivesChecklist({ pdiId, canEdit }: { pdiId: string; canEdit: bo
   const handleAdd = async () => {
     if (!newDesc.trim()) return;
     await savePDIObjective({ pdi_id: pdiId, descricao: newDesc, categoria: newCat, peso: 1, status: 'nao_cumprido' });
-    setNewDesc('');
-    setNewCat('');
-    setAdding(false);
-    load();
+    setNewDesc(''); setNewCat(''); setAdding(false); load();
   };
 
   const handleStatusChange = async (id: string, status: PDIObjective['status']) => {
@@ -215,7 +348,6 @@ function PDIObjectivesChecklist({ pdiId, canEdit }: { pdiId: string; canEdit: bo
 
   return (
     <div>
-      {/* Progress bar */}
       {objectives.length > 0 && (
         <div className="mb-4">
           <div className="flex items-center justify-between mb-1.5">
@@ -228,8 +360,6 @@ function PDIObjectivesChecklist({ pdiId, canEdit }: { pdiId: string; canEdit: bo
           </div>
         </div>
       )}
-
-      {/* Objectives list */}
       <div className="space-y-2 mb-3">
         {objectives.map((obj) => {
           const cfg = OBJECTIVE_STATUS_CONFIG[obj.status];
@@ -238,12 +368,9 @@ function PDIObjectivesChecklist({ pdiId, canEdit }: { pdiId: string; canEdit: bo
               style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
               <div className="flex-shrink-0 mt-0.5">
                 {canEdit ? (
-                  <select
-                    value={obj.status}
-                    onChange={(e) => handleStatusChange(obj.id, e.target.value as PDIObjective['status'])}
+                  <select value={obj.status} onChange={(e) => handleStatusChange(obj.id, e.target.value as PDIObjective['status'])}
                     className="text-xs rounded px-1 py-0.5 outline-none"
-                    style={{ backgroundColor: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}40` }}
-                  >
+                    style={{ backgroundColor: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}40` }}>
                     <option value="nao_cumprido">Não Cumprido</option>
                     <option value="parcial">Parcial</option>
                     <option value="cumprido">Cumprido</option>
@@ -268,26 +395,16 @@ function PDIObjectivesChecklist({ pdiId, canEdit }: { pdiId: string; canEdit: bo
           );
         })}
       </div>
-
-      {/* Add objective */}
       {canEdit && (
         adding ? (
           <div className="space-y-2 p-3 rounded-lg" style={{ background: 'rgba(56,189,248,0.05)', border: '1px solid rgba(56,189,248,0.2)' }}>
-            <input
-              value={newDesc}
-              onChange={(e) => setNewDesc(e.target.value)}
-              placeholder="Descrição do objetivo..."
+            <input value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="Descrição do objetivo..."
               className="w-full px-3 py-2 rounded-lg text-xs text-white outline-none"
               style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }}
-              onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-            />
-            <input
-              value={newCat}
-              onChange={(e) => setNewCat(e.target.value)}
-              placeholder="Categoria (opcional)..."
+              onKeyDown={(e) => e.key === 'Enter' && handleAdd()} />
+            <input value={newCat} onChange={(e) => setNewCat(e.target.value)} placeholder="Categoria (opcional)..."
               className="w-full px-3 py-2 rounded-lg text-xs text-white outline-none"
-              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }}
-            />
+              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }} />
             <div className="flex gap-2">
               <button onClick={handleAdd} className="flex-1 py-1.5 rounded-lg text-xs font-medium text-white" style={{ backgroundColor: '#1E40AF' }}>Adicionar</button>
               <button onClick={() => { setAdding(false); setNewDesc(''); setNewCat(''); }} className="px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:bg-white/5">Cancelar</button>
@@ -314,9 +431,7 @@ function PDIDetailModal({ pdi, onClose, canEdit, onUpdate }: { pdi: PDIRecord; o
   const [savingComment, setSavingComment] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    fetchPDITimeline(pdi.id).then(setTimeline);
-  }, [pdi.id]);
+  useEffect(() => { fetchPDITimeline(pdi.id).then(setTimeline); }, [pdi.id]);
 
   const handleFileAttach = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -343,10 +458,14 @@ function PDIDetailModal({ pdi, onClose, canEdit, onUpdate }: { pdi: PDIRecord; o
 
   const statusCfg = STATUS_CONFIG[pdi.status_pdi] || STATUS_CONFIG['Em andamento'];
 
+  // Parse objectives from pdi.acoes or metas if stored as enterprise blocks
+  const enterpriseObjectives: ObjectiveBlock[] = Array.isArray((pdi as any).enterprise_objectives)
+    ? (pdi as any).enterprise_objectives
+    : [];
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.85)' }}>
       <div className="w-full max-w-4xl rounded-2xl overflow-hidden flex flex-col" style={{ backgroundColor: '#0A1628', border: '1px solid rgba(56,189,248,0.2)', maxHeight: '94vh' }}>
-        {/* Header */}
         <div className="flex items-start justify-between px-6 py-5 flex-shrink-0"
           style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'linear-gradient(90deg, rgba(56,189,248,0.06) 0%, transparent 100%)' }}>
           <div className="flex-1 min-w-0">
@@ -359,11 +478,9 @@ function PDIDetailModal({ pdi, onClose, canEdit, onUpdate }: { pdi: PDIRecord; o
               {pdi.coordenador && <span className="flex items-center gap-1"><Shield size={10} /> {pdi.coordenador}</span>}
               {pdi.periodo && <span className="flex items-center gap-1"><Calendar size={10} /> {pdi.periodo}</span>}
             </div>
-            {/* Cycle metrics */}
             <div className="flex items-center gap-3 mt-2 flex-wrap">
               {pdi.qa_score > 0 && <span className="text-xs px-2 py-0.5 rounded font-semibold" style={{ backgroundColor: 'rgba(56,189,248,0.12)', color: '#38BDF8' }}>QA {pdi.qa_score.toFixed(1)}</span>}
               {pdi.iepc_score > 0 && <span className="text-xs px-2 py-0.5 rounded font-semibold" style={{ backgroundColor: 'rgba(45,212,191,0.12)', color: '#2DD4BF' }}>IEPC {pdi.iepc_score.toFixed(1)}%</span>}
-              {(pdi.aderencia_score ?? 0) > 0 && <span className="text-xs px-2 py-0.5 rounded font-semibold" style={{ backgroundColor: 'rgba(167,139,250,0.12)', color: '#A78BFA' }}>Aderência {pdi.aderencia_score}%</span>}
               {(pdi.total_ncs ?? 0) > 0 && <span className="text-xs px-2 py-0.5 rounded font-semibold" style={{ backgroundColor: 'rgba(245,158,11,0.12)', color: '#F59E0B' }}>{pdi.total_ncs} NCs</span>}
               {(pdi.total_elogios ?? 0) > 0 && <span className="text-xs px-2 py-0.5 rounded font-semibold" style={{ backgroundColor: 'rgba(34,197,94,0.12)', color: '#22C55E' }}>{pdi.total_elogios} Elogios</span>}
             </div>
@@ -373,7 +490,6 @@ function PDIDetailModal({ pdi, onClose, canEdit, onUpdate }: { pdi: PDIRecord; o
           </button>
         </div>
 
-        {/* Tabs */}
         <div className="flex items-center gap-1 px-6 py-2 flex-shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           {[
             { id: 'overview', label: 'Visão Geral', icon: <Eye size={12} /> },
@@ -381,51 +497,64 @@ function PDIDetailModal({ pdi, onClose, canEdit, onUpdate }: { pdi: PDIRecord; o
             { id: 'timeline', label: 'Timeline', icon: <Activity size={12} /> },
             { id: 'attachments', label: 'Anexos', icon: <Paperclip size={12} /> },
           ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+            <button key={tab.id} onClick={() => setActiveTab(tab.id as any)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
               style={{
                 backgroundColor: activeTab === tab.id ? 'rgba(56,189,248,0.15)' : 'transparent',
                 color: activeTab === tab.id ? '#38BDF8' : '#64748B',
                 border: activeTab === tab.id ? '1px solid rgba(56,189,248,0.3)' : '1px solid transparent',
-              }}
-            >
+              }}>
               {tab.icon} {tab.label}
             </button>
           ))}
         </div>
 
-        {/* Body */}
         <div className="overflow-y-auto flex-1 px-6 py-5">
           {activeTab === 'overview' && (
             <div className="space-y-4">
-              {/* PDI Development Block */}
-              {(pdi.objetivo_desenvolvimento || pdi.acao_desenvolvimento || pdi.resultado_esperado) && (
+              {/* Enterprise Objectives Display */}
+              {enterpriseObjectives.length > 0 && (
+                <div className="space-y-3">
+                  <p className="text-xs font-bold uppercase tracking-wider text-sky-400">Objetivos do Ciclo</p>
+                  {enterpriseObjectives.map((obj, i) => {
+                    const cfg = OBJECTIVE_STATUS_CONFIG[obj.status];
+                    return (
+                      <div key={obj.id} className="rounded-xl p-4" style={{ background: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.15)' }}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-bold text-white">Objetivo {i + 1}{obj.categoria ? ` — ${obj.categoria}` : ''}</span>
+                          <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+                            style={{ backgroundColor: cfg.bg, color: cfg.color }}>
+                            {cfg.icon} {cfg.label}
+                          </span>
+                        </div>
+                        <div className="grid md:grid-cols-3 gap-3">
+                          {obj.objetivo && <div><p className="text-[10px] font-bold uppercase tracking-wider text-sky-400 mb-1">Objetivo</p><p className="text-xs text-slate-300">{obj.objetivo}</p></div>}
+                          {obj.acao_esperada && <div><p className="text-[10px] font-bold uppercase tracking-wider text-teal-400 mb-1">Ação Esperada</p><p className="text-xs text-slate-300">{obj.acao_esperada}</p></div>}
+                          {obj.resultado_esperado && <div><p className="text-[10px] font-bold uppercase tracking-wider text-green-400 mb-1">Resultado Esperado</p><p className="text-xs text-slate-300">{obj.resultado_esperado}</p></div>}
+                        </div>
+                        {obj.observacao_coordenador && (
+                          <div className="mt-2 pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-purple-400 mb-1">Obs. Coordenador</p>
+                            <p className="text-xs text-slate-400 italic">{obj.observacao_coordenador}</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Legacy single objective display */}
+              {enterpriseObjectives.length === 0 && (pdi.objetivo_desenvolvimento || pdi.acao_desenvolvimento || pdi.resultado_esperado) && (
                 <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(56,189,248,0.2)', background: 'rgba(56,189,248,0.04)' }}>
                   <div className="px-4 py-3 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(56,189,248,0.12)' }}>
                     <Target size={14} className="text-sky-400" />
                     <span className="text-xs font-bold text-sky-300 uppercase tracking-wider">Plano de Desenvolvimento</span>
                   </div>
                   <div className="p-4 grid md:grid-cols-3 gap-3">
-                    {pdi.objetivo_desenvolvimento && (
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-sky-400 mb-1.5">Objetivo</p>
-                        <p className="text-xs text-slate-300 leading-relaxed">{pdi.objetivo_desenvolvimento}</p>
-                      </div>
-                    )}
-                    {pdi.acao_desenvolvimento && (
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-teal-400 mb-1.5">Ação Esperada</p>
-                        <p className="text-xs text-slate-300 leading-relaxed">{pdi.acao_desenvolvimento}</p>
-                      </div>
-                    )}
-                    {pdi.resultado_esperado && (
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-green-400 mb-1.5">Resultado Esperado</p>
-                        <p className="text-xs text-slate-300 leading-relaxed">{pdi.resultado_esperado}</p>
-                      </div>
-                    )}
+                    {pdi.objetivo_desenvolvimento && <div><p className="text-[10px] font-bold uppercase tracking-wider text-sky-400 mb-1.5">Objetivo</p><p className="text-xs text-slate-300 leading-relaxed">{pdi.objetivo_desenvolvimento}</p></div>}
+                    {pdi.acao_desenvolvimento && <div><p className="text-[10px] font-bold uppercase tracking-wider text-teal-400 mb-1.5">Ação Esperada</p><p className="text-xs text-slate-300 leading-relaxed">{pdi.acao_desenvolvimento}</p></div>}
+                    {pdi.resultado_esperado && <div><p className="text-[10px] font-bold uppercase tracking-wider text-green-400 mb-1.5">Resultado Esperado</p><p className="text-xs text-slate-300 leading-relaxed">{pdi.resultado_esperado}</p></div>}
                   </div>
                   {pdi.mensagem_evolutiva && (
                     <div className="px-4 pb-4">
@@ -436,27 +565,21 @@ function PDIDetailModal({ pdi, onClose, canEdit, onUpdate }: { pdi: PDIRecord; o
                 </div>
               )}
 
-              {/* Objective / Plano */}
-              {(pdi.objetivo || pdi.metas?.[0]?.descricao) && (
-                <div className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Objetivo / Plano</p>
-                  <p className="text-sm text-slate-200 leading-relaxed">{pdi.objetivo || pdi.metas?.[0]?.descricao}</p>
+              {pdi.mensagem_evolutiva && enterpriseObjectives.length > 0 && (
+                <div className="rounded-xl p-4" style={{ background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.2)' }}>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-purple-400 mb-2">Mensagem Evolutiva</p>
+                  <p className="text-sm text-slate-300 leading-relaxed italic">&ldquo;{pdi.mensagem_evolutiva}&rdquo;</p>
                 </div>
               )}
 
-              {/* Comments */}
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-sky-400 mb-2">Comentário do Coordenador</label>
                   {canEdit ? (
-                    <textarea
-                      value={commentCoord}
-                      onChange={(e) => setCommentCoord(e.target.value)}
-                      rows={4}
+                    <textarea value={commentCoord} onChange={(e) => setCommentCoord(e.target.value)} rows={4}
                       placeholder="Adicione observações do coordenador..."
                       className="w-full px-3 py-2 rounded-lg text-xs text-white outline-none resize-none"
-                      style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }}
-                    />
+                      style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }} />
                   ) : (
                     <p className="text-xs text-slate-400 leading-relaxed p-3 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
                       {commentCoord || 'Sem comentários'}
@@ -465,14 +588,10 @@ function PDIDetailModal({ pdi, onClose, canEdit, onUpdate }: { pdi: PDIRecord; o
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-teal-400 mb-2">Comentário do Analista</label>
-                  <textarea
-                    value={commentAnalista}
-                    onChange={(e) => setCommentAnalista(e.target.value)}
-                    rows={4}
+                  <textarea value={commentAnalista} onChange={(e) => setCommentAnalista(e.target.value)} rows={4}
                     placeholder="Adicione observações do analista..."
                     className="w-full px-3 py-2 rounded-lg text-xs text-white outline-none resize-none"
-                    style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }}
-                  />
+                    style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }} />
                 </div>
               </div>
               {canEdit && (
@@ -484,49 +603,22 @@ function PDIDetailModal({ pdi, onClose, canEdit, onUpdate }: { pdi: PDIRecord; o
                 </button>
               )}
 
-              {/* Dates */}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {pdi.prazo && (
-                  <div className="rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                    <p className="text-[10px] text-slate-600 mb-1">Prazo</p>
-                    <p className="text-xs font-semibold text-white">{pdi.prazo}</p>
-                  </div>
-                )}
-                {pdi.proxima_revisao && (
-                  <div className="rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                    <p className="text-[10px] text-slate-600 mb-1">Próxima Revisão</p>
-                    <p className="text-xs font-semibold text-white">{pdi.proxima_revisao}</p>
-                  </div>
-                )}
-                {pdi.data_acompanhamento && (
-                  <div className="rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                    <p className="text-[10px] text-slate-600 mb-1">Acompanhamento</p>
-                    <p className="text-xs font-semibold text-white">{pdi.data_acompanhamento}</p>
-                  </div>
-                )}
+                {pdi.prazo && <div className="rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}><p className="text-[10px] text-slate-600 mb-1">Prazo</p><p className="text-xs font-semibold text-white">{pdi.prazo}</p></div>}
+                {pdi.proxima_revisao && <div className="rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}><p className="text-[10px] text-slate-600 mb-1">Próxima Revisão</p><p className="text-xs font-semibold text-white">{pdi.proxima_revisao}</p></div>}
+                {pdi.data_acompanhamento && <div className="rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}><p className="text-[10px] text-slate-600 mb-1">Acompanhamento</p><p className="text-xs font-semibold text-white">{pdi.data_acompanhamento}</p></div>}
               </div>
             </div>
           )}
-
-          {activeTab === 'objectives' && (
-            <PDIObjectivesChecklist pdiId={pdi.id} canEdit={canEdit} />
-          )}
-
-          {activeTab === 'timeline' && (
-            <PDITimeline events={timeline} />
-          )}
-
+          {activeTab === 'objectives' && <PDIObjectivesChecklist pdiId={pdi.id} canEdit={canEdit} />}
+          {activeTab === 'timeline' && <PDITimeline events={timeline} />}
           {activeTab === 'attachments' && (
             <div className="space-y-3">
               <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileAttach} accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.txt" />
               {canEdit && (
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingFile}
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingFile}
                   className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all disabled:opacity-50 w-full justify-center"
-                  style={{ backgroundColor: 'rgba(56,189,248,0.06)', border: '1px dashed rgba(56,189,248,0.3)', color: '#38BDF8' }}
-                >
+                  style={{ backgroundColor: 'rgba(56,189,248,0.06)', border: '1px dashed rgba(56,189,248,0.3)', color: '#38BDF8' }}>
                   {uploadingFile ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
                   {uploadingFile ? 'Carregando...' : 'Clique para anexar arquivo (PDF, DOC, XLS, imagem)'}
                 </button>
@@ -543,11 +635,7 @@ function PDIDetailModal({ pdi, onClose, canEdit, onUpdate }: { pdi: PDIRecord; o
                         <p className="text-sm text-white truncate">{att.name}</p>
                         <p className="text-[10px] text-slate-600">{(att.size / 1024).toFixed(0)} KB · {new Date(att.uploadedAt).toLocaleDateString('pt-BR')}</p>
                       </div>
-                      {att.url && (
-                        <a href={att.url} download={att.name} className="p-1.5 rounded hover:bg-sky-500/10 transition-colors" style={{ color: '#38BDF8' }}>
-                          <ArrowRight size={12} />
-                        </a>
-                      )}
+                      {att.url && <a href={att.url} download={att.name} className="p-1.5 rounded hover:bg-sky-500/10 transition-colors" style={{ color: '#38BDF8' }}><ArrowRight size={12} /></a>}
                     </div>
                   ))}
                 </div>
@@ -577,6 +665,7 @@ function PDIsContent() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteConfirmPDI, setDeleteConfirmPDI] = useState<PDIRecord | null>(null);
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [activeCycleFilter, setActiveCycleFilter] = useState<string | null>(null);
@@ -619,7 +708,6 @@ function PDIsContent() {
   const squads = Array.from(new Set(pdis.map((p) => p.squad).filter(Boolean)));
   const coordenadores = Array.from(new Set(pdis.map((p) => p.coordenador).filter(Boolean)));
   const ciclos = Array.from(new Set(pdis.map((p) => p.periodo).filter(Boolean)));
-  const analistasFilter = Array.from(new Set(pdis.map((p) => p.analista).filter(Boolean)));
 
   const filtered = pdis.filter((p) => {
     if (filterStatus !== 'all' && p.status_pdi !== filterStatus) return false;
@@ -636,7 +724,6 @@ function PDIsContent() {
     return true;
   });
 
-  // Stats
   const isCompleted = (p: PDIRecord) => ['Concluído', 'Aderido', 'evolucao concluida', 'consolidado'].includes(p.status_pdi);
   const isCritical = (p: PDIRecord) => ['Crítico', 'Não aderido', 'reincidente'].includes(p.status_pdi);
   const isInProgress = (p: PDIRecord) => ['Em andamento', 'em evolucao', 'em acompanhamento', 'em validacao'].includes(p.status_pdi);
@@ -651,7 +738,6 @@ function PDIsContent() {
     taxa_aderencia: pdis.length > 0 ? Math.round((pdis.filter(isCompleted).length / pdis.length) * 100) : 0,
   };
 
-  // Cycle cards data
   const cycleData = ciclos.map((ciclo) => {
     const cyclePdis = pdis.filter((p) => p.periodo === ciclo);
     return {
@@ -662,11 +748,7 @@ function PDIsContent() {
       concluidos: cyclePdis.filter(isCompleted).length,
     };
   }).sort((a, b) => {
-    const parseC = (c: string) => {
-      const m = c.match(/^(\d{2})\/(\d{4})$/);
-      if (m) return parseInt(m[2]) * 100 + parseInt(m[1]);
-      return 0;
-    };
+    const parseC = (c: string) => { const m = c.match(/^(\d{2})\/(\d{4})$/); if (m) return parseInt(m[2]) * 100 + parseInt(m[1]); return 0; };
     return parseC(b.ciclo) - parseC(a.ciclo);
   });
 
@@ -689,10 +771,15 @@ function PDIsContent() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // Auto-calculate progress from objectives
+  const autoProgress = calcProgressFromObjectives(form.objectives);
+
   const handleSave = async () => {
-    if (!form.analista || !form.objetivo || !form.prazo) return;
+    if (!form.analista || !form.objectives.some(o => o.objetivo.trim())) return;
     setSaving(true);
     const analyst = analysts.find((a) => a.name === form.analista);
+    // Use first objective as the main objetivo field for backward compat
+    const firstObj = form.objectives[0];
     const pdiData = {
       periodo: form.periodo || periodos[periodos.length - 1] || '',
       ciclo: form.periodo || periodos[periodos.length - 1] || '',
@@ -701,30 +788,27 @@ function PDIsContent() {
       coordenador: form.coordenador || analyst?.coordenador || '',
       status_pdi: form.status_pdi,
       acoes: [],
-      metas: [{ descricao: form.objetivo, prazo: form.prazo, status: 'pendente' }],
+      metas: form.objectives.map(o => ({ descricao: o.objetivo, prazo: form.prazo, status: o.status })),
       evidencias: attachments.map((a) => a.name),
       feedback: form.observacoes || '',
       nc_reincidentes: [],
       qa_score: analyst?.qa || 0,
       iepc_score: analyst?.iepc || 0,
       source: 'manual',
-      objetivo: form.objetivo,
-      objetivo_desenvolvimento: form.objetivo_desenvolvimento,
-      acao_desenvolvimento: form.acao_desenvolvimento,
-      resultado_esperado: form.resultado_esperado,
+      objetivo: firstObj?.objetivo || '',
+      objetivo_desenvolvimento: firstObj?.objetivo || '',
+      acao_desenvolvimento: firstObj?.acao_esperada || '',
+      resultado_esperado: firstObj?.resultado_esperado || '',
       mensagem_evolutiva: form.mensagem_evolutiva,
       comentario_coordenador: form.comentario_coordenador,
       comentario_analista: form.comentario_analista,
       prazo: form.prazo,
       observacoes: form.observacoes,
-      evolucao_tecnica: form.evolucao_tecnica,
-      evolucao_comportamental: form.evolucao_comportamental,
-      performance_operacional: form.performance_operacional,
-      risco_operacional: form.risco_operacional,
-      plano_desenvolvimento: form.plano_desenvolvimento,
       proxima_revisao: form.proxima_revisao,
       data_acompanhamento: form.data_acompanhamento || null,
       attachments: attachments,
+      enterprise_objectives: form.objectives,
+      progresso: autoProgress,
     };
 
     const result = editingId
@@ -745,28 +829,32 @@ function PDIsContent() {
   };
 
   const handleEdit = (pdi: PDIRecord) => {
+    const enterpriseObjectives: ObjectiveBlock[] = Array.isArray((pdi as any).enterprise_objectives) && (pdi as any).enterprise_objectives.length > 0
+      ? (pdi as any).enterprise_objectives
+      : [{
+          id: Math.random().toString(36).slice(2),
+          categoria: '',
+          objetivo: pdi.objetivo || pdi.metas?.[0]?.descricao || '',
+          acao_esperada: pdi.acao_desenvolvimento || '',
+          resultado_esperado: pdi.resultado_esperado || '',
+          status: 'nao_cumprido' as const,
+          observacao_coordenador: pdi.comentario_coordenador || '',
+        }];
+
     setForm({
       analista: pdi.analista,
       squad: pdi.squad,
       coordenador: pdi.coordenador,
       periodo: pdi.periodo,
-      objetivo: pdi.objetivo || pdi.metas?.[0]?.descricao || '',
-      objetivo_desenvolvimento: pdi.objetivo_desenvolvimento || '',
-      acao_desenvolvimento: pdi.acao_desenvolvimento || '',
-      resultado_esperado: pdi.resultado_esperado || '',
       mensagem_evolutiva: pdi.mensagem_evolutiva || '',
       comentario_coordenador: pdi.comentario_coordenador || '',
       comentario_analista: pdi.comentario_analista || '',
       prazo: pdi.prazo || pdi.metas?.[0]?.prazo || '',
-      observacoes: pdi.observacoes || pdi.feedback || '',
+      observacoes: (pdi as any).observacoes || pdi.feedback || '',
       status_pdi: pdi.status_pdi,
-      evolucao_tecnica: pdi.evolucao_tecnica || '',
-      evolucao_comportamental: pdi.evolucao_comportamental || '',
-      performance_operacional: pdi.performance_operacional || '',
-      risco_operacional: pdi.risco_operacional || '',
-      plano_desenvolvimento: pdi.plano_desenvolvimento || '',
       proxima_revisao: pdi.proxima_revisao || '',
       data_acompanhamento: pdi.data_acompanhamento || '',
+      objectives: enterpriseObjectives,
     });
     setAttachments(pdi.attachments || []);
     setEditingId(pdi.id);
@@ -778,11 +866,12 @@ function PDIsContent() {
     setPdis((prev) => prev.map((p) => p.id === id ? { ...p, status_pdi: status } : p));
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Confirmar exclusão do PDI?')) return;
-    setDeletingId(id);
-    await deletePDIRecord(id);
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirmPDI) return;
+    setDeletingId(deleteConfirmPDI.id);
+    await deletePDIRecord(deleteConfirmPDI.id);
     setDeletingId(null);
+    setDeleteConfirmPDI(null);
     await loadData();
   };
 
@@ -793,16 +882,26 @@ function PDIsContent() {
     setShowForm(true);
   };
 
+  const updateObjective = (index: number, updated: ObjectiveBlock) => {
+    setForm(f => ({ ...f, objectives: f.objectives.map((o, i) => i === index ? updated : o) }));
+  };
+
+  const addObjective = () => {
+    setForm(f => ({ ...f, objectives: [...f.objectives, newObjectiveBlock()] }));
+  };
+
+  const removeObjective = (index: number) => {
+    setForm(f => ({ ...f, objectives: f.objectives.filter((_, i) => i !== index) }));
+  };
+
   const selectStyle = { backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)', color: '#fff' };
 
   return (
     <div className="p-6 max-w-screen-2xl mx-auto w-full">
-
       {/* ── EXECUTIVE HEADER ── */}
       <div className="rounded-2xl p-6 mb-6 relative overflow-hidden"
         style={{ background: 'linear-gradient(135deg, #0B1E35 0%, #091828 60%, #071525 100%)', border: '1px solid rgba(56,189,248,0.2)' }}>
         <div className="absolute top-0 left-0 right-0 h-0.5" style={{ background: 'linear-gradient(90deg, transparent, rgba(56,189,248,0.5), rgba(45,212,191,0.3), transparent)' }} />
-        <div className="absolute top-0 right-0 w-64 h-64 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(56,189,248,0.05) 0%, transparent 70%)' }} />
         <div className="relative z-10 flex items-start justify-between gap-4">
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-2">
@@ -815,7 +914,7 @@ function PDIsContent() {
               </div>
             </div>
             <p className="text-sm text-slate-400 leading-relaxed max-w-3xl">
-              O módulo de desenvolvimento acompanha a evolução técnica, comportamental e operacional dos analistas ao longo dos ciclos avaliativos, permitindo gestão contínua de performance, aderência e evolução profissional.
+              O módulo de desenvolvimento acompanha a evolução técnica, comportamental e operacional dos analistas ao longo dos ciclos avaliativos.
             </p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -831,7 +930,7 @@ function PDIsContent() {
         </div>
       </div>
 
-      {/* ── EXECUTIVE DASHBOARD CARDS ── */}
+      {/* ── STATS ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
         {[
           { label: 'Total PDIs', value: stats.total, color: '#38BDF8', icon: <BookOpen size={14} />, sub: 'registrados' },
@@ -842,8 +941,7 @@ function PDIsContent() {
           { label: 'Reincidentes', value: stats.reincidente, color: '#F97316', icon: <TrendingUp size={14} />, sub: 'recorrência' },
           { label: 'Taxa Aderência', value: `${stats.taxa_aderencia}%`, color: '#2DD4BF', icon: <Award size={14} />, sub: 'conclusão' },
         ].map((s) => (
-          <div key={s.label} className="rounded-xl p-4 relative overflow-hidden"
-            style={{ backgroundColor: '#0F1B31', border: `1px solid ${s.color}20` }}>
+          <div key={s.label} className="rounded-xl p-4 relative overflow-hidden" style={{ backgroundColor: '#0F1B31', border: `1px solid ${s.color}20` }}>
             <div className="flex items-center justify-between mb-2">
               <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: '#64748B' }}>{s.label}</span>
               <span style={{ color: s.color }}>{s.icon}</span>
@@ -868,14 +966,9 @@ function PDIsContent() {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
             {cycleData.map((cd) => (
-              <button
-                key={cd.ciclo}
-                onClick={() => setActiveCycleFilter(activeCycleFilter === cd.ciclo ? null : cd.ciclo)}
+              <button key={cd.ciclo} onClick={() => setActiveCycleFilter(activeCycleFilter === cd.ciclo ? null : cd.ciclo)}
                 className="rounded-xl p-4 text-left transition-all hover:scale-[1.02]"
-                style={{
-                  backgroundColor: activeCycleFilter === cd.ciclo ? 'rgba(56,189,248,0.12)' : '#0F1B31',
-                  border: activeCycleFilter === cd.ciclo ? '1px solid rgba(56,189,248,0.4)' : '1px solid rgba(255,255,255,0.06)',
-                }}>
+                style={{ backgroundColor: activeCycleFilter === cd.ciclo ? 'rgba(56,189,248,0.12)' : '#0F1B31', border: activeCycleFilter === cd.ciclo ? '1px solid rgba(56,189,248,0.4)' : '1px solid rgba(255,255,255,0.06)' }}>
                 <p className="text-xs font-bold text-sky-300 mb-2">{cd.ciclo}</p>
                 <p className="text-xl font-black text-white mb-1">{cd.total}</p>
                 <p className="text-[10px] text-slate-500 mb-2">PDIs</p>
@@ -884,16 +977,8 @@ function PDIsContent() {
                     <span className="text-[10px] text-slate-600">Aderência</span>
                     <span className="text-[10px] font-bold" style={{ color: cd.aderencia >= 70 ? '#22C55E' : '#F59E0B' }}>{cd.aderencia}%</span>
                   </div>
-                  {cd.reincidencias > 0 && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-slate-600">Reincid.</span>
-                      <span className="text-[10px] font-bold text-red-400">{cd.reincidencias}</span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-slate-600">Concluídos</span>
-                    <span className="text-[10px] font-bold text-green-400">{cd.concluidos}</span>
-                  </div>
+                  {cd.reincidencias > 0 && <div className="flex items-center justify-between"><span className="text-[10px] text-slate-600">Reincid.</span><span className="text-[10px] font-bold text-red-400">{cd.reincidencias}</span></div>}
+                  <div className="flex items-center justify-between"><span className="text-[10px] text-slate-600">Concluídos</span><span className="text-[10px] font-bold text-green-400">{cd.concluidos}</span></div>
                 </div>
               </button>
             ))}
@@ -909,16 +994,9 @@ function PDIsContent() {
             const count = pdis.filter((p) => p.status_pdi === key).length;
             if (count === 0) return null;
             return (
-              <button
-                key={key}
-                onClick={() => setFilterStatus(filterStatus === key ? 'all' : key)}
+              <button key={key} onClick={() => setFilterStatus(filterStatus === key ? 'all' : key)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all"
-                style={{
-                  backgroundColor: filterStatus === key ? cfg.color : cfg.bg,
-                  color: filterStatus === key ? '#fff' : cfg.color,
-                  border: `1px solid ${cfg.border}`,
-                }}
-              >
+                style={{ backgroundColor: filterStatus === key ? cfg.color : cfg.bg, color: filterStatus === key ? '#fff' : cfg.color, border: `1px solid ${cfg.border}` }}>
                 <span>{cfg.label}</span>
                 <span className="font-bold">{count}</span>
               </button>
@@ -936,13 +1014,9 @@ function PDIsContent() {
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
           <div className="lg:col-span-2 relative">
             <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#64748B' }} />
-            <input
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              placeholder="Buscar analista, objetivo..."
+            <input value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Buscar analista, objetivo..."
               className="w-full pl-8 pr-3 py-2 rounded-lg text-xs text-white outline-none"
-              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
-            />
+              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }} />
           </div>
           <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-3 py-2 rounded-lg text-xs outline-none" style={selectStyle}>
             <option value="all">Todos os Status</option>
@@ -962,10 +1036,8 @@ function PDIsContent() {
           </select>
         </div>
         {(filterStatus !== 'all' || filterSquad !== 'all' || filterCoordenador !== 'all' || filterCiclo !== 'all' || searchText || activeCycleFilter) && (
-          <button
-            onClick={() => { setFilterStatus('all'); setFilterSquad('all'); setFilterCoordenador('all'); setFilterCiclo('all'); setFilterAnalista('all'); setSearchText(''); setActiveCycleFilter(null); }}
-            className="mt-2 text-xs px-2 py-1 rounded" style={{ color: '#38BDF8', backgroundColor: 'rgba(56,189,248,0.08)' }}
-          >
+          <button onClick={() => { setFilterStatus('all'); setFilterSquad('all'); setFilterCoordenador('all'); setFilterCiclo('all'); setFilterAnalista('all'); setSearchText(''); setActiveCycleFilter(null); }}
+            className="mt-2 text-xs px-2 py-1 rounded" style={{ color: '#38BDF8', backgroundColor: 'rgba(56,189,248,0.08)' }}>
             Limpar filtros
           </button>
         )}
@@ -991,75 +1063,62 @@ function PDIsContent() {
             const objetivo = pdi.objetivo || pdi.metas?.[0]?.descricao || '—';
             const prazo = pdi.prazo || pdi.metas?.[0]?.prazo || '—';
             const isAutoGenerated = pdi.source === 'feedback_auto';
+            const enterpriseObjs: ObjectiveBlock[] = Array.isArray((pdi as any).enterprise_objectives) ? (pdi as any).enterprise_objectives : [];
+            const displayProgress = enterpriseObjs.length > 0 ? calcProgressFromObjectives(enterpriseObjs) : ((pdi as any).progresso || 0);
 
             return (
               <div key={pdi.id} className="rounded-xl overflow-hidden transition-all hover:shadow-lg"
                 style={{ backgroundColor: '#0F1B31', border: `1px solid ${statusCfg.color}25` }}>
-                {/* Card top accent */}
                 <div className="h-0.5" style={{ background: `linear-gradient(90deg, ${statusCfg.color}60, transparent)` }} />
                 <div className="p-5">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
-                      {/* Header row */}
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <span className="text-sm font-bold text-white">{pdi.analista}</span>
                         {pdi.squad && <span className="text-xs text-slate-500">· {pdi.squad}</span>}
                         {pdi.coordenador && <span className="text-xs text-slate-600">· {pdi.coordenador}</span>}
                         <StatusBadge status={pdi.status_pdi} />
-                        {isAutoGenerated && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}>
-                            Auto
-                          </span>
-                        )}
+                        {isAutoGenerated && <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}>Auto</span>}
+                        {enterpriseObjs.length > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(167,139,250,0.1)', color: '#A78BFA', border: '1px solid rgba(167,139,250,0.2)' }}>{enterpriseObjs.length} objetivo{enterpriseObjs.length !== 1 ? 's' : ''}</span>}
                       </div>
-
-                      {/* Objective */}
                       <p className="text-sm leading-relaxed mb-2.5" style={{ color: 'rgba(255,255,255,0.75)' }}>{objetivo}</p>
-
-                      {/* Metrics row */}
                       <div className="flex items-center gap-3 flex-wrap mb-2">
-                        <span className="flex items-center gap-1 text-xs" style={{ color: '#94A3B8' }}>
-                          <Clock size={10} /> {prazo}
-                        </span>
+                        <span className="flex items-center gap-1 text-xs" style={{ color: '#94A3B8' }}><Clock size={10} /> {prazo}</span>
                         <span className="text-xs text-slate-600">Ciclo: {pdi.periodo}</span>
                         {pdi.qa_score > 0 && <span className="text-xs font-semibold" style={{ color: '#38BDF8' }}>QA {pdi.qa_score.toFixed(1)}</span>}
                         {pdi.iepc_score > 0 && <span className="text-xs font-semibold" style={{ color: '#2DD4BF' }}>IEPC {pdi.iepc_score.toFixed(1)}%</span>}
                         {(pdi.total_ncs ?? 0) > 0 && <span className="text-xs font-semibold" style={{ color: '#F59E0B' }}>{pdi.total_ncs} NCs</span>}
-                        {(pdi.total_elogios ?? 0) > 0 && <span className="text-xs font-semibold" style={{ color: '#22C55E' }}>{pdi.total_elogios} Elogios</span>}
                       </div>
-
-                      {/* PDI dev block preview */}
-                      {pdi.objetivo_desenvolvimento && (
-                        <div className="text-xs text-slate-500 truncate" style={{ maxWidth: '500px' }}>
-                          <span className="text-sky-600">Objetivo Dev:</span> {pdi.objetivo_desenvolvimento}
+                      {/* Auto progress bar */}
+                      {displayProgress > 0 && (
+                        <div className="mt-2">
+                          <div className="flex items-center justify-between text-xs mb-1" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                            <span>Progresso {enterpriseObjs.length > 0 ? '(automático)' : ''}</span>
+                            <span className="font-bold" style={{ color: displayProgress >= 80 ? '#22C55E' : displayProgress >= 50 ? '#F59E0B' : '#EF4444' }}>{displayProgress}%</span>
+                          </div>
+                          <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
+                            <div className="h-full rounded-full transition-all duration-500"
+                              style={{ width: `${displayProgress}%`, backgroundColor: displayProgress >= 80 ? '#22C55E' : displayProgress >= 50 ? '#F59E0B' : '#EF4444' }} />
+                          </div>
                         </div>
                       )}
                     </div>
-
-                    {/* Actions */}
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      <button
-                        onClick={() => setSelectedPDI(pdi)}
-                        className="p-1.5 rounded transition-colors hover:bg-sky-500/10"
-                        style={{ color: '#38BDF8' }}
-                        title="Ver detalhes"
-                      >
+                      <button onClick={() => setSelectedPDI(pdi)} className="p-1.5 rounded transition-colors hover:bg-sky-500/10" style={{ color: '#38BDF8' }} title="Ver detalhes">
                         <Eye size={13} />
                       </button>
                       {canEdit && (
                         <>
-                          <select
-                            value={pdi.status_pdi}
-                            onChange={(e) => handleUpdateStatus(pdi.id, e.target.value as PDIRecord['status_pdi'])}
+                          <select value={pdi.status_pdi} onChange={(e) => handleUpdateStatus(pdi.id, e.target.value as PDIRecord['status_pdi'])}
                             className="px-2 py-1 rounded text-xs text-white outline-none"
-                            style={{ backgroundColor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}
-                          >
+                            style={{ backgroundColor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
                             {Object.entries(STATUS_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                           </select>
                           <button onClick={() => handleEdit(pdi)} className="p-1.5 rounded transition-colors hover:bg-sky-500/10" style={{ color: '#38BDF8' }}>
                             <Edit2 size={12} />
                           </button>
-                          <button onClick={() => handleDelete(pdi.id)} disabled={deletingId === pdi.id} className="p-1.5 rounded transition-colors hover:bg-red-500/10 disabled:opacity-50" style={{ color: '#94A3B8' }}>
+                          <button onClick={() => setDeleteConfirmPDI(pdi)} disabled={deletingId === pdi.id}
+                            className="p-1.5 rounded transition-colors hover:bg-red-500/10 disabled:opacity-50" style={{ color: '#EF4444' }}>
                             {deletingId === pdi.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                           </button>
                         </>
@@ -1075,11 +1134,16 @@ function PDIsContent() {
 
       {/* ── PDI DETAIL MODAL ── */}
       {selectedPDI && (
-        <PDIDetailModal
-          pdi={selectedPDI}
-          onClose={() => setSelectedPDI(null)}
-          canEdit={canEdit}
-          onUpdate={loadData}
+        <PDIDetailModal pdi={selectedPDI} onClose={() => setSelectedPDI(null)} canEdit={canEdit} onUpdate={loadData} />
+      )}
+
+      {/* ── DELETE CONFIRM MODAL ── */}
+      {deleteConfirmPDI && (
+        <DeleteConfirmModal
+          pdiName={deleteConfirmPDI.analista}
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setDeleteConfirmPDI(null)}
+          deleting={deletingId === deleteConfirmPDI.id}
         />
       )}
 
@@ -1090,7 +1154,7 @@ function PDIsContent() {
             <div className="flex items-center justify-between px-6 py-4 flex-shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
               <div>
                 <h3 className="font-bold text-white">{editingId ? 'Editar PDI' : 'Novo PDI'}</h3>
-                <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Preencha os campos abaixo por seção</p>
+                <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Estrutura enterprise com múltiplos objetivos por ciclo</p>
               </div>
               <button onClick={() => { setShowForm(false); setEditingId(null); setAttachments([]); }} className="p-2 rounded-lg hover:bg-white/10" style={{ color: '#94A3B8' }}>
                 <X size={16} />
@@ -1098,6 +1162,7 @@ function PDIsContent() {
             </div>
 
             <div className="overflow-y-auto flex-1 px-6 py-4 space-y-3">
+              {/* Dados do Colaborador */}
               <AccordionSection title="Dados do Colaborador" defaultOpen>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -1123,14 +1188,50 @@ function PDIsContent() {
                 </div>
               </AccordionSection>
 
-              <AccordionSection title="Plano de Desenvolvimento" defaultOpen>
-                <FieldTextarea label="Objetivo / Plano de Ação *" value={form.objetivo} onChange={(v) => setForm((f) => ({ ...f, objetivo: v }))} placeholder="Descreva o objetivo do PDI..." rows={3} />
-                <FieldTextarea label="Objetivo de Desenvolvimento" value={form.objetivo_desenvolvimento} onChange={(v) => setForm((f) => ({ ...f, objetivo_desenvolvimento: v }))} placeholder="Fortalecer comunicação consultiva..." rows={2} />
-                <FieldTextarea label="Ação Esperada" value={form.acao_desenvolvimento} onChange={(v) => setForm((f) => ({ ...f, acao_desenvolvimento: v }))} placeholder="Aplicar validação estruturada..." rows={2} />
-                <FieldTextarea label="Resultado Esperado" value={form.resultado_esperado} onChange={(v) => setForm((f) => ({ ...f, resultado_esperado: v }))} placeholder="Elevar clareza operacional..." rows={2} />
-                <FieldTextarea label="Mensagem Evolutiva" value={form.mensagem_evolutiva} onChange={(v) => setForm((f) => ({ ...f, mensagem_evolutiva: v }))} placeholder="Mensagem de coaching executivo..." rows={2} />
+              {/* Objetivos do Ciclo — Enterprise Multi-Objective */}
+              <AccordionSection title={`Objetivos do Ciclo (${form.objectives.length})`} defaultOpen>
+                {/* Auto progress preview */}
+                <div className="flex items-center justify-between p-3 rounded-lg mb-2" style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)' }}>
+                  <span className="text-xs text-sky-400 font-semibold">Progresso Automático</span>
+                  <div className="flex items-center gap-3">
+                    <div className="w-32 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                      <div className="h-full rounded-full transition-all duration-300"
+                        style={{ width: `${autoProgress}%`, backgroundColor: autoProgress >= 80 ? '#22C55E' : autoProgress >= 50 ? '#F59E0B' : '#EF4444' }} />
+                    </div>
+                    <span className="text-sm font-bold" style={{ color: autoProgress >= 80 ? '#22C55E' : autoProgress >= 50 ? '#F59E0B' : '#EF4444' }}>{autoProgress}%</span>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {form.objectives.map((obj, i) => (
+                    <ObjectiveBlockCard
+                      key={obj.id}
+                      block={obj}
+                      index={i}
+                      onChange={(updated) => updateObjective(i, updated)}
+                      onRemove={() => removeObjective(i)}
+                      canRemove={form.objectives.length > 1}
+                    />
+                  ))}
+                </div>
+
+                <button type="button" onClick={addObjective}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold w-full justify-center mt-3 transition-all hover:bg-sky-500/10"
+                  style={{ color: '#38BDF8', border: '1px dashed rgba(56,189,248,0.4)', backgroundColor: 'rgba(56,189,248,0.04)' }}>
+                  <Plus size={14} /> Adicionar Objetivo
+                </button>
               </AccordionSection>
 
+              {/* Mensagem Evolutiva */}
+              <AccordionSection title="Mensagem Evolutiva">
+                <div className="p-3 rounded-lg mb-2 text-xs" style={{ background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.15)', color: '#A78BFA' }}>
+                  💡 Se não preenchida, a mensagem será gerada automaticamente com base nos dados de QA, IEPC, aderência, NCs e elogios do analista.
+                </div>
+                <FieldTextarea label="Mensagem Evolutiva (opcional)" value={form.mensagem_evolutiva} onChange={(v) => setForm((f) => ({ ...f, mensagem_evolutiva: v }))}
+                  placeholder="Deixe em branco para geração automática baseada em QA, IEPC, NCs e elogios..." rows={3} />
+              </AccordionSection>
+
+              {/* Datas e Prazos */}
               <AccordionSection title="Datas e Prazos" defaultOpen>
                 <div className="grid grid-cols-3 gap-3">
                   <div>
@@ -1154,18 +1255,14 @@ function PDIsContent() {
                 </div>
               </AccordionSection>
 
+              {/* Comentários */}
               <AccordionSection title="Comentários">
                 <FieldTextarea label="Comentário do Coordenador" value={form.comentario_coordenador} onChange={(v) => setForm((f) => ({ ...f, comentario_coordenador: v }))} placeholder="Observações do coordenador..." rows={3} />
                 <FieldTextarea label="Comentário do Analista" value={form.comentario_analista} onChange={(v) => setForm((f) => ({ ...f, comentario_analista: v }))} placeholder="Observações do analista..." rows={3} />
                 <FieldTextarea label="Observações Gerais" value={form.observacoes} onChange={(v) => setForm((f) => ({ ...f, observacoes: v }))} placeholder="Contexto adicional..." rows={2} />
               </AccordionSection>
 
-              <AccordionSection title="Evolução Técnica e Comportamental">
-                <FieldTextarea label="Evolução Técnica" value={form.evolucao_tecnica} onChange={(v) => setForm((f) => ({ ...f, evolucao_tecnica: v }))} rows={3} />
-                <FieldTextarea label="Evolução Comportamental" value={form.evolucao_comportamental} onChange={(v) => setForm((f) => ({ ...f, evolucao_comportamental: v }))} rows={3} />
-                <FieldTextarea label="Performance Operacional" value={form.performance_operacional} onChange={(v) => setForm((f) => ({ ...f, performance_operacional: v }))} rows={2} />
-              </AccordionSection>
-
+              {/* Status Geral */}
               <AccordionSection title="Status Geral">
                 <div>
                   <label className="block text-xs font-semibold text-white mb-1.5">Status do PDI</label>
@@ -1177,17 +1274,14 @@ function PDIsContent() {
                 </div>
               </AccordionSection>
 
+              {/* Anexos */}
               <AccordionSection title="Anexos">
                 <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileAttach} accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.txt" />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingFile}
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingFile}
                   className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all disabled:opacity-50 w-full justify-center"
-                  style={{ backgroundColor: 'rgba(56,189,248,0.06)', border: '1px dashed rgba(56,189,248,0.3)', color: '#38BDF8' }}
-                >
+                  style={{ backgroundColor: 'rgba(56,189,248,0.06)', border: '1px dashed rgba(56,189,248,0.3)', color: '#38BDF8' }}>
                   {uploadingFile ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                  {uploadingFile ? 'Carregando...' : 'Clique para anexar arquivo (PDF, DOC, XLS, imagem)'}
+                  {uploadingFile ? 'Carregando...' : 'Clique para anexar arquivo'}
                 </button>
                 {attachments.length > 0 && (
                   <div className="space-y-1.5">
@@ -1212,7 +1306,7 @@ function PDIsContent() {
                 style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>
                 Cancelar
               </button>
-              <button onClick={handleSave} disabled={saving || !form.analista || !form.objetivo || !form.prazo}
+              <button onClick={handleSave} disabled={saving || !form.analista || !form.objectives.some(o => o.objetivo.trim())}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60 transition-colors"
                 style={{ backgroundColor: '#1E40AF' }}>
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
