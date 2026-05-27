@@ -1,9 +1,9 @@
 'use client';
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
-import { Upload, FileJson, CheckCircle, AlertCircle, X, Eye, Save, Copy, Link2 } from 'lucide-react';
+import { Upload, FileJson, CheckCircle, AlertCircle, X, Eye, Save, Copy, Link2, User, Calendar } from 'lucide-react';
 
 interface PreviewData {
   // Simple format
@@ -20,24 +20,15 @@ interface PreviewData {
 }
 
 interface ValidationError { field: string; message: string }
+interface AnalistaDB { id: string; nome: string; equipe: string; coordenador: string; email: string; }
 
-function normalizePayload(data: PreviewData): { email: string; ciclo: string; qa: number; iepc: number } | null {
-  // Support both simple and full format
-  const email = data.analista_email || data.analista?.email || '';
-  const ciclo = data.ciclo || (data.ciclo_obj as Record<string, unknown>)?.nome as string || '';
-  const qa = data.qa_score ?? data.scores?.qa ?? 0;
-  const iepc = data.iepc_score ?? data.scores?.iepc ?? 0;
-  if (!email || !ciclo) return null;
-  return { email, ciclo, qa, iepc };
-}
-
+// A validação agora foca apenas nas notas. O analista e o ciclo nós garantimos pela interface!
 function validatePayload(data: PreviewData): ValidationError[] {
   const errors: ValidationError[] = [];
-  const norm = normalizePayload(data);
-  if (!norm?.email) errors.push({ field: 'analista_email / analista.email', message: 'E-mail do analista é obrigatório' });
-  if (!norm?.ciclo) errors.push({ field: 'ciclo / ciclo.nome', message: 'Ciclo é obrigatório' });
-  if (!norm?.qa) errors.push({ field: 'qa_score / scores.qa', message: 'Score QA é obrigatório' });
-  if (!norm?.iepc) errors.push({ field: 'iepc_score / scores.iepc', message: 'Score IEPC é obrigatório' });
+  const qa = data.qa_score ?? data.scores?.qa;
+  const iepc = data.iepc_score ?? data.scores?.iepc;
+  if (qa === undefined) errors.push({ field: 'qa_score / scores.qa', message: 'Score QA é obrigatório no JSON' });
+  if (iepc === undefined) errors.push({ field: 'iepc_score / scores.iepc', message: 'Score IEPC é obrigatório no JSON' });
   return errors;
 }
 
@@ -46,17 +37,6 @@ const FULL_JSON_EXAMPLE = `{
     "origem": "lovable",
     "versao": "1.0",
     "gerado_em": "2026-05-22T10:00:00"
-  },
-  "analista": {
-    "nome": "Fernando Carvalho",
-    "email": "fernando@empresa.com",
-    "equipe": "Compras e Estoque",
-    "coordenador": "Jonatas Jesus",
-    "coach": "Bruna Silva"
-  },
-  "ciclo": {
-    "nome": "05/2026",
-    "status": "concluido"
   },
   "scores": {
     "qa": 91.31,
@@ -74,60 +54,20 @@ const FULL_JSON_EXAMPLE = `{
       "protocolo": "#449142",
       "sup": "SUP-69017",
       "cliente": "Alex Santos",
-      "canal": "WhatsApp",
-      "duracao": "30 minutos",
       "assunto": "Divergência no valor unitário líquido",
       "solucao": "Análise técnica e encaminhamento",
       "nota": 89.5,
       "sintese": "Boa condução técnica com rastreabilidade",
-      "comportamento": "Postura cordial e proativa",
-      "informou_sup": true,
       "criterios": [
         {
-          "criterio": "Identificação e Boas-vindas",
+          "criterio_nome": "Identificação e Boas-vindas",
           "status": "aderido",
-          "pilar": "Gestão do Fluxo",
+          "pilar_nome": "Gestão do Fluxo",
           "evidencia": "Bom dia Alex..."
         }
       ],
-      "nao_conformidades": [],
-      "tags": []
+      "nao_conformidades": []
     }
-  ],
-  "coaching": [
-    {
-      "o_que_foi_dito": "Me manda a imagem novamente?",
-      "como_poderia_ser": "Me manda a imagem novamente? Essa que mandou não foi possível abrir.",
-      "dica_de_ouro": "Revisar ortografia antes do envio",
-      "categoria": "comunicacao"
-    }
-  ],
-  "pontos_fortes": [
-    { "titulo": "Boa rastreabilidade", "descricao": "Excelente documentação técnica" }
-  ],
-  "oportunidades": [
-    { "titulo": "Maior formalização de encerramento", "descricao": "Validar entendimento final do cliente" }
-  ],
-  "pdi": [
-    {
-      "objetivo": "Fortalecer comunicação escrita",
-      "acao": "Revisar mensagens antes do envio",
-      "prazo": "Próximo ciclo",
-      "status": "em_andamento",
-      "progresso": 30
-    }
-  ],
-  "analytics": {
-    "ranking_squad": 2,
-    "total_analistas": 14,
-    "ciclos_consecutivos_evolucao": 3,
-    "media_atendimentos": 91,
-    "total_nc": 0,
-    "total_reincidencias": 1
-  },
-  "historico": [
-    { "ciclo": "04/2026", "qa": 88, "iepc": 84 },
-    { "ciclo": "03/2026", "qa": 86, "iepc": 82 }
   ]
 }`;
 
@@ -136,6 +76,8 @@ const ENDPOINT_URL = `${process.env.NEXT_PUBLIC_SITE_URL || 'https://zettiquali9
 export default function FeedbackImportPage() {
   const router = useRouter();
   const supabase = createClient();
+  
+  // Estados da página
   const [dragging, setDragging] = useState(false);
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [errors, setErrors] = useState<ValidationError[]>([]);
@@ -143,6 +85,20 @@ export default function FeedbackImportPage() {
   const [saved, setSaved] = useState(false);
   const [parseError, setParseError] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
+
+  // Estados de Vinculação (O Pulo do Gato)
+  const [analistasList, setAnalistasList] = useState<AnalistaDB[]>([]);
+  const [selectedAnalista, setSelectedAnalista] = useState('');
+  const [inputCiclo, setInputCiclo] = useState('');
+
+  // Carrega os analistas ao abrir a página
+  useEffect(() => {
+    async function fetchAnalistas() {
+      const { data } = await supabase.from('analistas').select('id, nome, equipe, coordenador, email').order('nome');
+      if (data) setAnalistasList(data);
+    }
+    fetchAnalistas();
+  }, []);
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -154,16 +110,27 @@ export default function FeedbackImportPage() {
   const processFile = useCallback((file: File) => {
     setParseError(''); setErrors([]); setPreview(null); setSaved(false);
     if (!file.name.endsWith('.json')) { setParseError('Apenas arquivos .json são aceitos'); return; }
+    
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const data = JSON.parse(e.target?.result as string) as PreviewData;
         setErrors(validatePayload(data));
         setPreview(data);
+
+        // Tenta preencher automaticamente os campos na tela se vierem no JSON (Facilitador)
+        const cicloJson = data.ciclo || (data.ciclo_obj as any)?.nome;
+        if (cicloJson) setInputCiclo(cicloJson);
+
+        const emailJson = data.analista_email || data.analista?.email;
+        if (emailJson && analistasList.length > 0) {
+          const found = analistasList.find(a => a.email === emailJson);
+          if (found) setSelectedAnalista(found.id);
+        }
       } catch { setParseError('Arquivo JSON inválido ou corrompido'); }
     };
     reader.readAsText(file);
-  }, []);
+  }, [analistasList]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault(); setDragging(false);
@@ -171,64 +138,72 @@ export default function FeedbackImportPage() {
     if (file) processFile(file);
   }, [processFile]);
 
+  // Função de salvar (Garante o Vínculo!)
   const handleSave = async () => {
     if (!preview || errors.length > 0) return;
+    
+    if (!selectedAnalista || !inputCiclo.trim()) {
+      setErrors([{ field: 'Vínculo', message: 'Selecione o Analista e digite o Ciclo acima antes de salvar!' }]);
+      return;
+    }
+
     setSaving(true);
-    const norm = normalizePayload(preview);
-    if (!norm) { setSaving(false); return; }
+    
+    // Pega os dados do analista selecionado no dropdown
+    const analistaSelecionado = analistasList.find(a => a.id === selectedAnalista);
+    if (!analistaSelecionado) { setSaving(false); return; }
 
-    const { data: analista } = await supabase.from('analistas').select('id, nome, equipe, coordenador').eq('email', norm.email).maybeSingle();
-    if (!analista) {
-      setErrors([{ field: 'analista_email', message: `Analista não encontrado: ${norm.email}` }]);
-      setSaving(false); return;
-    }
-
-    const { data: existing } = await supabase.from('feedbacks').select('id').eq('analista_id', analista.id).eq('ciclo', norm.ciclo).maybeSingle();
+    // Verifica duplicidade para o mesmo analista e ciclo
+    const { data: existing } = await supabase.from('feedbacks')
+      .select('id').eq('analista_id', analistaSelecionado.id).eq('ciclo', inputCiclo).maybeSingle();
+    
     if (existing) {
-      setErrors([{ field: 'ciclo', message: 'Já existe um feedback para este analista neste ciclo' }]);
+      setErrors([{ field: 'ciclo', message: 'Já existe um feedback para este analista neste ciclo. Exclua o anterior para substituir.' }]);
       setSaving(false); return;
     }
 
-    // Normalize pilares
-    const pilaresQa = (preview.qa_pilares as Record<string, unknown>[] || preview.pilares_qa as Record<string, unknown>[] || []).map((p) => ({
+    // Normaliza os pilares
+    const pilaresQa = (preview.qa_pilares as any[] || preview.pilares_qa as any[] || []).map((p) => ({
       nome: p.nome, pontuacao: p.nota ?? p.pontuacao, max: p.maximo ?? p.max
     }));
-    const pilaresIepc = (preview.iepc_pilares as Record<string, unknown>[] || preview.pilares_iepc as Record<string, unknown>[] || []).map((p) => ({
+    const pilaresIepc = (preview.iepc_pilares as any[] || preview.pilares_iepc as any[] || []).map((p) => ({
       nome: p.nome, pontuacao: p.nota ?? p.pontuacao, max: p.maximo ?? p.max
     }));
 
+    // SALVA NO SUPABASE FORÇANDO OS IDs SELECIONADOS NA INTERFACE
     const { data: fb, error } = await supabase.from('feedbacks').insert({
-      analista_id: analista.id,
-      ciclo: norm.ciclo,
-      qa_score: norm.qa,
-      iepc_score: norm.iepc,
+      analista_id: analistaSelecionado.id, // VÍNCULO FORÇADO AQUI
+      ciclo: inputCiclo,                   // CICLO DIGITADO AQUI
+      qa_score: preview.qa_score ?? preview.scores?.qa ?? 0,
+      iepc_score: preview.iepc_score ?? preview.scores?.iepc ?? 0,
       aderencia_score: preview.scores?.aderencia || preview.aderencia_score || null,
-      coordenador: preview.analista?.coordenador || preview.coordenador || analista.coordenador,
-      equipe: preview.analista?.equipe || preview.equipe || analista.equipe,
-      resumo_ciclo: preview.resumo_ciclo || null,
+      coordenador: analistaSelecionado.coordenador, // Pega da base, não do JSON
+      equipe: analistaSelecionado.equipe,           // Pega da base, não do JSON
+      resumo_ciclo: preview.resumo_ciclo || preview.observacoes || null,
       pilares_qa: pilaresQa,
       pilares_iepc: pilaresIepc,
       pontos_fortes: preview.pontos_fortes || [],
       oportunidades: preview.oportunidades || [],
       tendencias: preview.tendencias || {},
       conquistas: preview.conquistas || [],
-      status: 'generated',
+      status: 'publicado',
       origem: 'importacao_json',
-      snapshot_json_completo: preview,
+      snapshot_json_completo: preview, // Guarda tudo para segurança
     }).select('id').single();
 
     if (error || !fb) {
-      setErrors([{ field: 'geral', message: error?.message || 'Erro ao salvar' }]);
+      setErrors([{ field: 'banco', message: error?.message || 'Erro ao salvar' }]);
       setSaving(false); return;
     }
 
-    const atendimentos = (preview.atendimentos as Record<string, unknown>[] || []);
+    // Importa sub-tabelas associadas ao novo Feedback ID
+    const atendimentos = (preview.atendimentos as any[] || []);
     if (atendimentos.length > 0) {
       await supabase.from('feedback_atendimentos').insert(atendimentos.map((a) => ({
         feedback_id: fb.id,
-        protocolo: a.protocolo,
-        cliente: a.cliente,
-        assunto: a.assunto,
+        protocolo: a.protocolo || a.sup,
+        cliente: a.cliente || 'N/A',
+        assunto: a.assunto || '',
         nota_qa: a.nota ?? a.nota_qa,
         nota_iepc: a.nota_iepc || null,
         classificacao: a.classificacao || null,
@@ -236,7 +211,7 @@ export default function FeedbackImportPage() {
       })));
     }
 
-    const coaching = (preview.coaching as Record<string, unknown>[] || []);
+    const coaching = (preview.coaching as any[] || []);
     if (coaching.length > 0) {
       await supabase.from('feedback_coaching').insert(coaching.map((c) => ({
         feedback_id: fb.id,
@@ -246,11 +221,11 @@ export default function FeedbackImportPage() {
       })));
     }
 
-    const pdi = (preview.pdi as Record<string, unknown>[] || []);
+    const pdi = (preview.pdi as any[] || []);
     if (pdi.length > 0) {
       await supabase.from('feedback_pdi').insert(pdi.map((p) => ({
         feedback_id: fb.id,
-        analista_id: analista.id,
+        analista_id: analistaSelecionado.id,
         objetivo: p.objetivo,
         acao_desenvolvimento: p.acao || p.acao_desenvolvimento,
         prazo: p.prazo || null,
@@ -263,8 +238,6 @@ export default function FeedbackImportPage() {
     setTimeout(() => router.push(`/feedback/${fb.id}`), 1500);
   };
 
-  const norm = preview ? normalizePayload(preview) : null;
-
   return (
     <EnterpriseLayout>
       <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -273,36 +246,7 @@ export default function FeedbackImportPage() {
             <FileJson size={24} className="text-sky-400" /> Importar Feedback JSON
           </h1>
           <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
-            Upload de arquivo .json ou integração direta via API
-          </p>
-        </div>
-
-        {/* ── CREDENCIAIS DE INTEGRAÇÃO ── */}
-        <div className="rounded-xl p-5 space-y-4" style={{ backgroundColor: 'rgba(56,189,248,0.05)', border: '1px solid rgba(56,189,248,0.15)' }}>
-          <h2 className="text-sm font-bold text-sky-400 flex items-center gap-2"><Link2 size={14} /> Integração via API (Lovable)</h2>
-          <div className="grid md:grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs font-semibold mb-1" style={{ color: 'rgba(255,255,255,0.35)' }}>ENDPOINT</p>
-              <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                <code className="text-xs text-sky-300 flex-1 truncate">POST {ENDPOINT_URL}</code>
-                <button onClick={() => copyToClipboard(`POST ${ENDPOINT_URL}`, 'url')} className="flex-shrink-0 hover:text-white transition-colors" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                  {copied === 'url' ? <CheckCircle size={12} className="text-green-400" /> : <Copy size={12} />}
-                </button>
-              </div>
-            </div>
-            <div>
-              <p className="text-xs font-semibold mb-1" style={{ color: 'rgba(255,255,255,0.35)' }}>AUTENTICAÇÃO</p>
-              <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                <code className="text-xs text-yellow-300 flex-1">Authorization: Bearer {'<INTEGRATION_API_TOKEN>'}</code>
-                <button onClick={() => copyToClipboard('Authorization: Bearer <INTEGRATION_API_TOKEN>', 'token')} className="flex-shrink-0 hover:text-white transition-colors" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                  {copied === 'token' ? <CheckCircle size={12} className="text-green-400" /> : <Copy size={12} />}
-                </button>
-              </div>
-            </div>
-          </div>
-          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
-            O token de integração está configurado na variável de ambiente <code className="text-sky-400">INTEGRATION_API_TOKEN</code>. 
-            O endpoint aceita tanto o JSON simplificado quanto o JSON completo abaixo.
+            Faça upload do JSON para vinculá-lo manualmente ao analista e ciclo desejado.
           </p>
         </div>
 
@@ -312,14 +256,14 @@ export default function FeedbackImportPage() {
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
             onDrop={handleDrop}
-            className="rounded-xl p-12 text-center transition-all cursor-pointer"
+            className="rounded-xl p-12 text-center transition-all cursor-pointer mt-6"
             style={{ border: `2px dashed ${dragging ? '#38BDF8' : 'rgba(255,255,255,0.12)'}`, backgroundColor: dragging ? 'rgba(56,189,248,0.05)' : 'rgba(255,255,255,0.02)' }}
           >
             <Upload size={40} className="mx-auto mb-4" style={{ color: dragging ? '#38BDF8' : 'rgba(255,255,255,0.2)' }} />
             <p className="text-white font-medium mb-1">Arraste o arquivo JSON aqui</p>
-            <p className="text-sm mb-4" style={{ color: 'rgba(255,255,255,0.35)' }}>ou clique para selecionar</p>
+            <p className="text-sm mb-4" style={{ color: 'rgba(255,255,255,0.35)' }}>ou clique para selecionar o JSON do Lovable/Histórico</p>
             <label className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer bg-sky-600 hover:bg-sky-500 text-white transition-colors">
-              Selecionar arquivo
+              Selecionar arquivo JSON
               <input type="file" accept=".json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) processFile(f); }} />
             </label>
           </div>
@@ -331,43 +275,70 @@ export default function FeedbackImportPage() {
           </div>
         )}
 
-        {/* ── PREVIEW ── */}
+        {/* ── PREVIEW & VÍNCULO MANUAL ── */}
         {preview && !saved && (
-          <div className="space-y-4">
+          <div className="space-y-6">
+            
+            {/* Bloco de Vínculo Forçado */}
+            <div className="rounded-xl p-5" style={{ backgroundColor: 'rgba(56,189,248,0.05)', border: '1px solid rgba(56,189,248,0.2)' }}>
+              <h3 className="font-semibold text-sky-400 flex items-center gap-2 mb-4">
+                <Link2 size={18} /> Associe este Feedback (Obrigatório)
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold mb-2 text-white flex items-center gap-1"><User size={12}/> Selecione o Analista</label>
+                  <select 
+                    value={selectedAnalista} 
+                    onChange={(e) => setSelectedAnalista(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-lg text-sm text-white outline-none"
+                    style={{ backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)' }}
+                  >
+                    <option value="">-- Escolha um analista da base --</option>
+                    {analistasList.map(a => (
+                      <option key={a.id} value={a.id}>{a.nome} ({a.equipe})</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold mb-2 text-white flex items-center gap-1"><Calendar size={12}/> Ciclo (Período)</label>
+                  <input 
+                    type="text" 
+                    value={inputCiclo} 
+                    onChange={(e) => setInputCiclo(e.target.value)}
+                    placeholder="Ex: 04/2026"
+                    className="w-full px-3 py-2.5 rounded-lg text-sm text-white outline-none"
+                    style={{ backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)' }}
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="rounded-xl p-4 space-y-3" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-white flex items-center gap-2"><Eye size={14} /> Pré-visualização</h3>
+                <h3 className="font-semibold text-white flex items-center gap-2"><Eye size={14} /> Dados encontrados no arquivo JSON</h3>
                 <button onClick={() => { setPreview(null); setErrors([]); }} style={{ color: 'rgba(255,255,255,0.4)' }}><X size={14} /></button>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                {[
-                  ['Analista (e-mail)', norm?.email],
-                  ['Ciclo', norm?.ciclo],
-                  ['QA Score', norm?.qa],
-                  ['IEPC Score', norm?.iepc],
-                  ['Aderência', preview.scores?.aderencia ?? preview.aderencia_score],
-                  ['Equipe', preview.analista?.equipe ?? preview.equipe as string],
-                ].map(([label, value]) => (
-                  <div key={label as string}>
-                    <p className="text-xs mb-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>{label}</p>
-                    <p className="text-white font-medium">{String(value ?? '—')}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-3 text-xs flex-wrap" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                {Array.isArray(preview.atendimentos) && <span>📋 {(preview.atendimentos as unknown[]).length} atendimentos</span>}
-                {Array.isArray(preview.coaching) && <span>💬 {(preview.coaching as unknown[]).length} coaching</span>}
-                {Array.isArray(preview.pdi) && <span>📈 {(preview.pdi as unknown[]).length} PDI</span>}
-                {Array.isArray(preview.qa_pilares) && <span>📊 {(preview.qa_pilares as unknown[]).length} pilares QA</span>}
-                {Array.isArray(preview.pontos_fortes) && <span>✅ {(preview.pontos_fortes as unknown[]).length} pontos fortes</span>}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mt-2">
+                <div>
+                  <p className="text-[10px] uppercase text-gray-500 mb-0.5">QA Score Encontrado</p>
+                  <p className="text-white font-bold">{preview.qa_score ?? preview.scores?.qa ?? '0'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-gray-500 mb-0.5">IEPC Score Encontrado</p>
+                  <p className="text-white font-bold">{preview.iepc_score ?? preview.scores?.iepc ?? '0'}%</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-gray-500 mb-0.5">Atendimentos Lidos</p>
+                  <p className="text-white font-bold">{Array.isArray(preview.atendimentos) ? preview.atendimentos.length : 0}</p>
+                </div>
               </div>
             </div>
 
             {errors.length > 0 && (
-              <div className="space-y-1">
-                {errors.map((e) => (
-                  <div key={e.field} className="flex items-center gap-2 p-2 rounded text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.08)', color: '#FCA5A5' }}>
-                    <AlertCircle size={12} /> <strong>{e.field}:</strong> {e.message}
+              <div className="space-y-2">
+                {errors.map((e, idx) => (
+                  <div key={idx} className="flex items-center gap-2 p-3 rounded-lg text-sm font-medium" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#FCA5A5', border: '1px solid rgba(239,68,68,0.3)' }}>
+                    <AlertCircle size={16} /> {e.message}
                   </div>
                 ))}
               </div>
@@ -379,40 +350,18 @@ export default function FeedbackImportPage() {
               </div>
             )}
 
-            <div className="flex gap-3">
-              <button onClick={handleSave} disabled={saving || errors.length > 0}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors disabled:opacity-50">
-                <Save size={14} /> {saving ? 'Salvando...' : 'Confirmar e Salvar'}
+            <div className="flex gap-3 pt-4">
+              <button onClick={handleSave} disabled={saving || (!selectedAnalista || !inputCiclo)}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold bg-sky-600 hover:bg-sky-500 text-white transition-colors disabled:opacity-50">
+                <Save size={16} /> {saving ? 'Processando e Vinculando...' : 'Vincular e Salvar Feedback'}
               </button>
               <button onClick={() => { setPreview(null); setErrors([]); }}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)' }}>
-                <X size={14} /> Cancelar
+                className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-colors" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)' }}>
+                Cancelar
               </button>
             </div>
           </div>
         )}
-
-        {/* ── JSON SCHEMA COMPLETO ── */}
-        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
-          <div className="flex items-center justify-between px-4 py-3" style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-            <h3 className="text-sm font-semibold text-white">Contrato JSON Completo (v1.0)</h3>
-            <button onClick={() => copyToClipboard(FULL_JSON_EXAMPLE, 'json')}
-              className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors hover:text-white" style={{ color: 'rgba(255,255,255,0.4)', backgroundColor: 'rgba(255,255,255,0.05)' }}>
-              {copied === 'json' ? <><CheckCircle size={11} className="text-green-400" /> Copiado!</> : <><Copy size={11} /> Copiar</>}
-            </button>
-          </div>
-          <pre className="p-4 text-xs overflow-auto max-h-96" style={{ color: 'rgba(56,189,248,0.85)', backgroundColor: 'rgba(0,0,0,0.3)', fontFamily: 'monospace' }}>
-            {FULL_JSON_EXAMPLE}
-          </pre>
-        </div>
-
-        <div className="rounded-lg p-4 text-xs space-y-1" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)' }}>
-          <p className="font-semibold text-white">Regras do contrato:</p>
-          <p>• Aceita JSON simplificado <code className="text-sky-400">{'{ analista_email, ciclo, qa_score, iepc_score }'}</code> ou JSON completo acima</p>
-          <p>• Campos ausentes são opcionais — o parser normaliza automaticamente</p>
-          <p>• Idempotente: reenvio do mesmo payload não duplica o feedback</p>
-          <p>• Analista é vinculado automaticamente pelo e-mail cadastrado em Analistas</p>
-        </div>
       </div>
     </EnterpriseLayout>
   );
