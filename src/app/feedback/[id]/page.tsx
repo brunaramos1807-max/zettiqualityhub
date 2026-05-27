@@ -3,12 +3,32 @@ import React, { useState, useEffect, useCallback } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
 import { useParams } from 'next/navigation';
-import { AlertTriangle, Printer, Star, ChevronDown, ChevronUp, Quote, Maximize2, Minimize2, Edit3, Share2, CheckCircle, X, Save, Award, Users, Zap, TrendingUp, Heart, Target, Download, BookOpen, ArrowRight } from 'lucide-react';
+import { AlertTriangle, Printer, Star, ChevronDown, ChevronUp, Quote, Maximize2, Minimize2, Edit3, Share2, CheckCircle, X, Save, Award, Users, Zap, TrendingUp, Heart, Target, Download, BookOpen, Plus, Trash2, Circle } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis
 } from 'recharts';
 import { autoCreatePDIFromFeedback } from '@/lib/services/dataService';
+
+// ── PDI Objective Block Types ──
+interface PdiObjetivo {
+  id: string;
+  categoria: string;
+  objetivo: string;
+  acao_esperada: string;
+  resultado_esperado: string;
+  status: 'cumprido' | 'parcial' | 'nao_cumprido';
+}
+
+function newPdiObjetivo(): PdiObjetivo {
+  return { id: Math.random().toString(36).slice(2), categoria: '', objetivo: '', acao_esperada: '', resultado_esperado: '', status: 'nao_cumprido' };
+}
+
+const OBJ_STATUS_CFG = {
+  cumprido: { label: 'Cumprido', color: '#22C55E', bg: 'rgba(34,197,94,0.12)', icon: <CheckCircle size={11} /> },
+  parcial: { label: 'Parcial', color: '#F59E0B', bg: 'rgba(245,158,11,0.12)', icon: <Circle size={11} /> },
+  nao_cumprido: { label: 'Não Cumprido', color: '#EF4444', bg: 'rgba(239,68,68,0.12)', icon: <X size={11} /> },
+};
 
 const C = {
   bg: '#07101F', surface: '#0F1B31', border: '#1E3050',
@@ -97,6 +117,7 @@ export default function FeedbackViewPage() {
   const [copied, setCopied] = useState(false);
   const [pdiCreating, setPdiCreating] = useState(false);
   const [pdiCreated, setPdiCreated] = useState(false);
+  const [pdiObjetivos, setPdiObjetivos] = useState<PdiObjetivo[]>([newPdiObjetivo()]);
 
   const fetchData = useCallback(async () => {
     const id = params?.id as string;
@@ -121,14 +142,27 @@ export default function FeedbackViewPage() {
     setSnapshot(snap);
     setAnalistaInfo(rawData.analistas);
 
+    // Load pdi_objetivos from snapshot or DB
+    const savedObjetivos = snap?.feedback_blocks?.pdi_objetivos || rawData.pdi_objetivos;
+    if (Array.isArray(savedObjetivos) && savedObjetivos.length > 0) {
+      setPdiObjetivos(savedObjetivos);
+    } else {
+      // Migrate legacy single-objective fields if present
+      const legacyObj = snap?.feedback_blocks?.objetivo_desenvolvimento || rawData.objetivo_desenvolvimento;
+      const legacyAcao = snap?.feedback_blocks?.acao_desenvolvimento || rawData.acao_desenvolvimento;
+      const legacyResult = snap?.feedback_blocks?.resultado_esperado || rawData.resultado_esperado;
+      if (legacyObj || legacyAcao || legacyResult) {
+        setPdiObjetivos([{ id: 'legacy-1', categoria: '', objetivo: legacyObj || '', acao_esperada: legacyAcao || '', resultado_esperado: legacyResult || '', status: 'nao_cumprido' }]);
+      } else {
+        setPdiObjetivos([newPdiObjetivo()]);
+      }
+    }
+
     setEditFields({
       fechamento_ciclo: extract(snap, 'feedback_blocks.fechamento_ciclo', 'fechamento') || rawData.resumo_ciclo || '',
       evolucao_tecnica: extract(snap, 'feedback_blocks.evolucao_tecnica', 'evolucao_tecnica') || rawData.evolucao_tecnica || '',
       evolucao_comportamental: extract(snap, 'feedback_blocks.evolucao_comportamental', 'evolucao_comportamental') || rawData.evolucao_comportamental || '',
       atencao_evolutiva: extract(snap, 'feedback_blocks.atencao_evolutiva', 'atencao_evolutiva') || '',
-      objetivo_desenvolvimento: extract(snap, 'feedback_blocks.objetivo_desenvolvimento', 'objetivo_desenvolvimento') || rawData.objetivo_desenvolvimento || '',
-      acao_desenvolvimento: extract(snap, 'feedback_blocks.acao_desenvolvimento', 'acao_desenvolvimento') || rawData.acao_desenvolvimento || '',
-      resultado_esperado: extract(snap, 'feedback_blocks.resultado_esperado', 'resultado_esperado') || rawData.resultado_esperado || '',
       mensagem_evolutiva: extract(snap, 'feedback_blocks.mensagem_evolutiva', 'mensagem_evolutiva') || rawData.mensagem_evolutiva || '',
     });
 
@@ -219,10 +253,8 @@ export default function FeedbackViewPage() {
         evolucao_tecnica: editFields.evolucao_tecnica,
         evolucao_comportamental: editFields.evolucao_comportamental,
         atencao_evolutiva: editFields.atencao_evolutiva,
-        objetivo_desenvolvimento: editFields.objetivo_desenvolvimento,
-        acao_desenvolvimento: editFields.acao_desenvolvimento,
-        resultado_esperado: editFields.resultado_esperado,
         mensagem_evolutiva: editFields.mensagem_evolutiva,
+        pdi_objetivos: pdiObjetivos,
       },
     };
 
@@ -249,6 +281,22 @@ export default function FeedbackViewPage() {
     const ncs = snap?.nao_conformidades || [];
     const elogiosSnap = snap?.elogios || [];
 
+    // Build enterprise_objectives from pdiObjetivos
+    const enterpriseObjectives = pdiObjetivos
+      .filter(o => o.objetivo.trim())
+      .map(o => ({
+        id: o.id,
+        categoria: o.categoria,
+        objetivo: o.objetivo,
+        acao_esperada: o.acao_esperada,
+        resultado_esperado: o.resultado_esperado,
+        status: o.status,
+        observacao_coordenador: '',
+      }));
+
+    const firstObj = enterpriseObjectives[0];
+    const mensagemEvolutiva = editFields.mensagem_evolutiva || extract(snap, 'feedback_blocks.mensagem_evolutiva', 'mensagem_evolutiva') || '';
+
     await autoCreatePDIFromFeedback({
       feedbackId: rawFeedback.id,
       analistaId: rawFeedback.analista_id,
@@ -261,10 +309,11 @@ export default function FeedbackViewPage() {
       aderenciaScore: scores?.aderencia ?? rawFeedback?.aderencia_score,
       totalNcs: ncs.length,
       totalElogios: elogiosSnap.length,
-      objetivoDesenvolvimento: editFields.objetivo_desenvolvimento || extract(snap, 'feedback_blocks.objetivo_desenvolvimento', 'objetivo_desenvolvimento') || '',
-      acaoDesenvolvimento: editFields.acao_desenvolvimento || extract(snap, 'feedback_blocks.acao_desenvolvimento', 'acao_desenvolvimento') || '',
-      resultadoEsperado: editFields.resultado_esperado || extract(snap, 'feedback_blocks.resultado_esperado', 'resultado_esperado') || '',
-      mensagemEvolutiva: editFields.mensagem_evolutiva || extract(snap, 'feedback_blocks.mensagem_evolutiva', 'mensagem_evolutiva') || '',
+      objetivoDesenvolvimento: firstObj?.objetivo || '',
+      acaoDesenvolvimento: firstObj?.acao_esperada || '',
+      resultadoEsperado: firstObj?.resultado_esperado || '',
+      mensagemEvolutiva,
+      enterpriseObjectives,
     });
     setPdiCreating(false);
     setPdiCreated(true);
@@ -501,7 +550,7 @@ export default function FeedbackViewPage() {
     allElogios.length
   );
 
-  const hasPDIBlock = objetivoDesenvolvimento || acaoDesenvolvimento || resultadoEsperado || mensagemEvolutiva;
+  const hasPDIBlock = pdiObjetivos.some(o => o.objetivo.trim()) || pdiObjetivos.length > 0;
 
   const content = (
     <div className="min-h-screen text-slate-200 pb-12 bg-[#07101F]">
@@ -832,15 +881,30 @@ export default function FeedbackViewPage() {
 
         {/* ── PLANO DE DESENVOLVIMENTO DO CICLO (PDI BLOCK) ── */}
         <PDIDevBlock
-          objetivoDesenvolvimento={objetivoDesenvolvimento}
-          acaoDesenvolvimento={acaoDesenvolvimento}
-          resultadoEsperado={resultadoEsperado}
-          mensagemEvolutiva={mensagemEvolutiva}
+          pdiObjetivos={pdiObjetivos}
+          setPdiObjetivos={setPdiObjetivos}
+          mensagemEvolutiva={editFields.mensagem_evolutiva || extract(snapshot, 'feedback_blocks.mensagem_evolutiva', 'mensagem_evolutiva') || rawFeedback?.mensagem_evolutiva || ''}
+          onMensagemChange={(v: string) => setEditFields((p: any) => ({ ...p, mensagem_evolutiva: v }))}
           analistaNome={analistaNome}
           ciclo={analistaCiclo}
           pdiCreated={pdiCreated}
           pdiCreating={pdiCreating}
           onCreatePDI={handleCreatePDI}
+          onSavePdi={async () => {
+            if (!rawFeedback) return;
+            const snap = Array.isArray(rawFeedback.snapshot_json_completo)
+              ? rawFeedback.snapshot_json_completo[0]
+              : (rawFeedback.snapshot_json_completo || {});
+            const updated = {
+              ...snap,
+              feedback_blocks: {
+                ...(snap?.feedback_blocks || {}),
+                pdi_objetivos: pdiObjetivos,
+                mensagem_evolutiva: editFields.mensagem_evolutiva || snap?.feedback_blocks?.mensagem_evolutiva || '',
+              },
+            };
+            await supabase.from('feedbacks').update({ snapshot_json_completo: updated }).eq('id', params?.id as string);
+          }}
         />
 
         {/* ── BLOCO MOTIVACIONAL DE ENCERRAMENTO ── */}
@@ -881,27 +945,16 @@ export default function FeedbackViewPage() {
                   />
                 </div>
               ))}
-              {/* PDI Development fields */}
+              {/* Mensagem Evolutiva */}
               <div className="pt-2 border-t border-[#1E3050]">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-sky-300 mb-3 flex items-center gap-2">
-                  <Target size={12} /> Plano de Desenvolvimento do Ciclo
-                </p>
-                {[
-                  { key: 'objetivo_desenvolvimento', label: 'Objetivo de Desenvolvimento', color: 'text-sky-400' },
-                  { key: 'acao_desenvolvimento', label: 'Ação Esperada', color: 'text-teal-400' },
-                  { key: 'resultado_esperado', label: 'Resultado Esperado', color: 'text-green-400' },
-                  { key: 'mensagem_evolutiva', label: 'Mensagem Evolutiva', color: 'text-purple-400' },
-                ].map(({ key, label, color }) => (
-                  <div key={key} className="mb-3">
-                    <label className={`block text-[11px] font-semibold uppercase tracking-wider mb-1.5 ${color}`}>{label}</label>
-                    <textarea
-                      value={editFields[key] || ''}
-                      onChange={(e) => setEditFields((p: any) => ({ ...p, [key]: e.target.value }))}
-                      rows={3}
-                      className="w-full bg-[#07101F] border border-[#1E3050] rounded-lg px-3 py-2 text-sm text-slate-200 resize-none focus:outline-none focus:border-sky-500/50 transition-colors"
-                    />
-                  </div>
-                ))}
+                <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5 text-purple-400">Mensagem Evolutiva</label>
+                <textarea
+                  value={editFields.mensagem_evolutiva || ''}
+                  onChange={(e) => setEditFields((p: any) => ({ ...p, mensagem_evolutiva: e.target.value }))}
+                  rows={3}
+                  className="w-full bg-[#07101F] border border-[#1E3050] rounded-lg px-3 py-2 text-sm text-slate-200 resize-none focus:outline-none focus:border-sky-500/50 transition-colors"
+                  placeholder="Deixe em branco — será exibida no bloco PDI abaixo"
+                />
               </div>
             </div>
             <div className="flex items-center justify-end gap-3 mt-5">
@@ -928,8 +981,43 @@ export default function FeedbackViewPage() {
 }
 
 // ── PDI DEVELOPMENT BLOCK ──
-function PDIDevBlock({ objetivoDesenvolvimento, acaoDesenvolvimento, resultadoEsperado, mensagemEvolutiva, analistaNome, ciclo, pdiCreated, pdiCreating, onCreatePDI }: any) {
-  const hasContent = objetivoDesenvolvimento || acaoDesenvolvimento || resultadoEsperado || mensagemEvolutiva;
+function PDIDevBlock({ pdiObjetivos, setPdiObjetivos, mensagemEvolutiva, onMensagemChange, analistaNome, ciclo, pdiCreated, pdiCreating, onCreatePDI, onSavePdi }: {
+  pdiObjetivos: PdiObjetivo[];
+  setPdiObjetivos: React.Dispatch<React.SetStateAction<PdiObjetivo[]>>;
+  mensagemEvolutiva: string;
+  onMensagemChange: (v: string) => void;
+  analistaNome: string;
+  ciclo: string;
+  pdiCreated: boolean;
+  pdiCreating: boolean;
+  onCreatePDI: () => void;
+  onSavePdi: () => Promise<void>;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSavePdi();
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  };
+
+  const updateObj = (index: number, updated: PdiObjetivo) => {
+    setPdiObjetivos(prev => prev.map((o, i) => i === index ? updated : o));
+  };
+
+  const removeObj = (index: number) => {
+    setPdiObjetivos(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const addObj = () => {
+    setPdiObjetivos(prev => [...prev, newPdiObjetivo()]);
+  };
+
+  const inputStyle: React.CSSProperties = { backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' };
+  const inputCls = 'w-full px-3 py-2 rounded-lg text-sm text-slate-200 outline-none focus:border-sky-500/50 transition-colors';
 
   return (
     <div className="print-card relative overflow-hidden rounded-2xl"
@@ -955,6 +1043,20 @@ function PDIDevBlock({ objetivoDesenvolvimento, acaoDesenvolvimento, resultadoEs
           </div>
         </div>
         <div className="flex items-center gap-2 print-hide">
+          {saved && (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-900/30 text-green-300 border border-green-700/30">
+              <CheckCircle size={12} /> Salvo
+            </span>
+          )}
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-60"
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.7)' }}
+          >
+            {saving ? <div className="w-3 h-3 border border-white/40 border-t-transparent rounded-full animate-spin" /> : <Save size={12} />}
+            {saving ? 'Salvando...' : 'Salvar PDI'}
+          </button>
           {pdiCreated ? (
             <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-900/30 text-green-300 border border-green-700/30">
               <CheckCircle size={12} /> PDI Gerado
@@ -978,75 +1080,146 @@ function PDIDevBlock({ objetivoDesenvolvimento, acaoDesenvolvimento, resultadoEs
       </div>
 
       {/* Content */}
-      <div className="p-6">
-        {!hasContent ? (
-          <div className="text-center py-8">
-            <Target size={32} className="mx-auto mb-3 text-sky-800" />
-            <p className="text-sm text-slate-500 mb-1">Plano de desenvolvimento não preenchido</p>
-            <p className="text-xs text-slate-600">Clique em "Editar Feedback" para adicionar o plano de desenvolvimento do ciclo</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {/* Grid: Objetivo + Ação */}
-            <div className="grid md:grid-cols-2 gap-4">
-              {objetivoDesenvolvimento && (
-                <div className="rounded-xl p-4" style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.18)' }}>
-                  <div className="flex items-center gap-2 mb-2.5">
-                    <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ background: 'rgba(56,189,248,0.2)' }}>
-                      <Target size={11} className="text-sky-400" />
-                    </div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-sky-400">Objetivo</p>
+      <div className="p-6 space-y-4">
+        {/* Objective Cards */}
+        <div className="space-y-4">
+          {pdiObjetivos.map((obj, index) => {
+            const statusCfg = OBJ_STATUS_CFG[obj.status];
+            return (
+              <div key={obj.id} className="rounded-xl p-4 space-y-3 print-card"
+                style={{ background: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.18)' }}>
+                {/* Card header */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-sky-400 uppercase tracking-wider">Objetivo {index + 1}</span>
+                    <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: statusCfg.bg, color: statusCfg.color }}>
+                      {statusCfg.icon} {statusCfg.label}
+                    </span>
                   </div>
-                  <p className="text-sm text-slate-200 leading-relaxed">{objetivoDesenvolvimento}</p>
+                  {pdiObjetivos.length > 1 && (
+                    <button type="button" onClick={() => removeObj(index)}
+                      className="p-1 rounded hover:bg-red-500/10 transition-colors print-hide"
+                      style={{ color: '#EF4444' }}>
+                      <Trash2 size={13} />
+                    </button>
+                  )}
                 </div>
-              )}
-              {acaoDesenvolvimento && (
-                <div className="rounded-xl p-4" style={{ background: 'rgba(45,212,191,0.06)', border: '1px solid rgba(45,212,191,0.18)' }}>
-                  <div className="flex items-center gap-2 mb-2.5">
-                    <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ background: 'rgba(45,212,191,0.2)' }}>
-                      <ArrowRight size={11} className="text-teal-400" />
-                    </div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-teal-400">Ação Esperada</p>
+
+                {/* Categoria + Status row */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-sky-400/70">Categoria</label>
+                    <input
+                      value={obj.categoria}
+                      onChange={(e) => updateObj(index, { ...obj, categoria: e.target.value })}
+                      placeholder="Ex: Técnico, Comportamental..."
+                      className={inputCls} style={inputStyle}
+                    />
                   </div>
-                  <p className="text-sm text-slate-200 leading-relaxed">{acaoDesenvolvimento}</p>
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-sky-400/70">Status</label>
+                    <select
+                      value={obj.status}
+                      onChange={(e) => updateObj(index, { ...obj, status: e.target.value as PdiObjetivo['status'] })}
+                      className={inputCls} style={{ ...inputStyle, color: statusCfg.color }}
+                    >
+                      <option value="nao_cumprido">Não Cumprido</option>
+                      <option value="parcial">Parcial</option>
+                      <option value="cumprido">Cumprido</option>
+                    </select>
+                  </div>
                 </div>
-              )}
+
+                {/* Objetivo */}
+                <div>
+                  <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-sky-400/70">Objetivo</label>
+                  <input
+                    value={obj.objetivo}
+                    onChange={(e) => updateObj(index, { ...obj, objetivo: e.target.value })}
+                    placeholder="Descreva o objetivo de desenvolvimento..."
+                    className={inputCls} style={inputStyle}
+                  />
+                </div>
+
+                {/* Ação Esperada */}
+                <div>
+                  <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-teal-400/70">Ação Esperada</label>
+                  <textarea
+                    value={obj.acao_esperada}
+                    onChange={(e) => updateObj(index, { ...obj, acao_esperada: e.target.value })}
+                    placeholder="Ação esperada para atingir o objetivo..."
+                    rows={2}
+                    className="w-full px-3 py-2 rounded-lg text-sm text-slate-200 outline-none resize-none focus:border-teal-500/50 transition-colors"
+                    style={inputStyle}
+                  />
+                </div>
+
+                {/* Resultado Esperado */}
+                <div>
+                  <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-green-400/70">Resultado Esperado</label>
+                  <textarea
+                    value={obj.resultado_esperado}
+                    onChange={(e) => updateObj(index, { ...obj, resultado_esperado: e.target.value })}
+                    placeholder="Resultado esperado ao final do ciclo..."
+                    rows={2}
+                    className="w-full px-3 py-2 rounded-lg text-sm text-slate-200 outline-none resize-none focus:border-green-500/50 transition-colors"
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Add Objective Button */}
+        <button
+          type="button"
+          onClick={addObj}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold w-full justify-center transition-all hover:bg-sky-500/10 print-hide"
+          style={{ color: '#38BDF8', border: '1px dashed rgba(56,189,248,0.4)', backgroundColor: 'rgba(56,189,248,0.04)' }}
+        >
+          <Plus size={14} /> Adicionar Objetivo
+        </button>
+
+        {/* Mensagem Evolutiva */}
+        <div className="rounded-xl p-4 relative overflow-hidden"
+          style={{
+            background: 'linear-gradient(135deg, rgba(167,139,250,0.08) 0%, rgba(56,189,248,0.04) 100%)',
+            border: '1px solid rgba(167,139,250,0.25)',
+          }}>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: 'rgba(167,139,250,0.2)', border: '1px solid rgba(167,139,250,0.3)' }}>
+              <Heart size={12} className="text-purple-400" />
             </div>
-
-            {/* Resultado Esperado */}
-            {resultadoEsperado && (
-              <div className="rounded-xl p-4" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.18)' }}>
-                <div className="flex items-center gap-2 mb-2.5">
-                  <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ background: 'rgba(34,197,94,0.2)' }}>
-                    <TrendingUp size={11} className="text-green-400" />
-                  </div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-green-400">Resultado Esperado</p>
-                </div>
-                <p className="text-sm text-slate-200 leading-relaxed">{resultadoEsperado}</p>
-              </div>
-            )}
-
-            {/* Mensagem Evolutiva — destaque emocional */}
-            {mensagemEvolutiva && (
-              <div className="rounded-xl p-5 relative overflow-hidden"
-                style={{
-                  background: 'linear-gradient(135deg, rgba(167,139,250,0.1) 0%, rgba(56,189,248,0.06) 100%)',
-                  border: '1px solid rgba(167,139,250,0.3)',
-                }}>
-                <div className="absolute top-0 right-0 w-32 h-32 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(167,139,250,0.08) 0%, transparent 70%)' }} />
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: 'rgba(167,139,250,0.2)', border: '1px solid rgba(167,139,250,0.3)' }}>
-                    <Heart size={12} className="text-purple-400" />
-                  </div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Mensagem Evolutiva</p>
-                </div>
-                <Quote size={20} className="text-purple-700/40 mb-2" />
-                <p className="text-sm text-slate-100 leading-relaxed font-medium italic pl-2">{mensagemEvolutiva}</p>
-                <p className="text-[10px] text-slate-600 mt-3 text-right">— {analistaNome} · {ciclo}</p>
-              </div>
-            )}
+            <p className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Mensagem Evolutiva</p>
+            <span className="text-[10px] text-slate-600 ml-auto">opcional — automática se vazia</span>
           </div>
-        )}
+          {mensagemEvolutiva ? (
+            <>
+              <Quote size={18} className="text-purple-700/40 mb-2" />
+              <p className="text-sm text-slate-100 leading-relaxed font-medium italic pl-2">{mensagemEvolutiva}</p>
+              <p className="text-[10px] text-slate-600 mt-3 text-right">— {analistaNome} · {ciclo}</p>
+            </>
+          ) : (
+            <textarea
+              value={mensagemEvolutiva}
+              onChange={(e) => onMensagemChange(e.target.value)}
+              placeholder="Deixe em branco para geração automática, ou escreva uma mensagem personalizada..."
+              rows={3}
+              className="w-full px-3 py-2 rounded-lg text-sm text-slate-200 outline-none resize-none focus:border-purple-500/50 transition-colors"
+              style={inputStyle}
+            />
+          )}
+          {mensagemEvolutiva && (
+            <button
+              type="button"
+              onClick={() => onMensagemChange('')}
+              className="mt-2 text-[10px] text-slate-600 hover:text-slate-400 transition-colors print-hide"
+            >
+              ✏️ Editar mensagem
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -1282,6 +1282,7 @@ export async function autoCreatePDIFromFeedback(params: {
   acaoDesenvolvimento?: string;
   resultadoEsperado?: string;
   mensagemEvolutiva?: string;
+  enterpriseObjectives?: any[];
 }): Promise<{ success: boolean; data?: PDIRecord; error?: string }> {
   try {
     const { createClient } = await import('@/lib/supabase/client');
@@ -1320,6 +1321,7 @@ export async function autoCreatePDIFromFeedback(params: {
       resultado_esperado: params.resultadoEsperado || '',
       mensagem_evolutiva: params.mensagemEvolutiva || '',
       objetivo: params.objetivoDesenvolvimento || '',
+      enterprise_objectives: params.enterpriseObjectives && params.enterpriseObjectives.length > 0 ? params.enterpriseObjectives : null,
       source: 'feedback_auto',
       attachments: [],
     };
