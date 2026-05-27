@@ -34,6 +34,18 @@ function normalize(body: Record<string, unknown>) {
   // Analytics
   const analytics = body.analytics as Record<string, unknown> | undefined;
 
+  // Extract feedback_blocks fields — Lovable may send them nested or at root
+  const feedbackBlocks = body.feedback_blocks as Record<string, unknown> | undefined;
+  const evolucaoTecnica = (feedbackBlocks?.evolucao_tecnica || body.evolucao_tecnica) as string | null || null;
+  const evolucaoComportamental = (feedbackBlocks?.evolucao_comportamental || body.evolucao_comportamental) as string | null || null;
+  // atencao_evolutiva: check all possible paths Lovable might use
+  const atencaoEvolutiva = (
+    feedbackBlocks?.atencao_evolutiva ||
+    body.atencao_evolutiva ||
+    feedbackBlocks?.atencao_evolutiva ||
+    body.risco_operacional
+  ) as string | null || null;
+
   return {
     email,
     ciclo,
@@ -57,6 +69,9 @@ function normalize(body: Record<string, unknown>) {
     pdi: (body.pdi || []) as Record<string, unknown>[],
     historico: (body.historico || []) as Record<string, unknown>[],
     external_id: body.external_id as string | null || null,
+    evolucao_tecnica: evolucaoTecnica,
+    evolucao_comportamental: evolucaoComportamental,
+    atencao_evolutiva: atencaoEvolutiva,
   };
 }
 
@@ -143,7 +158,21 @@ export async function POST(req: NextRequest) {
     status: 'generated' as const,
     origem: 'api_lovable',
     external_id: n.external_id,
-    snapshot_json_completo: body,
+    evolucao_tecnica: n.evolucao_tecnica,
+    evolucao_comportamental: n.evolucao_comportamental,
+    // Store atencao_evolutiva in risco_operacional column (dedicated text column)
+    risco_operacional: n.atencao_evolutiva,
+    // Enrich snapshot: ensure feedback_blocks.atencao_evolutiva is always present
+    snapshot_json_completo: {
+      ...(body as Record<string, unknown>),
+      feedback_blocks: {
+        ...((body.feedback_blocks as Record<string, unknown>) || {}),
+        evolucao_tecnica: n.evolucao_tecnica,
+        evolucao_comportamental: n.evolucao_comportamental,
+        atencao_evolutiva: n.atencao_evolutiva,
+        fechamento_ciclo: (body.feedback_blocks as Record<string, unknown>)?.fechamento_ciclo || body.resumo_ciclo || null,
+      },
+    },
   };
 
   const { data: feedback, error: fbError } = await supabaseAdmin

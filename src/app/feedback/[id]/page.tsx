@@ -219,7 +219,12 @@ export default function FeedbackViewPage() {
   // Panorama blocks
   const evolucaoTecnica = extract(snapshot, 'feedback_blocks.evolucao_tecnica', 'evolucao_tecnica') || rawFeedback?.evolucao_tecnica || '';
   const evolucaoComportamental = extract(snapshot, 'feedback_blocks.evolucao_comportamental', 'evolucao_comportamental') || rawFeedback?.evolucao_comportamental || '';
-  const atencaoEvolutiva = extract(snapshot, 'feedback_blocks.atencao_evolutiva', 'atencao_evolutiva') || rawFeedback?.atencao_evolutiva || rawFeedback?.risco_operacional || '';
+  // atencao_evolutiva: check all paths — snapshot.feedback_blocks, snapshot root, dedicated DB columns
+  const atencaoEvolutiva =
+    extract(snapshot, 'feedback_blocks.atencao_evolutiva', 'atencao_evolutiva') ||
+    rawFeedback?.risco_operacional ||
+    rawFeedback?.atencao_evolutiva ||
+    '';
   const fechamentoCiclo = extract(snapshot, 'feedback_blocks.fechamento_ciclo', 'fechamento') || rawFeedback?.resumo_ciclo || '';
 
   // Elogios: merge snapshot elogios + real elogios from DB
