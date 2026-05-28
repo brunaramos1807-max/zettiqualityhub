@@ -105,10 +105,9 @@ export default function PublicFeedbackPage() {
         .from('feedbacks')
         .select('*, analistas(*)')
         .eq('public_token', params?.token as string)
-        .eq('public_enabled', true)
         .maybeSingle();
 
-      if (!rawData) {
+      if (!rawData || rawData.public_enabled === false) {
         setNotFound(true);
         setLoading(false);
         return;

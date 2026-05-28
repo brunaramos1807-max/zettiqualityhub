@@ -118,6 +118,7 @@ export default function FeedbackViewPage() {
   const [pdiCreating, setPdiCreating] = useState(false);
   const [pdiCreated, setPdiCreated] = useState(false);
   const [pdiObjetivos, setPdiObjetivos] = useState<PdiObjetivo[]>([newPdiObjetivo()]);
+  const [dbNCs, setDbNCs] = useState<any[]>([]);
 
   const fetchData = useCallback(async () => {
     const id = params?.id as string;
@@ -207,6 +208,16 @@ export default function FeedbackViewPage() {
           .order('created_at', { ascending: false })
           .limit(10);
         setElogios(elogiosRows || []);
+
+        // Fetch NCs from nc_records table by analista name + ciclo
+        const ciclo = rawData.ciclo || snap?.analista?.ciclo;
+        let ncQuery = supabase
+          .from('nc_records')
+          .select('*')
+          .ilike('analista', `%${analistaNome.split(' ')[0]}%`);
+        if (ciclo) ncQuery = ncQuery.eq('periodo', ciclo);
+        const { data: ncRows } = await ncQuery;
+        setDbNCs(ncRows || []);
       }
     }
 
@@ -539,8 +550,21 @@ export default function FeedbackViewPage() {
     ...snapshotElogios,
   ];
 
-  // NCs: merge snapshot NCs
-  const allNCs = nao_conformidades.length > 0 ? nao_conformidades : [];
+  // NCs: merge snapshot NCs with NCs fetched from nc_records table
+  const dbNCsMapped = dbNCs.map((nc: any) => ({
+    tipo: nc.tipo_nc,
+    tipo_nc: nc.tipo_nc,
+    descricao: nc.descricao,
+    protocolo: nc.protocolo_referencia,
+    protocolo_referencia: nc.protocolo_referencia,
+    pontos_deduzidos: nc.pontos_deduzidos,
+  }));
+  // Deduplicate: use snapshot NCs if present, supplement with DB NCs not already in snapshot
+  const snapshotNCProtocolos = new Set(nao_conformidades.map((nc: any) => nc.protocolo || nc.protocolo_referencia).filter(Boolean));
+  const extraDBNCs = dbNCsMapped.filter((nc: any) => !nc.protocolo || !snapshotNCProtocolos.has(nc.protocolo));
+  const allNCs = nao_conformidades.length > 0
+    ? [...nao_conformidades, ...extraDBNCs]
+    : dbNCsMapped;
   const isHighScore = Number(qaScore) >= 90;
 
   const motivational = getMotivationalMessage(
