@@ -914,6 +914,7 @@ export default function FeedbackViewPage() {
           pdiCreated={pdiCreated}
           pdiCreating={pdiCreating}
           onCreatePDI={handleCreatePDI}
+          isEditing={editOpen}
           onSavePdi={async () => {
             if (!rawFeedback) return;
             const snap = Array.isArray(rawFeedback.snapshot_json_completo)
@@ -1005,7 +1006,7 @@ export default function FeedbackViewPage() {
 }
 
 // ── PDI DEVELOPMENT BLOCK ──
-function PDIDevBlock({ pdiObjetivos, setPdiObjetivos, mensagemEvolutiva, onMensagemChange, analistaNome, ciclo, pdiCreated, pdiCreating, onCreatePDI, onSavePdi }: {
+function PDIDevBlock({ pdiObjetivos, setPdiObjetivos, mensagemEvolutiva, onMensagemChange, analistaNome, ciclo, pdiCreated, pdiCreating, onCreatePDI, onSavePdi, isEditing }: {
   pdiObjetivos: PdiObjetivo[];
   setPdiObjetivos: React.Dispatch<React.SetStateAction<PdiObjetivo[]>>;
   mensagemEvolutiva: string;
@@ -1016,6 +1017,7 @@ function PDIDevBlock({ pdiObjetivos, setPdiObjetivos, mensagemEvolutiva, onMensa
   pdiCreating: boolean;
   onCreatePDI: () => void;
   onSavePdi: () => Promise<void>;
+  isEditing?: boolean;
 }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -1066,166 +1068,236 @@ function PDIDevBlock({ pdiObjetivos, setPdiObjetivos, mensagemEvolutiva, onMensa
             <h2 className="text-base font-black text-white tracking-tight">Plano de Desenvolvimento do Ciclo</h2>
           </div>
         </div>
-        <div className="flex items-center gap-2 print-hide">
-          {saved && (
-            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-900/30 text-green-300 border border-green-700/30">
-              <CheckCircle size={12} /> Salvo
-            </span>
-          )}
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-60"
-            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.7)' }}
-          >
-            {saving ? <div className="w-3 h-3 border border-white/40 border-t-transparent rounded-full animate-spin" /> : <Save size={12} />}
-            {saving ? 'Salvando...' : 'Salvar PDI'}
-          </button>
-          {pdiCreated ? (
-            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-900/30 text-green-300 border border-green-700/30">
-              <CheckCircle size={12} /> PDI Gerado
-            </span>
-          ) : (
+        {/* Action buttons — only in edit mode */}
+        {isEditing && (
+          <div className="flex items-center gap-2 print-hide">
+            {saved && (
+              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-900/30 text-green-300 border border-green-700/30">
+                <CheckCircle size={12} /> Salvo
+              </span>
+            )}
             <button
-              onClick={onCreatePDI}
-              disabled={pdiCreating}
+              onClick={handleSave}
+              disabled={saving}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-60"
-              style={{ background: 'linear-gradient(135deg, rgba(56,189,248,0.2), rgba(45,212,191,0.15))', border: '1px solid rgba(56,189,248,0.35)', color: '#38BDF8' }}
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.7)' }}
             >
-              {pdiCreating ? (
-                <div className="w-3 h-3 border border-sky-400 border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <BookOpen size={12} />
-              )}
-              {pdiCreating ? 'Gerando...' : 'Gerar PDI'}
+              {saving ? <div className="w-3 h-3 border border-white/40 border-t-transparent rounded-full animate-spin" /> : <Save size={12} />}
+              {saving ? 'Salvando...' : 'Salvar PDI'}
             </button>
-          )}
-        </div>
+            {pdiCreated ? (
+              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-900/30 text-green-300 border border-green-700/30">
+                <CheckCircle size={12} /> PDI Gerado
+              </span>
+            ) : (
+              <button
+                onClick={onCreatePDI}
+                disabled={pdiCreating}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-60"
+                style={{ background: 'linear-gradient(135deg, rgba(56,189,248,0.2), rgba(45,212,191,0.15))', border: '1px solid rgba(56,189,248,0.35)', color: '#38BDF8' }}
+              >
+                {pdiCreating ? (
+                  <div className="w-3 h-3 border border-sky-400 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <BookOpen size={12} />
+                )}
+                {pdiCreating ? 'Gerando...' : 'Gerar PDI'}
+              </button>
+            )}
+          </div>
+        )}
+        {/* View mode: show PDI Gerado badge if applicable */}
+        {!isEditing && pdiCreated && (
+          <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-900/30 text-green-300 border border-green-700/30 print-hide">
+            <CheckCircle size={12} /> PDI Gerado
+          </span>
+        )}
       </div>
 
       {/* Content */}
       <div className="p-6 space-y-4">
-        {/* Objective Cards */}
-        <div className="space-y-4">
-          {pdiObjetivos.map((obj, index) => {
-            return (
-              <div key={obj.id} className="rounded-xl p-4 space-y-3 print-card"
-                style={{ background: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.18)' }}>
-                {/* Card header */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-sky-400 uppercase tracking-wider">Objetivo {index + 1}</span>
+        {isEditing ? (
+          <>
+            {/* Editable Objective Cards */}
+            <div className="space-y-4">
+              {pdiObjetivos.map((obj, index) => (
+                <div key={obj.id} className="rounded-xl p-4 space-y-3 print-card"
+                  style={{ background: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.18)' }}>
+                  {/* Card header */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-sky-400 uppercase tracking-wider">Objetivo {index + 1}</span>
+                    </div>
+                    {pdiObjetivos.length > 1 && (
+                      <button type="button" onClick={() => removeObj(index)}
+                        className="p-1 rounded hover:bg-red-500/10 transition-colors print-hide"
+                        style={{ color: '#EF4444' }}>
+                        <Trash2 size={13} />
+                      </button>
+                    )}
                   </div>
-                  {pdiObjetivos.length > 1 && (
-                    <button type="button" onClick={() => removeObj(index)}
-                      className="p-1 rounded hover:bg-red-500/10 transition-colors print-hide"
-                      style={{ color: '#EF4444' }}>
-                      <Trash2 size={13} />
-                    </button>
-                  )}
+
+                  {/* Categoria */}
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-sky-400/70">Categoria</label>
+                    <input
+                      value={obj.categoria}
+                      onChange={(e) => updateObj(index, { ...obj, categoria: e.target.value })}
+                      placeholder="Ex: Técnico, Comportamental..."
+                      className={inputCls} style={inputStyle}
+                    />
+                  </div>
+
+                  {/* Objetivo */}
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-sky-400/70">Objetivo</label>
+                    <input
+                      value={obj.objetivo}
+                      onChange={(e) => updateObj(index, { ...obj, objetivo: e.target.value })}
+                      placeholder="Descreva o objetivo de desenvolvimento..."
+                      className={inputCls} style={inputStyle}
+                    />
+                  </div>
+
+                  {/* Ação Esperada */}
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-teal-400/70">Ação Esperada</label>
+                    <textarea
+                      value={obj.acao_esperada}
+                      onChange={(e) => updateObj(index, { ...obj, acao_esperada: e.target.value })}
+                      placeholder="Ação esperada para atingir o objetivo..."
+                      rows={2}
+                      className="w-full px-3 py-2 rounded-lg text-sm text-slate-200 outline-none resize-none focus:border-teal-500/50 transition-colors"
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  {/* Resultado Esperado */}
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-green-400/70">Resultado Esperado</label>
+                    <textarea
+                      value={obj.resultado_esperado}
+                      onChange={(e) => updateObj(index, { ...obj, resultado_esperado: e.target.value })}
+                      placeholder="Resultado esperado ao final do ciclo..."
+                      rows={2}
+                      className="w-full px-3 py-2 rounded-lg text-sm text-slate-200 outline-none resize-none focus:border-green-500/50 transition-colors"
+                      style={inputStyle}
+                    />
+                  </div>
                 </div>
-
-                {/* Categoria */}
-                <div>
-                  <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-sky-400/70">Categoria</label>
-                  <input
-                    value={obj.categoria}
-                    onChange={(e) => updateObj(index, { ...obj, categoria: e.target.value })}
-                    placeholder="Ex: Técnico, Comportamental..."
-                    className={inputCls} style={inputStyle}
-                  />
-                </div>
-
-                {/* Objetivo */}
-                <div>
-                  <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-sky-400/70">Objetivo</label>
-                  <input
-                    value={obj.objetivo}
-                    onChange={(e) => updateObj(index, { ...obj, objetivo: e.target.value })}
-                    placeholder="Descreva o objetivo de desenvolvimento..."
-                    className={inputCls} style={inputStyle}
-                  />
-                </div>
-
-                {/* Ação Esperada */}
-                <div>
-                  <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-teal-400/70">Ação Esperada</label>
-                  <textarea
-                    value={obj.acao_esperada}
-                    onChange={(e) => updateObj(index, { ...obj, acao_esperada: e.target.value })}
-                    placeholder="Ação esperada para atingir o objetivo..."
-                    rows={2}
-                    className="w-full px-3 py-2 rounded-lg text-sm text-slate-200 outline-none resize-none focus:border-teal-500/50 transition-colors"
-                    style={inputStyle}
-                  />
-                </div>
-
-                {/* Resultado Esperado */}
-                <div>
-                  <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-green-400/70">Resultado Esperado</label>
-                  <textarea
-                    value={obj.resultado_esperado}
-                    onChange={(e) => updateObj(index, { ...obj, resultado_esperado: e.target.value })}
-                    placeholder="Resultado esperado ao final do ciclo..."
-                    rows={2}
-                    className="w-full px-3 py-2 rounded-lg text-sm text-slate-200 outline-none resize-none focus:border-green-500/50 transition-colors"
-                    style={inputStyle}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Add Objective Button */}
-        <button
-          type="button"
-          onClick={addObj}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold w-full justify-center transition-all hover:bg-sky-500/10 print-hide"
-          style={{ color: '#38BDF8', border: '1px dashed rgba(56,189,248,0.4)', backgroundColor: 'rgba(56,189,248,0.04)' }}
-        >
-          <Plus size={14} /> Adicionar Objetivo
-        </button>
-
-        {/* Mensagem Evolutiva */}
-        <div className="rounded-xl p-4 relative overflow-hidden"
-          style={{
-            background: 'linear-gradient(135deg, rgba(167,139,250,0.08) 0%, rgba(56,189,248,0.04) 100%)',
-            border: '1px solid rgba(167,139,250,0.25)',
-          }}>
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: 'rgba(167,139,250,0.2)', border: '1px solid rgba(167,139,250,0.3)' }}>
-              <Heart size={12} className="text-purple-400" />
+              ))}
             </div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Mensagem Evolutiva</p>
-            <span className="text-[10px] text-slate-600 ml-auto">opcional — automática se vazia</span>
-          </div>
-          {mensagemEvolutiva ? (
-            <>
-              <Quote size={18} className="text-purple-700/40 mb-2" />
-              <p className="text-sm text-slate-100 leading-relaxed font-medium italic pl-2">{mensagemEvolutiva}</p>
-              <p className="text-[10px] text-slate-600 mt-3 text-right">— {analistaNome} · {ciclo}</p>
-            </>
-          ) : (
-            <textarea
-              value={mensagemEvolutiva}
-              onChange={(e) => onMensagemChange(e.target.value)}
-              placeholder="Deixe em branco para geração automática, ou escreva uma mensagem personalizada..."
-              rows={3}
-              className="w-full px-3 py-2 rounded-lg text-sm text-slate-200 outline-none resize-none focus:border-purple-500/50 transition-colors"
-              style={inputStyle}
-            />
-          )}
-          {mensagemEvolutiva && (
+
+            {/* Add Objective Button */}
             <button
               type="button"
-              onClick={() => onMensagemChange('')}
-              className="mt-2 text-[10px] text-slate-600 hover:text-slate-400 transition-colors print-hide"
+              onClick={addObj}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold w-full justify-center transition-all hover:bg-sky-500/10 print-hide"
+              style={{ color: '#38BDF8', border: '1px dashed rgba(56,189,248,0.4)', backgroundColor: 'rgba(56,189,248,0.04)' }}
             >
-              ✏️ Editar mensagem
+              <Plus size={14} /> Adicionar Objetivo
             </button>
-          )}
-        </div>
+
+            {/* Mensagem Evolutiva — editable */}
+            <div className="rounded-xl p-4 relative overflow-hidden"
+              style={{
+                background: 'linear-gradient(135deg, rgba(167,139,250,0.08) 0%, rgba(56,189,248,0.04) 100%)',
+                border: '1px solid rgba(167,139,250,0.25)',
+              }}>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: 'rgba(167,139,250,0.2)', border: '1px solid rgba(167,139,250,0.3)' }}>
+                  <Heart size={12} className="text-purple-400" />
+                </div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Mensagem Evolutiva</p>
+                <span className="text-[10px] text-slate-600 ml-auto">opcional — automática se vazia</span>
+              </div>
+              {mensagemEvolutiva ? (
+                <>
+                  <Quote size={18} className="text-purple-700/40 mb-2" />
+                  <p className="text-sm text-slate-100 leading-relaxed font-medium italic pl-2">{mensagemEvolutiva}</p>
+                  <p className="text-[10px] text-slate-600 mt-3 text-right">— {analistaNome} · {ciclo}</p>
+                  <button
+                    type="button"
+                    onClick={() => onMensagemChange('')}
+                    className="mt-2 text-[10px] text-slate-600 hover:text-slate-400 transition-colors print-hide"
+                  >
+                    ✏️ Editar mensagem
+                  </button>
+                </>
+              ) : (
+                <textarea
+                  value={mensagemEvolutiva}
+                  onChange={(e) => onMensagemChange(e.target.value)}
+                  placeholder="Deixe em branco para geração automática, ou escreva uma mensagem personalizada..."
+                  rows={3}
+                  className="w-full px-3 py-2 rounded-lg text-sm text-slate-200 outline-none resize-none focus:border-purple-500/50 transition-colors"
+                  style={inputStyle}
+                />
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            {/* READ-ONLY Objective Cards */}
+            {pdiObjetivos.length === 0 || (pdiObjetivos.length === 1 && !pdiObjetivos[0].objetivo && !pdiObjetivos[0].categoria) ? (
+              <p className="text-sm text-slate-500 italic text-center py-4">Nenhum objetivo de desenvolvimento registrado.</p>
+            ) : (
+              <div className="space-y-4">
+                {pdiObjetivos.filter(obj => obj.objetivo || obj.categoria || obj.acao_esperada || obj.resultado_esperado).map((obj, index) => (
+                  <div key={obj.id} className="rounded-xl p-4 space-y-3 print-card"
+                    style={{ background: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.18)' }}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-sky-400 uppercase tracking-wider">Objetivo {index + 1}</span>
+                      {obj.categoria && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                          style={{ background: 'rgba(56,189,248,0.15)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.3)' }}>
+                          {obj.categoria}
+                        </span>
+                      )}
+                    </div>
+                    {obj.objetivo && (
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-sky-400/70 mb-1">Objetivo</p>
+                        <p className="text-sm text-slate-200">{obj.objetivo}</p>
+                      </div>
+                    )}
+                    {obj.acao_esperada && (
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-teal-400/70 mb-1">Ação Esperada</p>
+                        <p className="text-sm text-slate-300">{obj.acao_esperada}</p>
+                      </div>
+                    )}
+                    {obj.resultado_esperado && (
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-green-400/70 mb-1">Resultado Esperado</p>
+                        <p className="text-sm text-slate-300">{obj.resultado_esperado}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Mensagem Evolutiva — read-only */}
+            {mensagemEvolutiva && (
+              <div className="rounded-xl p-4 relative overflow-hidden"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(167,139,250,0.08) 0%, rgba(56,189,248,0.04) 100%)',
+                  border: '1px solid rgba(167,139,250,0.25)',
+                }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: 'rgba(167,139,250,0.2)', border: '1px solid rgba(167,139,250,0.3)' }}>
+                    <Heart size={12} className="text-purple-400" />
+                  </div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Mensagem Evolutiva</p>
+                </div>
+                <Quote size={18} className="text-purple-700/40 mb-2" />
+                <p className="text-sm text-slate-100 leading-relaxed font-medium italic pl-2">{mensagemEvolutiva}</p>
+                <p className="text-[10px] text-slate-600 mt-3 text-right">— {analistaNome} · {ciclo}</p>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
