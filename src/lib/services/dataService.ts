@@ -100,16 +100,27 @@ function cleanKey(key: string): string {
 }
 
 /**
+ * Normalize a string: lowercase + remove accents/diacritics.
+ * Used as an additional fallback key in buildRowMap.
+ */
+function normalizeKey(key: string): string {
+  return key
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+/**
  * Build a case-insensitive lookup map from a raw row.
- * Keys are lowercased+trimmed, values are the original cell values.
- * Also builds an exact-key map for direct access.
+ * Stores: exact cleaned key, lowercase key, and accent-normalized key.
  */
 function buildRowMap(row: Record<string, any>): Record<string, any> {
   const r: Record<string, any> = {};
   Object.keys(row).forEach((k) => {
     const cleaned = cleanKey(k);
-    r[cleaned] = row[k];                      // exact cleaned key
-    r[cleaned.toLowerCase()] = row[k];        // lowercase key for fallback
+    r[cleaned] = row[k];                        // exact cleaned key
+    r[cleaned.toLowerCase()] = row[k];          // lowercase key
+    r[normalizeKey(cleaned)] = row[k];          // accent-normalized key
   });
   return r;
 }
@@ -135,42 +146,152 @@ export function parseQAScoresCSV(rows: Record<string, any>[], fallbackPeriodo?: 
   return rows.map((row) => {
     const r = buildRowMap(row);
 
-    const rowPeriodo = String(r['Período'] || r['Periodo'] || r['período'] || r['periodo'] || '').trim();
+    // Helper: get value by trying multiple key variants (exact, lowercase, normalized)
+    const get = (...keys: string[]): any => {
+      for (const k of keys) {
+        const v = r[k] ?? r[k.toLowerCase()] ?? r[normalizeKey(k)];
+        if (v !== undefined && v !== null) return v;
+      }
+      return undefined;
+    };
 
-    const qtdRaw = r['Qtd de Atendimentos Avaliados'] ?? r['qtd de atendimentos avaliados'] ??
-      r['Qtd Atendimentos Avaliados'] ?? r['qtd atendimentos avaliados'] ??
-      r['Quantidade de Atendimentos Avaliados'] ?? r['quantidade de atendimentos avaliados'];
+    // Period: accept Período, Periodo, competencia, ciclo, mes/ano combo
+    const rowPeriodo = String(get('Período', 'Periodo', 'período', 'periodo', 'competencia', 'ciclo') ?? '').trim();
+
+    const qtdRaw = get(
+      'Qtd de Atendimentos Avaliados', 'Qtd Atendimentos Avaliados',
+      'Quantidade de Atendimentos Avaliados',
+      'qtd_atendimentos', 'qtd_protocolos'
+    );
     const qtdNum = parseNum(qtdRaw);
 
-    const tipoDemanda = String(
-      r['Tipo de Demanda'] ?? r['tipo de demanda'] ?? r['Tipo Demanda'] ?? r['tipo demanda'] ?? ''
-    ).trim();
+    const tipoDemanda = String(get('Tipo de Demanda', 'Tipo Demanda') ?? '').trim();
+
+    // Analista: accept old "Analista" or new "analista_nome" / "analista"
+    const analista = String(get('Analista', 'analista_nome', 'analista') ?? '').trim();
+
+    // Squad / coordenador
+    const squad = String(get('Squad', 'squad') ?? '').trim();
+    const coordenador = String(get('Coordenador', 'coordenador') ?? '').trim();
+    const auditor = String(get('Auditor', 'auditor') ?? '').trim();
+
+    // Data: accept old "Data do Registro" or new "data_avaliacao"
+    const dataRegistro = String(get('Data do Registro', 'data_avaliacao', 'data_registro') ?? '').trim();
+
+    // Nota Final QA: accept old verbose name or new short name
+    const notaFinalQA = parseNum(get(
+      'Nota Final QA (0-100)',
+      'nota_final_qa',
+      'nota final qa'
+    ));
+
+    // IEPC total: accept old verbose name or new short "iepc"
+    const iepcTotal = parseNum(get(
+      'IEPC - Índice de Experiência Percebida pelo Cliente (0-100)',
+      'IEPC - Indice de Experiencia Percebida pelo Cliente (0-100)',
+      'IEPC',
+      'iepc'
+    ));
+
+    // Total NCs
+    const totalNCs = parseNum(get(
+      'Total de Não Conformidades', 'Total de Nao Conformidades', 'Total NCs',
+      'total_nao_conformidades', 'total_ncs'
+    ));
+
+    // Pontos deduzidos NC
+    const pontosDeduzidosNC = parseNum(get(
+      'Pontos Deduzidos por NC', 'Pontos Deduzidos',
+      'pontos_deduzidos_nc'
+    ));
+
+    // QA Pillars — accept old verbose names OR new short names
+    const p1 = parseNum(get(
+      'QA P1 | Gestão do Fluxo e Rastreabilidade do Atendimento - Pontos',
+      'QA P1 | Gestao do Fluxo e Rastreabilidade do Atendimento - Pontos',
+      'qa_atendimento_pontos'
+    ));
+    const p2 = parseNum(get(
+      'QA P2 | Gestão da Tratativa da Demanda - Pontos',
+      'QA P2 | Gestao da Tratativa da Demanda - Pontos',
+      'qa_solucao_pontos'
+    ));
+    const p3 = parseNum(get(
+      'QA P3 | Análise e Assertividade Técnica da Demanda - Pontos',
+      'QA P3 | Analise e Assertividade Tecnica da Demanda - Pontos',
+      'qa_precisao_pontos'
+    ));
+    const p4 = parseNum(get(
+      'QA P4 | Qualidade da Comunicação no Atendimento - Pontos',
+      'QA P4 | Qualidade da Comunicacao no Atendimento - Pontos',
+      'qa_comunicacao_pontos'
+    ));
+    const p5 = parseNum(get(
+      'QA P5 | Conduta Relacional no Atendimento - Pontos',
+      'qa_relacionamento_pontos'
+    ));
+
+    // IEPC dimensions — accept old verbose names OR new short names
+    const e1 = parseNum(get(
+      'IEPC E1 – Resolução Percebida - Pontos',
+      'IEPC E1 - Resolução Percebida - Pontos',
+      'IEPC E1 – Resolucao Percebida - Pontos',
+      'IEPC E1 - Resolucao Percebida - Pontos',
+      'iepc_resolucaoPercebida_pontos',
+      'iepc_resolucaopercebida_pontos'
+    ));
+    const e2 = parseNum(get(
+      'IEPC E2 – Compreensão e Segurança - Pontos',
+      'IEPC E2 - Compreensão e Segurança - Pontos',
+      'IEPC E2 – Compreensao e Seguranca - Pontos',
+      'IEPC E2 - Compreensao e Seguranca - Pontos',
+      'iepc_clarezaConfianca_pontos',
+      'iepc_clarezaconfianca_pontos'
+    ));
+    const e3 = parseNum(get(
+      'IEPC E3 – Esforço do Cliente - Pontos',
+      'IEPC E3 - Esforço do Cliente - Pontos',
+      'IEPC E3 – Esforco do Cliente - Pontos',
+      'IEPC E3 - Esforco do Cliente - Pontos',
+      'iepc_esforcoCliente_pontos',
+      'iepc_esforcocliente_pontos'
+    ));
+    const e4 = parseNum(get(
+      'IEPC E4 – Tempo e Fluidez - Pontos',
+      'IEPC E4 - Tempo e Fluidez - Pontos',
+      'iepc_tempoFluidez_pontos',
+      'iepc_tempofluidez_pontos'
+    ));
+    const e5 = parseNum(get(
+      'IEPC E5 – Experiência Relacional - Pontos',
+      'IEPC E5 - Experiência Relacional - Pontos',
+      'IEPC E5 – Experiencia Relacional - Pontos',
+      'IEPC E5 - Experiencia Relacional - Pontos',
+      'iepc_experienciaRelacional_pontos',
+      'iepc_experienciarelacional_pontos'
+    ));
 
     return {
       periodo: rowPeriodo || fallbackPeriodo || '',
-      data_registro: String(r['Data do Registro'] || r['data do registro'] || '').trim(),
-      analista: String(r['Analista'] || r['analista'] || '').trim(),
-      squad: String(r['Squad'] || r['squad'] || '').trim(),
-      coordenador: String(r['Coordenador'] || r['coordenador'] || '').trim(),
-      auditor: String(r['Auditor'] || r['auditor'] || '').trim(),
-      nota_final_qa: parseNum(r['Nota Final QA (0-100)'] ?? r['nota final qa (0-100)']),
-      iepc_total: parseNum(
-        r['IEPC - Índice de Experiência Percebida pelo Cliente (0-100)'] ??
-        r['iepc - índice de experiência percebida pelo cliente (0-100)'] ??
-        r['iepc - indice de experiencia percebida pelo cliente (0-100)']
-      ),
-      total_ncs: parseNum(r['Total de Não Conformidades'] ?? r['total de não conformidades'] ?? r['total de nao conformidades']),
-      pontos_deduzidos_nc: parseNum(r['Pontos Deduzidos por NC'] ?? r['pontos deduzidos por nc']),
-      p1: parseNum(r['QA P1 | Gestão do Fluxo e Rastreabilidade do Atendimento - Pontos'] ?? r['qa p1 | gestão do fluxo e rastreabilidade do atendimento - pontos'] ?? r['qa p1 | gestao do fluxo e rastreabilidade do atendimento - pontos']),
-      p2: parseNum(r['QA P2 | Gestão da Tratativa da Demanda - Pontos'] ?? r['qa p2 | gestão da tratativa da demanda - pontos'] ?? r['qa p2 | gestao da tratativa da demanda - pontos']),
-      p3: parseNum(r['QA P3 | Análise e Assertividade Técnica da Demanda - Pontos'] ?? r['qa p3 | análise e assertividade técnica da demanda - pontos'] ?? r['qa p3 | analise e assertividade tecnica da demanda - pontos']),
-      p4: parseNum(r['QA P4 | Qualidade da Comunicação no Atendimento - Pontos'] ?? r['qa p4 | qualidade da comunicação no atendimento - pontos'] ?? r['qa p4 | qualidade da comunicacao no atendimento - pontos']),
-      p5: parseNum(r['QA P5 | Conduta Relacional no Atendimento - Pontos'] ?? r['qa p5 | conduta relacional no atendimento - pontos']),
-      e1: parseNum(r['IEPC E1 – Resolução Percebida - Pontos'] ?? r['iepc e1 – resolução percebida - pontos'] ?? r['iepc e1 - resolução percebida - pontos'] ?? r['iepc e1 – resolucao percebida - pontos']),
-      e2: parseNum(r['IEPC E2 – Compreensão e Segurança - Pontos'] ?? r['iepc e2 – compreensão e segurança - pontos'] ?? r['iepc e2 - compreensão e segurança - pontos'] ?? r['iepc e2 – compreensao e seguranca - pontos']),
-      e3: parseNum(r['IEPC E3 – Esforço do Cliente - Pontos'] ?? r['iepc e3 – esforço do cliente - pontos'] ?? r['iepc e3 - esforço do cliente - pontos'] ?? r['iepc e3 – esforco do cliente - pontos']),
-      e4: parseNum(r['IEPC E4 – Tempo e Fluidez - Pontos'] ?? r['iepc e4 – tempo e fluidez - pontos'] ?? r['iepc e4 - tempo e fluidez - pontos']),
-      e5: parseNum(r['IEPC E5 – Experiência Relacional - Pontos'] ?? r['iepc e5 – experiência relacional - pontos'] ?? r['iepc e5 - experiência relacional - pontos'] ?? r['iepc e5 – experiencia relacional - pontos']),
+      data_registro: dataRegistro,
+      analista,
+      squad,
+      coordenador,
+      auditor: auditor || undefined,
+      nota_final_qa: notaFinalQA,
+      iepc_total: iepcTotal,
+      total_ncs: totalNCs,
+      pontos_deduzidos_nc: pontosDeduzidosNC,
+      p1,
+      p2,
+      p3,
+      p4,
+      p5,
+      e1,
+      e2,
+      e3,
+      e4,
+      e5,
       tipo_demanda: tipoDemanda || undefined,
       qtd_atendimentos_avaliados: qtdNum > 0 ? qtdNum : undefined,
     };
@@ -181,52 +302,84 @@ export function parseNCsCSV(rows: Record<string, any>[], fallbackPeriodo?: strin
   return rows.map((row) => {
     const r = buildRowMap(row);
 
-    const rowPeriodo = String(r['Período'] || r['Periodo'] || r['período'] || r['periodo'] || '').trim();
+    const get = (...keys: string[]): any => {
+      for (const k of keys) {
+        const v = r[k] ?? r[k.toLowerCase()] ?? r[normalizeKey(k)];
+        if (v !== undefined && v !== null) return v;
+      }
+      return undefined;
+    };
+
+    const rowPeriodo = String(get('Período', 'Periodo') ?? '').trim();
+
+    const tipo_nc_raw = String(get(
+      'Tipo de Não Conformidade',
+      'Tipo de Nao Conformidade',
+      'Tipo NC',
+      'Tipo de NC',
+      'Tipo Não Conformidade',
+      'Tipo Nao Conformidade',
+      'NC',
+      'Tipo',
+    ) ?? '').trim();
+
+    const descricao_raw = String(get(
+      'Descrição',
+      'Descricao',
+      'Descrição da NC',
+      'Descricao da NC',
+      'Desc',
+      'Observação',
+      'Observacao',
+      'Observações',
+      'Observacoes',
+    ) ?? '').trim();
 
     return {
       periodo: rowPeriodo || fallbackPeriodo || '',
-      data_registro: String(r['Data do Registro'] || r['data do registro'] || '').trim(),
-      analista: String(r['Analista'] || r['analista'] || '').trim(),
-      squad: String(r['Squad'] || r['squad'] || '').trim(),
-      coordenador: String(r['Coordenador'] || r['coordenador'] || '').trim(),
-      auditor: String(r['Auditor'] || r['auditor'] || '').trim(),
-      tipo_nc: String(r['Tipo de Não Conformidade'] || r['tipo de não conformidade'] || r['tipo de nao conformidade'] || '').trim(),
-      descricao: String(r['Descrição'] || r['descricao'] || r['Descricao'] || r['descrição'] || '').trim(),
-      pontos_deduzidos: parseNum(r['Pontos Deduzidos'] ?? r['pontos deduzidos']),
-      protocolo_referencia: String(r['Protocolo Referência'] || r['protocolo referência'] || r['protocolo referencia'] || r['Protocolo Referencia'] || '').trim(),
-      avaliacao_id: String(r['ID da Avaliação'] || r['id da avaliação'] || r['id da avaliacao'] || r['ID da Avaliacao'] || '').trim(),
+      data_registro: String(get('Data do Registro') ?? '').trim(),
+      analista: String(get('Analista') ?? '').trim(),
+      squad: String(get('Squad') ?? '').trim(),
+      coordenador: String(get('Coordenador') ?? '').trim(),
+      auditor: String(get('Auditor') ?? '').trim(),
+      tipo_nc: tipo_nc_raw || 'Não Especificado',
+      descricao: descricao_raw || undefined,
+      pontos_deduzidos: parseNum(get('Pontos Deduzidos', 'Pontos Deduzidos por NC', 'pontos_deduzidos')),
+      protocolo_referencia: String(get('Protocolo Referência', 'Protocolo Referencia', 'Protocolo') ?? '').trim(),
+      avaliacao_id: String(get('ID da Avaliação', 'ID da Avaliacao', 'ID Avaliação') ?? '').trim(),
     };
-  }).filter((r) => r.analista && r.tipo_nc);
+  }).filter((r) => r.analista); // Only require analista — tipo_nc now has fallback
 }
 
 export function parseElogiosCSV(rows: Record<string, any>[], fallbackPeriodo?: string): ElogioRow[] {
   return rows.map((row) => {
     const r = buildRowMap(row);
 
-    const rowPeriodo = String(r['Período'] || r['Periodo'] || r['período'] || r['periodo'] || '').trim();
+    const get = (...keys: string[]): any => {
+      for (const k of keys) {
+        const v = r[k] ?? r[k.toLowerCase()] ?? r[normalizeKey(k)];
+        if (v !== undefined && v !== null) return v;
+      }
+      return undefined;
+    };
 
-    // Support multiple column name variants for colaborador/name
-    const colaborador = String(
-      r['Colaborador'] || r['colaborador'] || r['COLABORADOR'] || r['Nome'] || r['NOME'] || r['nome'] || ''
-    ).trim();
+    const rowPeriodo = String(get('Período', 'Periodo') ?? '').trim();
 
-    // Support multiple column name variants for elogio/text
-    const elogio = String(
-      r['Elogio'] || r['elogio'] || r['ELOGIO'] || r['Descrição do Elogio'] || r['Descricao'] || r['DESCRICAO'] || r['Texto'] || ''
-    ).trim();
+    const colaborador = String(get('Colaborador', 'COLABORADOR', 'Nome', 'NOME') ?? '').trim();
+    const elogio = String(get('Elogio', 'ELOGIO', 'Descrição do Elogio', 'Descricao', 'DESCRICAO', 'Texto') ?? '').trim();
 
     return {
       periodo: rowPeriodo || fallbackPeriodo || '',
       colaborador,
-      squad: String(r['SQUAD'] || r['Squad'] || r['squad'] || '').trim(),
-      cliente: String(r['CLIENTE'] || r['Cliente'] || r['cliente'] || '').trim(),
-      protocolo: String(r['PROTOCOLO'] || r['Protocolo'] || r['protocolo'] || '').trim(),
+      squad: String(get('SQUAD', 'Squad') ?? '').trim(),
+      cliente: String(get('CLIENTE', 'Cliente') ?? '').trim(),
+      protocolo: String(get('PROTOCOLO', 'Protocolo') ?? '').trim(),
       elogio,
     };
   }).filter((r) => r.colaborador && r.elogio);
 }
 
-// ─── Import (localStorage only) ──────────────────────────────────────────────
+// ─── Import (Supabase-first, localStorage removed as primary store) ───────────
 
 export async function importCycleData(
   scores: CycleScoreRow[],
@@ -235,46 +388,63 @@ export async function importCycleData(
   periodo: string,
   fileName: string
 ): Promise<{ success: boolean; error?: string; cycleId?: string }> {
+  // Always try Supabase first — it is the single source of truth
   try {
-    const cycleId = `cycle-${Date.now()}`;
-
-    // Only overwrite data types that are actually being imported (non-empty arrays).
-    // This prevents importing scores from wiping previously imported NCs/elogios for the same period.
-    if (scores.length > 0) {
-      const existingScores = lsGet<any>(LS_SCORES).filter((r) => r.periodo !== periodo);
-      lsSet(LS_SCORES, [...existingScores, ...scores.map((s) => ({ ...s, cycle_id: cycleId, id: `s-${Date.now()}-${Math.random()}` }))]);
+    const { importCycleDataToSupabase } = await import('./supabaseDataService');
+    const result = await importCycleDataToSupabase(scores, ncs, elogios, periodo, fileName);
+    if (result.success) {
+      // Clear any stale localStorage data for this period so reads come from Supabase
+      if (typeof window !== 'undefined') {
+        try {
+          const existingScores = lsGet<any>(LS_SCORES).filter((r) => r.periodo !== periodo);
+          lsSet(LS_SCORES, existingScores);
+          const existingNCs = lsGet<any>(LS_NCS).filter((r) => r.periodo !== periodo);
+          lsSet(LS_NCS, existingNCs);
+          const existingElogios = lsGet<any>(LS_ELOGIOS).filter((r) => r.periodo !== periodo);
+          lsSet(LS_ELOGIOS, existingElogios);
+          const existingCycles = lsGet<any>(LS_CYCLES).filter((r) => r.periodo !== periodo);
+          lsSet(LS_CYCLES, existingCycles);
+        } catch { /* ignore */ }
+      }
+      dispatchDataChanged({ tipo: 'import', periodo, fileName });
+      return result;
     }
-
-    if (ncs.length > 0) {
-      const existingNCs = lsGet<any>(LS_NCS).filter((r) => r.periodo !== periodo);
-      lsSet(LS_NCS, [...existingNCs, ...ncs.map((n) => ({ ...n, cycle_id: cycleId, id: `n-${Date.now()}-${Math.random()}` }))]);
-    }
-
-    if (elogios.length > 0) {
-      const existingElogios = lsGet<any>(LS_ELOGIOS).filter((r) => r.periodo !== periodo);
-      lsSet(LS_ELOGIOS, [...existingElogios, ...elogios.map((e) => ({ ...e, cycle_id: cycleId, id: `e-${Date.now()}-${Math.random()}`, destaque: false }))]);
-    }
-
-    // Save cycle record (upsert — remove old entry for this period first)
-    const existingCycles = lsGet<any>(LS_CYCLES).filter((r) => r.periodo !== periodo);
-    lsSet(LS_CYCLES, [
-      ...existingCycles,
-      {
-        id: cycleId,
-        periodo,
-        file_name: fileName,
-        record_count: scores.length + ncs.length + elogios.length,
-        imported_at: new Date().toISOString(),
-      },
-    ]);
-
-    return { success: true, cycleId };
+    // Supabase failed — do NOT fall back to localStorage for imports
+    return { success: false, error: result.error || 'Falha ao salvar no banco de dados.' };
   } catch (err: any) {
     return { success: false, error: err.message };
   }
 }
 
 // ─── Delete functions ─────────────────────────────────────────────────────────
+
+/**
+ * Delete all data for a specific period from SUPABASE (scores, NCs, elogios, cycle record)
+ */
+export async function deletePeriodDataFromDB(periodo: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      // Delete child tables first, then parent
+      await supabase.from('cycle_scores').delete().eq('periodo', periodo);
+      await supabase.from('nc_records').delete().eq('periodo', periodo);
+      await supabase.from('elogios').delete().eq('periodo', periodo);
+      await supabase.from('pdi_records').delete().eq('periodo', periodo);
+      await supabase.from('cycle_summaries').delete().eq('periodo', periodo);
+      await supabase.from('import_cycles').delete().eq('periodo', periodo);
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+  // Also clear localStorage
+  lsSet(LS_SCORES,  lsGet<any>(LS_SCORES).filter((r) => r.periodo !== periodo));
+  lsSet(LS_NCS,     lsGet<any>(LS_NCS).filter((r) => r.periodo !== periodo));
+  lsSet(LS_ELOGIOS, lsGet<any>(LS_ELOGIOS).filter((r) => r.periodo !== periodo));
+  lsSet(LS_CYCLES,  lsGet<any>(LS_CYCLES).filter((r) => r.periodo !== periodo));
+  dispatchDataChanged({ tipo: 'delete', periodo });
+  return { success: true };
+}
 
 /**
  * Delete all data for a specific period (scores, NCs, elogios, cycle record, import records)
@@ -293,6 +463,7 @@ export function deletePeriodData(periodo: string): void {
       localStorage.setItem(IMPORT_KEY, JSON.stringify(existing.filter((r: any) => r.periodo !== periodo)));
     } catch { /* ignore */ }
   }
+  dispatchDataChanged({ tipo: 'delete', periodo });
 }
 
 /**
@@ -319,6 +490,7 @@ export function deleteAllData(): void {
     localStorage.removeItem('zetti_import_records');
     localStorage.removeItem('zetti_audit_data');
   }
+  dispatchDataChanged({ tipo: 'delete_all' });
 }
 
 // ─── Cycle closing ────────────────────────────────────────────────────────────
@@ -351,6 +523,7 @@ export async function closeCycle(periodo: string): Promise<{ success: boolean; e
 
     const existing = lsGet<ClosedCycle>(LS_CLOSED_CYCLES).filter((c) => c.periodo !== periodo);
     lsSet(LS_CLOSED_CYCLES, [...existing, closedCycle]);
+    dispatchDataChanged({ tipo: 'cycle_closed', periodo });
 
     return { success: true };
   } catch (err: any) {
@@ -365,10 +538,82 @@ export function fetchClosedCycles(): ClosedCycle[] {
 export function reopenCycle(periodo: string): void {
   const existing = lsGet<ClosedCycle>(LS_CLOSED_CYCLES).filter((c) => c.periodo !== periodo);
   lsSet(LS_CLOSED_CYCLES, existing);
+  dispatchDataChanged({ tipo: 'cycle_reopened', periodo });
 }
 
 export function isCycleClosed(periodo: string): boolean {
-  return lsGet<ClosedCycle>(LS_CLOSED_CYCLES).some((c) => c.periodo === periodo);
+  // Sync check: read from localStorage cache that was populated by syncClosedCyclesFromSupabase
+  // This is intentionally sync — callers that need real-time should use the async version
+  const cycles = lsGet<any>(LS_CYCLES);
+  const cycle = cycles.find((c: any) => c.periodo === periodo);
+  if (cycle?.is_closed !== undefined) return !!cycle.is_closed;
+  // Also check closed cycles list
+  const closed = lsGet<ClosedCycle>(LS_CLOSED_CYCLES);
+  return closed.some((c) => c.periodo === periodo);
+}
+
+/**
+ * Async version: checks Supabase directly for real-time cycle status.
+ * Use this when you need guaranteed accuracy (e.g., before allowing import).
+ */
+export async function isCycleClosedAsync(periodo: string): Promise<boolean> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { data } = await supabase
+        .from('import_cycles')
+        .select('is_closed, status')
+        .eq('periodo', periodo)
+        .maybeSingle();
+      if (data) return !!data.is_closed || data.status === 'fechado';
+    }
+  } catch { /* fall through */ }
+  return isCycleClosed(periodo);
+}
+
+/**
+ * Sync closed cycle status from Supabase into localStorage cache.
+ * Call this on app init or after loading cycle data from Supabase.
+ */
+export function syncClosedCyclesFromSupabase(supabaseCycles: { periodo: string; is_closed: boolean; closed_at?: string; status?: string }[]): void {
+  // Update LS_CLOSED_CYCLES (legacy list)
+  const existing = lsGet<ClosedCycle>(LS_CLOSED_CYCLES);
+  const existingPeriodos = new Set(existing.map((c) => c.periodo));
+
+  const toAdd: ClosedCycle[] = supabaseCycles
+    .filter((c) => c.is_closed && !existingPeriodos.has(c.periodo))
+    .map((c) => ({
+      id: `closed-supabase-${c.periodo}`,
+      periodo: c.periodo,
+      closed_at: c.closed_at || new Date().toISOString(),
+      summary: { totalAnalistas: 0, qaMedia: 0, iepcMedia: 0, totalNCs: 0, totalElogios: 0 },
+    }));
+
+  // Remove from closed list if Supabase says it's reopened
+  const reopenedPeriodos = new Set(supabaseCycles.filter((c) => !c.is_closed).map((c) => c.periodo));
+  const filtered = existing.filter((c) => !reopenedPeriodos.has(c.periodo));
+
+  if (toAdd.length > 0 || reopenedPeriodos.size > 0) {
+    lsSet(LS_CLOSED_CYCLES, [...filtered, ...toAdd]);
+  }
+
+  // Also update LS_CYCLES cache with is_closed flag so isCycleClosed() works
+  const cachedCycles = lsGet<any>(LS_CYCLES);
+  const updatedCycles = cachedCycles.map((c: any) => {
+    const supaEntry = supabaseCycles.find((s) => s.periodo === c.periodo);
+    if (supaEntry) {
+      return { ...c, is_closed: supaEntry.is_closed, status: supaEntry.status || c.status };
+    }
+    return c;
+  });
+  // Add any periods from Supabase not yet in cache
+  supabaseCycles.forEach((s) => {
+    if (!updatedCycles.find((c: any) => c.periodo === s.periodo)) {
+      updatedCycles.push({ periodo: s.periodo, is_closed: s.is_closed, status: s.status || 'aberto' });
+    }
+  });
+  lsSet(LS_CYCLES, updatedCycles);
 }
 
 // ─── Build Analyst objects from real score data ───────────────────────────────
@@ -482,33 +727,150 @@ function downloadCSV(filename: string, headers: string[], rows: any[][]): void {
   URL.revokeObjectURL(url);
 }
 
-// ─── Fetch functions (localStorage only) ─────────────────────────────────────
+// ─── Fetch functions (Supabase-first, localStorage fallback) ──────────────────
 
-export async function fetchCycleScores(periodo?: string) {
+export async function fetchCycleScores(periodo?: string): Promise<any[]> {
+  // Try Supabase first
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      let query = supabase.from('cycle_scores').select('*');
+      if (periodo) query = query.eq('periodo', periodo);
+      const { data, error } = await query.order('nota_final_qa', { ascending: false });
+      if (error) {
+        console.error('[fetchCycleScores] Supabase error:', error.message, error.code);
+      } else {
+        console.log(`[fetchCycleScores] ${data?.length || 0} registros${periodo ? ` para ${periodo}` : ''}`);
+        // Supabase is authoritative — return its data (even if empty)
+        return (data || []);
+      }
+    }
+  } catch (err: any) {
+    console.error('[fetchCycleScores] Supabase unreachable:', err.message);
+  }
+
+  // Fallback: localStorage (only when Supabase is unreachable)
   const data = lsGet<any>(LS_SCORES);
-  if (periodo) return data.filter((r) => r.periodo === periodo);
+  if (periodo) return data.filter((r: any) => r.periodo === periodo);
   return data.sort((a: any, b: any) => b.nota_final_qa - a.nota_final_qa);
 }
 
-export async function fetchNCRecords(periodo?: string) {
+export async function fetchNCRecords(periodo?: string): Promise<any[]> {
+  // Supabase is the single source of truth
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      let query = supabase.from('nc_records').select('*');
+      if (periodo) query = query.eq('periodo', periodo);
+      const { data, error } = await query;
+      if (!error) {
+        return (data || []);
+      }
+    }
+  } catch { /* fall through to localStorage */ }
+
+  // Fallback: localStorage (only when Supabase is unreachable)
   const data = lsGet<any>(LS_NCS);
   if (periodo) return data.filter((r) => r.periodo === periodo);
   return data;
 }
 
-export async function fetchElogios(periodo?: string) {
+export async function deleteNCRecord(id: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { error } = await supabase.from('nc_records').delete().eq('id', id);
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    }
+    return { success: false, error: 'Supabase não disponível' };
+  } catch (e: any) {
+    return { success: false, error: e?.message || 'Erro desconhecido' };
+  }
+}
+
+export async function fetchElogios(periodo?: string): Promise<any[]> {
+  // Supabase is the single source of truth
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      let query = supabase.from('elogios').select('*');
+      if (periodo) query = query.eq('periodo', periodo);
+      const { data, error } = await query;
+      if (!error) {
+        return (data || []);
+      }
+    }
+  } catch { /* fall through to localStorage */ }
+
+  // Fallback: localStorage (only when Supabase is unreachable)
   const data = lsGet<any>(LS_ELOGIOS);
   if (periodo) return data.filter((r) => r.periodo === periodo);
   return data;
 }
 
 export async function fetchAllPeriodos(): Promise<string[]> {
+  // Supabase is the single source of truth
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const [cyclesRes, scoresRes] = await Promise.all([
+        supabase.from('import_cycles').select('periodo').order('periodo', { ascending: false }),
+        supabase.from('cycle_scores').select('periodo'),
+      ]);
+
+      if (cyclesRes.error) console.error('[fetchAllPeriodos] import_cycles error:', cyclesRes.error.message, cyclesRes.error.code);
+      if (scoresRes.error) console.error('[fetchAllPeriodos] cycle_scores error:', scoresRes.error.message, scoresRes.error.code);
+
+      // Use Supabase data exclusively (even if empty — empty means no data imported yet)
+      const all = [
+        ...(cyclesRes.data || []).map((r: any) => r.periodo),
+        ...(scoresRes.data || []).map((r: any) => r.periodo),
+      ].filter(Boolean);
+      const unique = [...new Set(all)] as string[];
+      unique.sort((a, b) => b.localeCompare(a));
+      console.log('[fetchAllPeriodos] Períodos do Supabase:', unique.join(', ') || 'nenhum');
+      return unique;
+    }
+  } catch (err: any) {
+    console.error('[fetchAllPeriodos] Supabase unreachable:', err.message);
+  }
+
+  // Fallback: localStorage (only when Supabase is unreachable)
   const cycles = lsGet<any>(LS_CYCLES);
-  const periodos = [...new Set(cycles.map((c: any) => c.periodo as string))];
+  let periodos = [...new Set(cycles.map((c: any) => c.periodo as string))].filter(Boolean);
+
+  if (periodos.length === 0) {
+    const scores = lsGet<any>(LS_SCORES);
+    const ncs = lsGet<any>(LS_NCS);
+    const elogios = lsGet<any>(LS_ELOGIOS);
+    const allPeriodos = [
+      ...scores.map((s: any) => s.periodo),
+      ...ncs.map((n: any) => n.periodo),
+      ...elogios.map((e: any) => e.periodo),
+    ].filter(Boolean);
+    periodos = [...new Set(allPeriodos)] as string[];
+  }
+
   return periodos;
 }
 
 export async function toggleElogioDestaque(id: string, destaque: boolean) {
+  // Update in Supabase (single source of truth)
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      await supabase.from('elogios').update({ destaque }).eq('id', id);
+      return;
+    }
+  } catch { /* fall through */ }
+  // Fallback: localStorage
   const data = lsGet<any>(LS_ELOGIOS).map((e: any) =>
     e.id === id ? { ...e, destaque } : e
   );
@@ -616,6 +978,7 @@ export function saveManualCycle(entry: Omit<ManualCycleEntry, 'id' | 'created_at
     const updated = { ...existing[idx], ...entry, updated_at: now };
     existing[idx] = updated;
     lsSet(LS_MANUAL_CYCLES, existing);
+    dispatchDataChanged({ tipo: 'manual_cycle', periodo: entry.periodo });
     return updated;
   }
   const newEntry: ManualCycleEntry = {
@@ -625,11 +988,13 @@ export function saveManualCycle(entry: Omit<ManualCycleEntry, 'id' | 'created_at
     updated_at: now,
   };
   lsSet(LS_MANUAL_CYCLES, [...existing, newEntry]);
+  dispatchDataChanged({ tipo: 'manual_cycle', periodo: entry.periodo });
   return newEntry;
 }
 
 export function deleteManualCycle(id: string): void {
   lsSet(LS_MANUAL_CYCLES, lsGet<ManualCycleEntry>(LS_MANUAL_CYCLES).filter((e) => e.id !== id));
+  dispatchDataChanged({ tipo: 'delete_manual_cycle' });
 }
 
 // ─── Delete analyst from imported scores ──────────────────────────────────────
@@ -649,6 +1014,533 @@ export function deleteAnalystFromData(analystName: string, periodo?: string): vo
   lsSet(LS_SCORES,  lsGet<any>(LS_SCORES).filter((r) => !matchFn(r)));
   lsSet(LS_NCS,     lsGet<any>(LS_NCS).filter((r) => !matchFn(r)));
   lsSet(LS_ELOGIOS, lsGet<any>(LS_ELOGIOS).filter((r) => !matchFn(r)));
+  dispatchDataChanged({ tipo: 'delete_analyst', analystName, periodo });
+}
+
+// ─── PDI Supabase functions ───────────────────────────────────────────────────
+
+export interface PDIRecord {
+  id: string;
+  cycle_id?: string;
+  periodo: string;
+  analista: string;
+  squad: string;
+  coordenador: string;
+  status_pdi: 'Em andamento' | 'Atrasado' | 'Concluído' | 'Crítico' | 'Parcial' | 'Aderido' | 'Em reavaliação' | 'Não aderido' | 'aguardando alinhamento' | 'em evolucao' | 'em acompanhamento' | 'em validacao' | 'consolidado' | 'evolucao concluida' | 'reincidente';
+  acoes: any[];
+  metas: any[];
+  evidencias: any[];
+  feedback?: string;
+  nc_reincidentes: any[];
+  qa_score: number;
+  iepc_score: number;
+  sintese_ia?: string;
+  source: string;
+  created_at: string;
+  updated_at: string;
+  // Core fields
+  objetivo?: string;
+  prazo?: string;
+  observacoes?: string;
+  // Extended PDI fields
+  evolucao_tecnica?: string;
+  evolucao_comportamental?: string;
+  performance_operacional?: string;
+  risco_operacional?: string;
+  plano_desenvolvimento?: string;
+  proxima_revisao?: string;
+  ciclo?: string;
+  // Enterprise PDI fields (from feedback)
+  feedback_id?: string;
+  analista_id?: string;
+  aderencia_score?: number;
+  total_ncs?: number;
+  total_elogios?: number;
+  objetivo_desenvolvimento?: string;
+  acao_desenvolvimento?: string;
+  resultado_esperado?: string;
+  mensagem_evolutiva?: string;
+  comentario_coordenador?: string;
+  comentario_analista?: string;
+  data_acompanhamento?: string;
+  proxima_revisao_date?: string;
+  attachments?: any[];
+}
+
+export interface PDIObjective {
+  id: string;
+  pdi_id: string;
+  descricao: string;
+  categoria?: string;
+  peso: number;
+  status: 'cumprido' | 'parcial' | 'nao_cumprido';
+  observacao_coordenador?: string;
+  data_atualizacao?: string;
+  created_at?: string;
+}
+
+export interface PDITimelineEvent {
+  id: string;
+  pdi_id: string;
+  data_evento: string;
+  titulo: string;
+  descricao?: string;
+  tipo: 'criacao' | 'atualizacao' | 'melhoria' | 'validacao' | 'conclusao' | 'evento';
+  created_at?: string;
+}
+
+export async function fetchPDIRecords(filters?: { periodo?: string; squad?: string; analista?: string }): Promise<PDIRecord[]> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      let query = supabase.from('pdi_records').select('*').order('created_at', { ascending: false });
+      if (filters?.periodo) query = query.eq('periodo', filters.periodo);
+      if (filters?.squad) query = query.eq('squad', filters.squad);
+      if (filters?.analista) query = query.eq('analista', filters.analista);
+      const { data, error } = await query;
+      if (!error && data) return data as PDIRecord[];
+    }
+  } catch { /* fall through */ }
+  // Fallback: localStorage legacy
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('zetti_pdis');
+      const pdis = raw ? JSON.parse(raw) : [];
+      return pdis.map((p: any) => ({
+        ...p,
+        status_pdi: p.status === 'concluido' ? 'Concluído' : p.status === 'em_andamento' ? 'Em andamento' : 'Em andamento',
+        acoes: [], metas: [], evidencias: [], nc_reincidentes: [],
+        qa_score: 0, iepc_score: 0, source: 'manual',
+        created_at: p.created_at || new Date().toISOString(),
+        updated_at: p.updated_at || new Date().toISOString(),
+      }));
+    } catch { return []; }
+  }
+  return [];
+}
+
+export async function savePDIRecord(pdi: Omit<PDIRecord, 'id' | 'created_at' | 'updated_at'>): Promise<{ success: boolean; data?: PDIRecord; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { data, error } = await supabase.from('pdi_records').insert({
+        ...pdi,
+        acoes: pdi.acoes || [],
+        metas: pdi.metas || [],
+        evidencias: pdi.evidencias || [],
+        nc_reincidentes: pdi.nc_reincidentes || [],
+      }).select().single();
+      if (error) return { success: false, error: error.message };
+      dispatchDataChanged({ tipo: 'pdi_saved', analista: pdi.analista });
+      return { success: true, data: data as PDIRecord };
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+  return { success: false, error: 'Supabase não disponível' };
+}
+
+export async function updatePDIRecord(id: string, updates: Partial<PDIRecord>): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { error } = await supabase.from('pdi_records').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id);
+      if (error) return { success: false, error: error.message };
+      dispatchDataChanged({ tipo: 'pdi_updated' });
+      return { success: true };
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+  return { success: false, error: 'Supabase não disponível' };
+}
+
+export async function deletePDIRecord(id: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { error } = await supabase.from('pdi_records').delete().eq('id', id);
+      if (error) return { success: false, error: error.message };
+      dispatchDataChanged({ tipo: 'pdi_deleted' });
+      return { success: true };
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+  return { success: false, error: 'Supabase não disponível' };
+}
+
+export async function fetchPDIObjectives(pdiId: string): Promise<PDIObjective[]> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('pdi_objectives')
+        .select('*')
+        .eq('pdi_id', pdiId)
+        .order('created_at', { ascending: true });
+      if (!error && data) return data as PDIObjective[];
+    }
+  } catch { /* fall through */ }
+  return [];
+}
+
+export async function savePDIObjective(obj: Omit<PDIObjective, 'id' | 'created_at'>): Promise<{ success: boolean; data?: PDIObjective; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { data, error } = await supabase.from('pdi_objectives').insert(obj).select().single();
+      if (error) return { success: false, error: error.message };
+      return { success: true, data: data as PDIObjective };
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+  return { success: false, error: 'Supabase não disponível' };
+}
+
+export async function updatePDIObjective(id: string, updates: Partial<PDIObjective>): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { error } = await supabase.from('pdi_objectives').update({ ...updates, data_atualizacao: new Date().toISOString() }).eq('id', id);
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+  return { success: false, error: 'Supabase não disponível' };
+}
+
+export async function deletePDIObjective(id: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { error } = await supabase.from('pdi_objectives').delete().eq('id', id);
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+  return { success: false, error: 'Supabase não disponível' };
+}
+
+export async function fetchPDITimeline(pdiId: string): Promise<PDITimelineEvent[]> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('pdi_timeline')
+        .select('*')
+        .eq('pdi_id', pdiId)
+        .order('data_evento', { ascending: true });
+      if (!error && data) return data as PDITimelineEvent[];
+    }
+  } catch { /* fall through */ }
+  return [];
+}
+
+export async function addPDITimelineEvent(event: Omit<PDITimelineEvent, 'id' | 'created_at'>): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { error } = await supabase.from('pdi_timeline').insert(event);
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+  return { success: false, error: 'Supabase não disponível' };
+}
+
+export async function autoCreatePDIFromFeedback(params: {
+  feedbackId: string;
+  analistaId?: string;
+  analistaNome: string;
+  squad: string;
+  coordenador: string;
+  ciclo: string;
+  qaScore?: number;
+  iepcScore?: number;
+  aderenciaScore?: number;
+  totalNcs?: number;
+  totalElogios?: number;
+  objetivoDesenvolvimento?: string;
+  acaoDesenvolvimento?: string;
+  resultadoEsperado?: string;
+  mensagemEvolutiva?: string;
+  enterpriseObjectives?: any[];
+}): Promise<{ success: boolean; data?: PDIRecord; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (!supabase) return { success: false, error: 'Supabase não disponível' };
+
+    // Check if PDI already exists for this feedback
+    const { data: existing } = await supabase
+      .from('pdi_records')
+      .select('id')
+      .eq('feedback_id', params.feedbackId)
+      .maybeSingle();
+
+    if (existing) return { success: true, data: existing as any };
+
+    const pdiData = {
+      feedback_id: params.feedbackId,
+      analista_id: params.analistaId || null,
+      periodo: params.ciclo,
+      ciclo: params.ciclo,
+      analista: params.analistaNome,
+      squad: params.squad || '',
+      coordenador: params.coordenador || '',
+      status_pdi: 'aguardando alinhamento' as const,
+      acoes: [],
+      metas: [],
+      evidencias: [],
+      nc_reincidentes: [],
+      qa_score: params.qaScore || 0,
+      iepc_score: params.iepcScore || 0,
+      aderencia_score: params.aderenciaScore || 0,
+      total_ncs: params.totalNcs || 0,
+      total_elogios: params.totalElogios || 0,
+      objetivo_desenvolvimento: params.objetivoDesenvolvimento || '',
+      acao_desenvolvimento: params.acaoDesenvolvimento || '',
+      resultado_esperado: params.resultadoEsperado || '',
+      mensagem_evolutiva: params.mensagemEvolutiva || '',
+      objetivo: params.objetivoDesenvolvimento || '',
+      enterprise_objectives: params.enterpriseObjectives && params.enterpriseObjectives.length > 0 ? params.enterpriseObjectives : null,
+      source: 'feedback_auto',
+      attachments: [],
+    };
+
+    const { data, error } = await supabase.from('pdi_records').insert(pdiData).select().single();
+    if (error) return { success: false, error: error.message };
+
+    // Auto-create timeline entry
+    if (data) {
+      await supabase.from('pdi_timeline').insert({
+        pdi_id: data.id,
+        data_evento: new Date().toISOString().split('T')[0],
+        titulo: 'PDI criado',
+        descricao: `PDI gerado automaticamente a partir do feedback do ciclo ${params.ciclo}`,
+        tipo: 'criacao',
+      });
+    }
+
+    dispatchDataChanged({ tipo: 'pdi_saved', analista: params.analistaNome });
+    return { success: true, data: data as PDIRecord };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+// ─── Analistas Supabase functions ─────────────────────────────────────────────
+
+export interface AnalistaRecord {
+  id: string;
+  analista_id?: string; // ANL-0001 format — auto-generated, never changes
+  nome: string;
+  nome_completo?: string;
+  nome_curto?: string;
+  email?: string;
+  telefone?: string;
+  squad?: string;
+  equipe?: string;
+  coordenador?: string;
+  cargo_operacional?: string;
+  nivel: string;
+  status: 'ativo' | 'ferias' | 'afastado' | 'desligado';
+  aniversario?: string;
+  tempo_empresa?: string;
+  tempo_empresa_calculado?: string;
+  tempo_empresa_meses?: number;
+  ultima_promocao?: string;
+  data_admissao?: string;
+  observacoes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function fetchAnalistas(filters?: { squad?: string; status?: string }): Promise<AnalistaRecord[]> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      let query = supabase.from('analistas').select('*').order('nome', { ascending: true });
+      if (filters?.squad) query = query.eq('squad', filters.squad);
+      if (filters?.status) query = query.eq('status', filters.status);
+      const { data, error } = await query;
+      if (!error && data) return data as AnalistaRecord[];
+    }
+  } catch { /* fall through */ }
+  return [];
+}
+
+export async function upsertAnalista(analista: Omit<AnalistaRecord, 'id' | 'created_at' | 'updated_at'>): Promise<{ success: boolean; error?: string; data?: AnalistaRecord }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const now = new Date().toISOString();
+      // Ensure nome_completo is populated
+      const payload = {
+        ...analista,
+        nome_completo: analista.nome_completo || analista.nome,
+        nome_curto: analista.nome_curto || analista.nome,
+        updated_at: now,
+      };
+
+      // Upsert strategy: email > nome_completo > nome
+      if (analista.email && analista.email.trim()) {
+        // Check if exists by email
+        const { data: existing } = await supabase
+          .from('analistas')
+          .select('id, analista_id')
+          .eq('email', analista.email.trim().toLowerCase())
+          .maybeSingle();
+
+        if (existing?.id) {
+          // Update — preserve analista_id
+          const { data, error } = await supabase
+            .from('analistas')
+            .update({ ...payload, analista_id: existing.analista_id || payload.analista_id })
+            .eq('id', existing.id)
+            .select()
+            .single();
+          if (error) return { success: false, error: error.message };
+          dispatchDataChanged({ tipo: 'analista_updated' });
+          return { success: true, data: data as AnalistaRecord };
+        } else {
+          // Insert new
+          const { data, error } = await supabase
+            .from('analistas')
+            .insert({ ...payload, email: analista.email.trim().toLowerCase() })
+            .select()
+            .single();
+          if (error) return { success: false, error: error.message };
+          dispatchDataChanged({ tipo: 'analista_created' });
+          return { success: true, data: data as AnalistaRecord };
+        }
+      } else {
+        // No email — match by nome_completo or nome
+        const matchName = analista.nome_completo || analista.nome;
+        const { data: existing } = await supabase
+          .from('analistas')
+          .select('id, analista_id')
+          .or(`nome_completo.eq.${matchName},nome.eq.${matchName}`)
+          .maybeSingle();
+
+        if (existing?.id) {
+          const { data, error } = await supabase
+            .from('analistas')
+            .update({ ...payload, email: null, analista_id: existing.analista_id || payload.analista_id })
+            .eq('id', existing.id)
+            .select()
+            .single();
+          if (error) return { success: false, error: error.message };
+          dispatchDataChanged({ tipo: 'analista_updated' });
+          return { success: true, data: data as AnalistaRecord };
+        } else {
+          const { data, error } = await supabase
+            .from('analistas')
+            .insert({ ...payload, email: null })
+            .select()
+            .single();
+          if (error) return { success: false, error: error.message };
+          dispatchDataChanged({ tipo: 'analista_created' });
+          return { success: true, data: data as AnalistaRecord };
+        }
+      }
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+  return { success: false, error: 'Supabase não disponível' };
+}
+
+export async function deleteAnalista(id: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      const { error } = await supabase.from('analistas').delete().eq('id', id);
+      if (error) return { success: false, error: error.message };
+      dispatchDataChanged({ tipo: 'analista_deleted' });
+      return { success: true };
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+  return { success: false, error: 'Supabase não disponível' };
+}
+
+export function calcTempoEmpresa(dataAdmissao: string): { texto: string; meses: number } {
+  if (!dataAdmissao) return { texto: '', meses: 0 };
+  const admissao = new Date(dataAdmissao);
+  const hoje = new Date();
+  const totalMeses = (hoje.getFullYear() - admissao.getFullYear()) * 12 + (hoje.getMonth() - admissao.getMonth());
+  const anos = Math.floor(totalMeses / 12);
+  const meses = totalMeses % 12;
+  let texto = '';
+  if (anos === 0) texto = `${meses} mes(es)`;
+  else if (meses === 0) texto = `${anos} ano(s)`;
+  else texto = `${anos} ano(s) e ${meses} mes(es)`;
+  return { texto, meses: totalMeses };
+}
+
+// ─── Admin Logs ───────────────────────────────────────────────────────────────
+
+export interface AdminLog {
+  id: string;
+  created_at: string;
+  log_type: string;
+  category: string;
+  actor_email?: string;
+  action: string;
+  entity_type?: string;
+  entity_id?: string;
+  details?: any;
+  duration_ms?: number;
+  error_message?: string;
+  severity: string;
+}
+
+export async function fetchAdminLogs(filters?: { category?: string; severity?: string; limit?: number }): Promise<AdminLog[]> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      let query = supabase.from('admin_logs').select('*').order('created_at', { ascending: false }).limit(filters?.limit || 200);
+      if (filters?.category && filters.category !== 'all') query = query.eq('category', filters.category);
+      if (filters?.severity && filters.severity !== 'all') query = query.eq('severity', filters.severity);
+      const { data, error } = await query;
+      if (!error && data) return data as AdminLog[];
+    }
+  } catch { /* fall through */ }
+  return [];
+}
+
+export async function writeAdminLog(log: Omit<AdminLog, 'id' | 'created_at'>): Promise<void> {
+  try {
+    const { createClient } = await import('@/lib/supabase/client');
+    const supabase = createClient();
+    if (supabase) {
+      await supabase.from('admin_logs').insert(log);
+    }
+  } catch { /* silently ignore */ }
 }
 
 // ─── Full Backup / Restore ────────────────────────────────────────────────────
@@ -706,6 +1598,7 @@ export function importFullBackup(file: File): Promise<{ success: boolean; error?
             localStorage.setItem(key, JSON.stringify(value));
           }
         });
+        dispatchDataChanged({ tipo: 'backup_restore' });
         resolve({ success: true });
       } catch (err: any) {
         resolve({ success: false, error: err.message });
@@ -714,4 +1607,27 @@ export function importFullBackup(file: File): Promise<{ success: boolean; error?
     reader.onerror = () => resolve({ success: false, error: 'Erro ao ler o arquivo.' });
     reader.readAsText(file);
   });
+}
+
+// ─── Global Data Sync ─────────────────────────────────────────────────────────
+
+/**
+ * Dispatch a global data-changed event so all pages/dashboards can reload.
+ * Use this after ANY mutation to localStorage data.
+ */
+export function dispatchDataChanged(detail?: Record<string, any>): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('zetti_data_changed', { detail: detail ?? {} }));
+  // Also fire the legacy event so existing listeners keep working
+  window.dispatchEvent(new CustomEvent('zetti_import_done', { detail: detail ?? {} }));
+}
+
+/**
+ * Subscribe to global data-changed events.
+ * Returns an unsubscribe function.
+ */
+export function listenDataChanged(handler: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener('zetti_data_changed', handler);
+  return () => window.removeEventListener('zetti_data_changed', handler);
 }

@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import ImportModal from '@/components/ImportModal';
-import { fetchManualCycles, saveManualCycle } from '@/lib/services/dataService';
+import { fetchManualCycles, saveManualCycle, dispatchDataChanged } from '@/lib/services/dataService';
 import { Clock, BarChart2, AlertTriangle, Pencil, Check, X } from 'lucide-react';
 
 interface CycleRecord {
@@ -59,6 +59,8 @@ function HistoricoContent() {
     setCycles((prev) => prev.map((c) => (c.id === cycle.id ? updated : c)));
     try {
       await saveManualCycle(updated);
+      // saveManualCycle already dispatches zetti_data_changed, but dispatch explicitly for clarity
+      dispatchDataChanged({ tipo: 'manual_cycle_edit', periodo: updated.periodo });
     } catch { /* ignore */ }
     setEditingId(null);
   };

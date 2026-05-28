@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import ImportModal from '@/components/ImportModal';
-import { fetchCycleScores, fetchNCRecords, fetchManualCycles } from '@/lib/services/dataService';
+import { fetchCycleScores, fetchNCRecords, fetchManualCycles, dispatchDataChanged } from '@/lib/services/dataService';
 import { MONTHLY_TREND, getScoreColor } from '@/lib/mockData';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -217,9 +217,13 @@ function EvolucaoGeralContent() {
     loadData();
     setManualEntries(loadManualEntries());
 
-    const handleImportDone = () => { loadData(); };
+    const handleImportDone = () => { loadData(); setManualEntries(loadManualEntries()); };
+    window.addEventListener('zetti_data_changed', handleImportDone);
     window.addEventListener('zetti_import_done', handleImportDone);
-    return () => window.removeEventListener('zetti_import_done', handleImportDone);
+    return () => {
+      window.removeEventListener('zetti_data_changed', handleImportDone);
+      window.removeEventListener('zetti_import_done', handleImportDone);
+    };
   }, []);
 
   const handleAddEntry = async () => {
@@ -250,6 +254,7 @@ function EvolucaoGeralContent() {
     setForm(defaultForm);
     setShowManualForm(false);
     setSaving(false);
+    dispatchDataChanged({ tipo: 'manual_entry', periodo: entry.periodo });
   };
 
   const handleDeleteEntry = async (entry: ManualEntry) => {
@@ -257,6 +262,7 @@ function EvolucaoGeralContent() {
     setManualEntries(updated);
     saveManualEntries(updated);
     await deleteEntryFromSupabase(entry);
+    dispatchDataChanged({ tipo: 'delete_manual_entry', periodo: entry.periodo });
   };
 
   // Combine supabase scores + manual entries

@@ -1,8 +1,11 @@
 'use client';
 import React, { useState } from 'react';
-import EnterpriseSidebar from '@/components/EnterpriseSidebar';
-import EnterpriseTopbar from '@/components/EnterpriseTopbar';
+import dynamic from 'next/dynamic';
 import RouteGuard from '@/components/RouteGuard';
+
+const EnterpriseSidebar = dynamic(() => import('@/components/EnterpriseSidebar'), { ssr: false });
+const EnterpriseTopbar = dynamic(() => import('@/components/EnterpriseTopbar'), { ssr: false });
+const AppFooter = dynamic(() => import('@/components/AppFooter'), { ssr: false });
 
 interface EnterpriseLayoutProps {
   children: React.ReactNode;
@@ -21,6 +24,7 @@ export default function EnterpriseLayout({ children, requireAdmin = false }: Ent
           <main className="flex-1 overflow-y-auto">
             {children}
           </main>
+          <AppFooter />
         </div>
       </div>
     </RouteGuard>

@@ -1,56 +1,21 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Eye, EyeOff, Loader2, LogIn, ArrowLeft, CheckCircle, UserPlus } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Loader2 } from 'lucide-react';
 import AppImage from '@/components/ui/AppImage';
-import { useSystemAuth } from '@/contexts/SystemAuthContext';
-import { requestPasswordReset, resetPassword, createUser } from '@/lib/authSystem';
 import { createClient } from '@/lib/supabase/client';
 
-type View = 'login' | 'register' | 'forgot' | 'reset';
-
 export default function SystemLoginScreen() {
-  const { login } = useSystemAuth();
-  const [view, setView] = useState<View>('login');
-
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
+  const [glowPulse, setGlowPulse] = useState(false);
 
-  const [regName, setRegName] = useState('');
-  const [regEmail, setRegEmail] = useState('');
-  const [regPassword, setRegPassword] = useState('');
-  const [regConfirm, setRegConfirm] = useState('');
-  const [showRegPassword, setShowRegPassword] = useState(false);
-  const [regSuccess, setRegSuccess] = useState(false);
-
-  const [forgotEmail, setForgotEmail] = useState('');
-  const [resetToken, setResetToken] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [forgotSuccess, setForgotSuccess] = useState(false);
-  const [resetSuccess, setResetSuccess] = useState(false);
-
-  const switchView = (v: View) => {
-    setView(v);
-    setError('');
-    setForgotSuccess(false);
-    setResetSuccess(false);
-    setRegSuccess(false);
-  };
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !password) { setError('Preencha e-mail e senha.'); return; }
-    setLoading(true);
-    setError('');
-    const result = await login(email, password);
-    setLoading(false);
-    if (!result.success) setError(result.error || 'Credenciais inválidas.');
-  };
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setGlowPulse((prev) => !prev);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleGoogleLogin = async () => {
     setGoogleLoading(true);
@@ -58,10 +23,17 @@ export default function SystemLoginScreen() {
     try {
       const supabase = createClient();
       if (supabase) {
+        // Use the configured site URL so the redirect always goes to the
+        // authorised callback URL registered in Supabase, regardless of
+        // which domain (qualivisao.tec.br or builtwithrocket.new) the user
+        // is currently on.
+        const siteUrl =
+          process.env.NEXT_PUBLIC_SITE_URL ||
+          (typeof window !== 'undefined' ? window.location.origin : '');
         const { error: oauthError } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
-            redirectTo: `${window.location.origin}/auth/callback`,
+            redirectTo: `${siteUrl}/auth/callback`,
           },
         });
         if (oauthError) setError(oauthError.message);
@@ -72,296 +44,374 @@ export default function SystemLoginScreen() {
     setGoogleLoading(false);
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!regName || !regEmail || !regPassword || !regConfirm) { setError('Preencha todos os campos.'); return; }
-    if (regPassword !== regConfirm) { setError('As senhas não coincidem.'); return; }
-    if (regPassword.length < 6) { setError('A senha deve ter pelo menos 6 caracteres.'); return; }
-    setLoading(true);
-    setError('');
-    const result = await createUser({ nome_completo: regName, email: regEmail, senha: regPassword, status: 'Ativo', cargo: 'Auditor', equipe: 'PDV' });
-    const supabase = createClient();
-    if (supabase) {
-      await supabase.auth.signUp({ email: regEmail, password: regPassword, options: { data: { full_name: regName }, emailRedirectTo: `${window.location.origin}/auth/callback` } });
-    }
-    setLoading(false);
-    if (!result.success) { setError(result.error || 'Erro ao criar conta.'); return; }
-    setRegSuccess(true);
-  };
-
-  const handleForgot = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!forgotEmail) { setError('Informe o e-mail.'); return; }
-    const result = requestPasswordReset(forgotEmail);
-    if (!result.success) { setError('E-mail não encontrado no sistema.'); return; }
-    setResetToken(result.token || '');
-    setForgotSuccess(true);
-    setError('');
-  };
-
-  const handleReset = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPassword || newPassword !== confirmPassword) { setError('As senhas não coincidem.'); return; }
-    if (newPassword.length < 6) { setError('A senha deve ter pelo menos 6 caracteres.'); return; }
-    setLoading(true);
-    const result = await resetPassword(resetToken, newPassword);
-    setLoading(false);
-    if (!result.success) { setError(result.error || 'Erro ao redefinir senha.'); return; }
-    setResetSuccess(true);
-    setError('');
-  };
-
-  const inputCls = 'w-full px-4 py-3 rounded-xl text-sm text-white outline-none transition-all focus:ring-2 focus:ring-sky-500/30';
-  const inputStyle: React.CSSProperties = { backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' };
+  const stats = [
+    { value: '20+', label: 'INDICADORES', sublabel: 'Estratégicos' },
+    { value: '4', label: 'SQUADS', sublabel: 'Operacionais' },
+    { value: '32+', label: 'ANALISTAS', sublabel: 'Monitorados' },
+  ];
 
   return (
-    <div className="min-h-screen flex" style={{ backgroundColor: '#071426' }}>
-      {/* Left brand panel */}
+    <div
+      className="min-h-screen flex overflow-hidden"
+      style={{ backgroundColor: '#071426', fontFamily: "'Inter', 'Plus Jakarta Sans', sans-serif" }}
+    >
+      {/* ── LEFT PANEL ── */}
       <div
-        className="hidden lg:flex lg:w-5/12 flex-col justify-between p-12 relative overflow-hidden"
-        style={{ background: 'linear-gradient(160deg, #081120 0%, #0F1B31 50%, #071426 100%)', borderRight: '1px solid rgba(255,255,255,0.06)' }}
+        className="hidden lg:flex lg:w-[52%] flex-col justify-between relative overflow-hidden"
+        style={{
+          background: 'linear-gradient(145deg, #081120 0%, #0a1628 40%, #0F1B31 70%, #071426 100%)',
+          borderRight: '1px solid rgba(56,189,248,0.08)',
+        }}
       >
-        {/* Glow effects */}
-        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(circle at 30% 70%, rgba(56,189,248,0.08) 0%, transparent 60%)' }} />
-        <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(circle at 80% 20%, rgba(6,182,212,0.05) 0%, transparent 50%)' }} />
-        {/* Grid pattern */}
-        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,1) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+        {/* Grid background */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage:
+              'linear-gradient(rgba(56,189,248,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(56,189,248,0.04) 1px, transparent 1px)',
+            backgroundSize: '48px 48px',
+          }}
+        />
 
-        <div className="relative z-10">
-          <div className="flex items-center gap-4 mb-12">
-            <div className="w-12 h-12 rounded-2xl overflow-hidden flex-shrink-0 flex items-center justify-center" style={{ backgroundColor: '#1E40AF', boxShadow: '0 0 20px rgba(56,189,248,0.3)' }}>
-              <AppImage src="/assets/images/5f5559140_ChatGPTImage27deabrde202616_50_50-1777926706123.png" alt="QualiVisão logo" width={48} height={48} className="w-full h-full object-cover" />
+        {/* Ambient glow blobs */}
+        <div
+          className="absolute pointer-events-none transition-opacity duration-3000"
+          style={{
+            width: '600px',
+            height: '600px',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(56,189,248,0.07) 0%, transparent 65%)',
+            top: '-100px',
+            left: '-150px',
+            opacity: glowPulse ? 0.8 : 1,
+            transition: 'opacity 3s ease-in-out',
+          }}
+        />
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            width: '500px',
+            height: '500px',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(6,182,212,0.05) 0%, transparent 65%)',
+            bottom: '0px',
+            right: '-100px',
+            opacity: glowPulse ? 1 : 0.6,
+            transition: 'opacity 3s ease-in-out',
+          }}
+        />
+
+        {/* Content */}
+        <div className="relative z-10 flex flex-col h-full p-12 xl:p-16">
+          {/* Logo */}
+          <div className="flex items-center gap-4 mb-auto">
+            <div
+              className="w-11 h-11 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center"
+              style={{
+                backgroundColor: 'rgba(56,189,248,0.12)',
+                border: '1px solid rgba(56,189,248,0.25)',
+                boxShadow: '0 0 20px rgba(56,189,248,0.15)',
+              }}
+            >
+              <AppImage
+                src="/assets/images/ChatGPT_Image_18_de_mai._de_2026_16_36_10-1779133005009.png"
+                alt="QualiVisão logo"
+                width={44}
+                height={44}
+                className="w-full h-full object-cover"
+              />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white tracking-widest">QUALIVISÃO</h2>
-              <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.3)', letterSpacing: '0.08em' }}>ENTERPRISE PLATFORM</p>
+              <p className="text-sm font-bold text-white tracking-[0.18em]">QUALIVISÃO</p>
+              <p className="text-xs tracking-[0.12em]" style={{ color: 'rgba(56,189,248,0.5)', fontSize: '0.65rem' }}>
+                MONITORAMENTO EXECUTIVO
+              </p>
             </div>
           </div>
 
-          <h1 className="text-4xl xl:text-5xl font-bold text-white leading-tight mb-4">
-            Gestão da<br />
-            <span style={{ color: '#38BDF8' }}>Qualidade</span><br />
-            Operacional
-          </h1>
-          <p className="text-sm leading-relaxed mb-8" style={{ color: 'rgba(255,255,255,0.45)' }}>
-            Plataforma enterprise de indicadores estratégicos, dashboards executivos e inteligência gerencial para tomada de decisão.
-          </p>
-
-          {/* Feature badges */}
-          <div className="flex flex-wrap gap-2">
-            {['QA + IEPC', 'ISO 9001', 'Analytics', 'Gemini AI', 'RBAC'].map((tag) => (
-              <span key={tag} className="px-3 py-1 rounded-full text-xs font-medium" style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}>
-                {tag}
+          {/* Main headline */}
+          <div className="mt-16 mb-10">
+            <h1
+              className="font-bold leading-[1.1] mb-6"
+              style={{
+                fontSize: 'clamp(2.4rem, 3.5vw, 3.2rem)',
+                color: '#F8FAFC',
+                letterSpacing: '-0.02em',
+              }}
+            >
+              Gestão da{' '}
+              <span
+                style={{
+                  color: '#38BDF8',
+                  textShadow: '0 0 30px rgba(56,189,248,0.35)',
+                }}
+              >
+                Qualidade
               </span>
+              <br />
+              Operacional
+            </h1>
+            <p
+              className="leading-relaxed max-w-sm"
+              style={{
+                color: 'rgba(248,250,252,0.45)',
+                fontSize: '0.9rem',
+                lineHeight: '1.7',
+              }}
+            >
+              Plataforma enterprise de indicadores estratégicos, dashboards executivos e inteligência gerencial para tomada de decisão.
+            </p>
+          </div>
+
+          {/* Stat widgets */}
+          <div className="grid grid-cols-3 gap-3 mt-auto">
+            {stats.map((stat) => (
+              <div
+                key={stat.label}
+                className="group relative p-5 rounded-2xl cursor-default transition-all duration-300"
+                style={{
+                  backgroundColor: 'rgba(15,27,49,0.6)',
+                  border: '1px solid rgba(56,189,248,0.1)',
+                  backdropFilter: 'blur(12px)',
+                  boxShadow: '0 4px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.04)',
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLDivElement).style.border = '1px solid rgba(56,189,248,0.25)';
+                  (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 32px rgba(0,0,0,0.4), 0 0 20px rgba(56,189,248,0.08), inset 0 1px 0 rgba(255,255,255,0.06)';
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLDivElement).style.border = '1px solid rgba(56,189,248,0.1)';
+                  (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.04)';
+                }}
+              >
+                <p
+                  className="font-bold mb-1"
+                  style={{
+                    fontSize: '1.75rem',
+                    color: '#F8FAFC',
+                    letterSpacing: '-0.02em',
+                    lineHeight: 1,
+                  }}
+                >
+                  {stat.value}
+                </p>
+                <p
+                  className="font-semibold tracking-widest"
+                  style={{ color: '#38BDF8', fontSize: '0.6rem', letterSpacing: '0.12em' }}
+                >
+                  {stat.label}
+                </p>
+                <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem', marginTop: '2px' }}>
+                  {stat.sublabel}
+                </p>
+              </div>
             ))}
           </div>
-        </div>
 
-        <div className="relative z-10 grid grid-cols-2 gap-3">
-          {[
-            { label: 'Indicadores', value: '20+' },
-            { label: 'Squads', value: '4' },
-            { label: 'Analistas', value: '32+' },
-            { label: 'QA + IEPC + ISO', value: '✓' },
-          ].map((stat) => (
-            <div key={stat.label} className="p-4 rounded-xl text-center" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <p className="text-xl font-bold text-white">{stat.value}</p>
-              <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.35)' }}>{stat.label}</p>
-            </div>
-          ))}
+          {/* Footer */}
+          <p className="mt-8 text-xs" style={{ color: 'rgba(255,255,255,0.15)', letterSpacing: '0.04em' }}>
+            © 2026 Qualivisão · Plataforma Enterprise de Governança Operacional
+          </p>
         </div>
       </div>
 
-      {/* Right form panel */}
-      <div className="flex-1 flex flex-col items-center justify-center p-6 lg:p-12 overflow-y-auto">
-        <div className="w-full max-w-md">
+      {/* ── RIGHT PANEL ── */}
+      <div
+        className="flex-1 flex flex-col items-center justify-center p-6 lg:p-12 relative"
+        style={{ backgroundColor: '#071426' }}
+      >
+        {/* Subtle right-side glow */}
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            width: '400px',
+            height: '400px',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(56,189,248,0.04) 0%, transparent 70%)',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+          }}
+        />
+
+        <div className="relative z-10 w-full max-w-[360px]">
           {/* Mobile logo */}
-          <div className="flex items-center gap-3 mb-8 lg:hidden">
-            <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0" style={{ backgroundColor: '#1E40AF' }}>
-              <AppImage src="/assets/images/5f5559140_ChatGPTImage27deabrde202616_50_50-1777926706123.png" alt="QualiVisão logo" width={40} height={40} className="w-full h-full object-cover" />
+          <div className="flex items-center gap-3 mb-10 lg:hidden">
+            <div
+              className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0"
+              style={{ backgroundColor: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.2)' }}
+            >
+              <AppImage
+                src="/assets/images/ChatGPT_Image_18_de_mai._de_2026_16_36_10-1779133005009.png"
+                alt="QualiVisão logo"
+                width={40}
+                height={40}
+                className="w-full h-full object-cover"
+              />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white">QUALIVISÃO</h2>
-              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>Enterprise Platform</p>
+              <p className="text-sm font-bold text-white tracking-widest">QUALIVISÃO</p>
+              <p className="text-xs" style={{ color: 'rgba(56,189,248,0.5)' }}>Enterprise Platform</p>
             </div>
           </div>
 
-          {/* ── LOGIN VIEW ── */}
-          {view === 'login' && (
-            <div>
-              <div className="mb-8">
-                <h2 className="text-2xl font-bold text-white mb-1">Acesso à plataforma</h2>
-                <p className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>Entre com suas credenciais para continuar</p>
+          {/* Login card */}
+          <div
+            className="rounded-2xl overflow-hidden"
+            style={{
+              backgroundColor: 'rgba(15,27,49,0.85)',
+              border: '1px solid rgba(56,189,248,0.18)',
+              boxShadow: '0 0 0 1px rgba(56,189,248,0.05), 0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(56,189,248,0.06)',
+              backdropFilter: 'blur(20px)',
+            }}
+          >
+            {/* Card top accent line */}
+            <div
+              style={{
+                height: '2px',
+                background: 'linear-gradient(90deg, transparent, rgba(56,189,248,0.6), rgba(6,182,212,0.4), transparent)',
+              }}
+            />
+
+            <div className="p-8 xl:p-10">
+              {/* Shield icon */}
+              <div className="flex flex-col items-center mb-8">
+                <div
+                  className="w-14 h-14 rounded-2xl flex items-center justify-center mb-5"
+                  style={{
+                    backgroundColor: 'rgba(56,189,248,0.08)',
+                    border: '1px solid rgba(56,189,248,0.2)',
+                    boxShadow: '0 0 24px rgba(56,189,248,0.1)',
+                  }}
+                >
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M12 1.5L3.75 5.25v5.25c0 5.25 3.563 10.163 8.25 11.25 4.688-1.088 8.25-6 8.25-11.25V5.25L12 1.5z"
+                      fill="rgba(56,189,248,0.15)"
+                      stroke="#38BDF8"
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M9 12l2 2 4-4"
+                      stroke="#38BDF8"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+                <h2
+                  className="font-bold text-white text-center mb-1.5"
+                  style={{ fontSize: '1.25rem', letterSpacing: '-0.01em' }}
+                >
+                  Acesso à Plataforma
+                </h2>
+                <p className="text-center text-sm" style={{ color: 'rgba(255,255,255,0.38)', lineHeight: 1.5 }}>
+                  Entre com suas credenciais corporativas para continuar
+                </p>
               </div>
 
-              {/* Google Login */}
+              {/* Error */}
+              {error && (
+                <div
+                  className="mb-5 p-3 rounded-xl text-xs flex items-start gap-2"
+                  style={{
+                    backgroundColor: 'rgba(239,68,68,0.08)',
+                    border: '1px solid rgba(239,68,68,0.2)',
+                    color: '#EF4444',
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="flex-shrink-0 mt-0.5">
+                    <circle cx="12" cy="12" r="10" stroke="#EF4444" strokeWidth="1.5" />
+                    <path d="M12 8v4M12 16h.01" stroke="#EF4444" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                  {error}
+                </div>
+              )}
+
+              {/* Google button */}
               <button
                 onClick={handleGoogleLogin}
                 disabled={googleLoading}
-                className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-white transition-all mb-4 disabled:opacity-50"
-                style={{ backgroundColor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 0 20px rgba(56,189,248,0.1)' }}
+                className="w-full flex items-center justify-center gap-3 rounded-xl text-sm font-semibold text-white transition-all duration-200 disabled:opacity-50 active:scale-[0.98]"
+                style={{
+                  height: '52px',
+                  background: 'linear-gradient(135deg, rgba(56,189,248,0.15) 0%, rgba(6,182,212,0.1) 100%)',
+                  border: '1px solid rgba(56,189,248,0.3)',
+                  boxShadow: '0 0 20px rgba(56,189,248,0.08), inset 0 1px 0 rgba(255,255,255,0.06)',
+                }}
+                onMouseEnter={(e) => {
+                  if (!googleLoading) {
+                    (e.currentTarget as HTMLButtonElement).style.background = 'linear-gradient(135deg, rgba(56,189,248,0.22) 0%, rgba(6,182,212,0.16) 100%)';
+                    (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 30px rgba(56,189,248,0.15), inset 0 1px 0 rgba(255,255,255,0.08)';
+                    (e.currentTarget as HTMLButtonElement).style.border = '1px solid rgba(56,189,248,0.45)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'linear-gradient(135deg, rgba(56,189,248,0.15) 0%, rgba(6,182,212,0.1) 100%)';
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 20px rgba(56,189,248,0.08), inset 0 1px 0 rgba(255,255,255,0.06)';
+                  (e.currentTarget as HTMLButtonElement).style.border = '1px solid rgba(56,189,248,0.3)';
+                }}
               >
-                {googleLoading ? <Loader2 size={16} className="animate-spin" /> : (
-                  <>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-4 w-4"
-                      viewBox="0 0 48 48"
-                    >
-                      <path
-                        fill="#EA4335"
-                        d="M24 9.554v3.446h6.946c1.028 0 1.885.433 2.131.68l2.943-2.943C28.885 6.562 28.028 6 27 6z"
-                      />
-                      <path
-                        fill="#4285F4"
-                        d="M12 27c0-4.554 3.546-8.554 8-9.883l6.943 2.943C15.546 25.446 12 29.446 12 27z"
-                      />
-                      <path
-                        fill="none"
-                        d="M11 21H0l11 11z"
-                      />
-                      <path
-                        fill="none"
-                        d="M0 12l11 11 11-11z"
-                      />
-                    </svg>
-                    <span className="ml-2">Entrar com Google</span>
-                  </>
+                {googleLoading ? (
+                  <Loader2 size={18} className="animate-spin" style={{ color: '#38BDF8' }} />
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05" />
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                  </svg>
                 )}
+                <span style={{ letterSpacing: '0.01em' }}>
+                  {googleLoading ? 'Redirecionando...' : 'Entrar com Google'}
+                </span>
               </button>
 
-              <div className="flex items-center gap-3 mb-4">
-                <div className="flex-1 h-px" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }} />
-                <span className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>ou</span>
-                <div className="flex-1 h-px" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }} />
+              {/* Divider */}
+              <div className="flex items-center gap-3 my-6">
+                <div className="flex-1 h-px" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }} />
+                <span className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>Acesso corporativo seguro</span>
+                <div className="flex-1 h-px" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }} />
               </div>
 
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: 'rgba(255,255,255,0.6)' }}>E-mail</label>
-                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seu@email.com" className={inputCls} style={inputStyle} autoComplete="email" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: 'rgba(255,255,255,0.6)' }}>Senha</label>
-                  <div className="relative">
-                    <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className={`${inputCls} pr-10`} style={inputStyle} autoComplete="current-password" />
-                    <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                      {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                    </button>
+              {/* Security badges */}
+              <div className="flex items-center justify-center gap-4">
+                {[
+                  { icon: '🔒', label: 'OAuth 2.0' },
+                  { icon: '🛡️', label: 'Supabase Auth' },
+                  { icon: '✓', label: 'RBAC' },
+                ].map((badge) => (
+                  <div key={badge.label} className="flex items-center gap-1.5">
+                    <span style={{ fontSize: '0.7rem' }}>{badge.icon}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.7rem' }}>{badge.label}</span>
                   </div>
-                </div>
-
-                {error && (
-                  <div className="px-4 py-3 rounded-xl text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#FCA5A5' }}>
-                    {error}
-                  </div>
-                )}
-
-                <button type="submit" disabled={loading} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #1E40AF, #0EA5E9)', boxShadow: '0 0 20px rgba(56,189,248,0.25)' }}>
-                  {loading ? <Loader2 size={16} className="animate-spin" /> : <LogIn size={16} />}
-                  {loading ? 'Entrando...' : 'Entrar na Plataforma'}
-                </button>
-              </form>
-
-              <div className="flex items-center justify-between mt-4">
-                <button onClick={() => switchView('forgot')} className="text-xs transition-colors" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                  Esqueci minha senha
-                </button>
-                <button onClick={() => switchView('register')} className="text-xs transition-colors" style={{ color: '#38BDF8' }}>
-                  Criar conta
-                </button>
-              </div>
-
-              {/* Security badge */}
-              <div className="mt-8 flex items-center justify-center gap-2 text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>
-                <div className="w-1 h-1 rounded-full" style={{ backgroundColor: '#22C55E' }} />
-                Conexão segura · Supabase Auth · RBAC
+                ))}
               </div>
             </div>
-          )}
+          </div>
 
-          {/* ── REGISTER VIEW ── */}
-          {view === 'register' && (
-            <div>
-              <button onClick={() => switchView('login')} className="flex items-center gap-1.5 text-xs mb-6 transition-colors" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                <ArrowLeft size={13} /> Voltar ao login
-              </button>
-              <div className="mb-6">
-                <h2 className="text-2xl font-bold text-white mb-1">Criar conta</h2>
-                <p className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>Preencha os dados para solicitar acesso</p>
-              </div>
-              {regSuccess ? (
-                <div className="text-center py-8">
-                  <CheckCircle size={40} className="mx-auto mb-3" style={{ color: '#22C55E' }} />
-                  <p className="text-base font-semibold text-white mb-2">Conta criada!</p>
-                  <p className="text-sm mb-4" style={{ color: 'rgba(255,255,255,0.4)' }}>Verifique seu e-mail para confirmar o cadastro.</p>
-                  <button onClick={() => switchView('login')} className="text-sm" style={{ color: '#38BDF8' }}>Ir para o login</button>
-                </div>
-              ) : (
-                <form onSubmit={handleRegister} className="space-y-4">
-                  <input type="text" value={regName} onChange={(e) => setRegName(e.target.value)} placeholder="Nome completo" className={inputCls} style={inputStyle} />
-                  <input type="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} placeholder="E-mail corporativo" className={inputCls} style={inputStyle} />
-                  <div className="relative">
-                    <input type={showRegPassword ? 'text' : 'password'} value={regPassword} onChange={(e) => setRegPassword(e.target.value)} placeholder="Senha (mín. 6 caracteres)" className={`${inputCls} pr-10`} style={inputStyle} />
-                    <button type="button" onClick={() => setShowRegPassword((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                      {showRegPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                    </button>
-                  </div>
-                  <input type="password" value={regConfirm} onChange={(e) => setRegConfirm(e.target.value)} placeholder="Confirmar senha" className={inputCls} style={inputStyle} />
-                  {error && <div className="px-4 py-3 rounded-xl text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#FCA5A5' }}>{error}</div>}
-                  <button type="submit" disabled={loading} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #1E40AF, #0EA5E9)' }}>
-                    {loading ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
-                    {loading ? 'Criando...' : 'Criar Conta'}
-                  </button>
-                </form>
-              )}
-            </div>
-          )}
-
-          {/* ── FORGOT VIEW ── */}
-          {view === 'forgot' && (
-            <div>
-              <button onClick={() => switchView('login')} className="flex items-center gap-1.5 text-xs mb-6" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                <ArrowLeft size={13} /> Voltar
-              </button>
-              <div className="mb-6">
-                <h2 className="text-2xl font-bold text-white mb-1">Recuperar senha</h2>
-                <p className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>Informe seu e-mail para receber o token de recuperação</p>
-              </div>
-              {forgotSuccess ? (
-                <div>
-                  <div className="px-4 py-3 rounded-xl text-sm mb-4" style={{ backgroundColor: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)', color: '#86EFAC' }}>
-                    Token gerado. Use-o abaixo para redefinir sua senha.
-                  </div>
-                  <form onSubmit={handleReset} className="space-y-4">
-                    <input type="text" value={resetToken} onChange={(e) => setResetToken(e.target.value)} placeholder="Token de recuperação" className={inputCls} style={inputStyle} />
-                    <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Nova senha" className={inputCls} style={inputStyle} />
-                    <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirmar nova senha" className={inputCls} style={inputStyle} />
-                    {error && <div className="px-4 py-3 rounded-xl text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#FCA5A5' }}>{error}</div>}
-                    {resetSuccess ? (
-                      <div className="text-center py-4">
-                        <CheckCircle size={32} className="mx-auto mb-2" style={{ color: '#22C55E' }} />
-                        <p className="text-sm text-white mb-2">Senha redefinida com sucesso!</p>
-                        <button onClick={() => switchView('login')} className="text-sm" style={{ color: '#38BDF8' }}>Ir para o login</button>
-                      </div>
-                    ) : (
-                      <button type="submit" disabled={loading} className="w-full py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #1E40AF, #0EA5E9)' }}>
-                        {loading ? 'Redefinindo...' : 'Redefinir Senha'}
-                      </button>
-                    )}
-                  </form>
-                </div>
-              ) : (
-                <form onSubmit={handleForgot} className="space-y-4">
-                  <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} placeholder="seu@email.com" className={inputCls} style={inputStyle} />
-                  {error && <div className="px-4 py-3 rounded-xl text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#FCA5A5' }}>{error}</div>}
-                  <button type="submit" className="w-full py-3 rounded-xl text-sm font-semibold text-white" style={{ background: 'linear-gradient(135deg, #1E40AF, #0EA5E9)' }}>
-                    Solicitar Recuperação
-                  </button>
-                </form>
-              )}
-            </div>
-          )}
+          {/* Footer note */}
+          <p className="text-center text-xs mt-6" style={{ color: 'rgba(255,255,255,0.15)', letterSpacing: '0.03em' }}>
+            Acesso restrito · Usuários autorizados apenas
+          </p>
+          <p className="text-center text-xs mt-1" style={{ color: 'rgba(255,255,255,0.1)' }}>
+            QUALIVISÃO Enterprise · Powered by Supabase + Gemini AI
+          </p>
+          <div className="flex items-center justify-center gap-3 mt-3">
+            <a href="/privacidade" className="text-xs transition-colors hover:opacity-80" style={{ color: 'rgba(255,255,255,0.2)' }}>
+              Política de Privacidade
+            </a>
+            <span style={{ color: 'rgba(255,255,255,0.1)' }}>·</span>
+            <a href="/termos" className="text-xs transition-colors hover:opacity-80" style={{ color: 'rgba(255,255,255,0.2)' }}>
+              Termos de Uso
+            </a>
+            <span style={{ color: 'rgba(255,255,255,0.1)' }}>·</span>
+            <a href="/suporte" className="text-xs transition-colors hover:opacity-80" style={{ color: 'rgba(255,255,255,0.2)' }}>
+              Suporte
+            </a>
+          </div>
         </div>
       </div>
     </div>

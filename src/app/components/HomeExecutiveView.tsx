@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import ImportModal from '@/components/ImportModal';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
 import {
@@ -8,12 +8,80 @@ import {
   fetchNCRecords,
   fetchElogios,
   buildAnalystsFromScores,
+  fetchManualCycles,
+  listenDataChanged,
 } from '@/lib/services/dataService';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
-import { TrendingUp, TrendingDown, Minus, AlertTriangle, Star, Users, BarChart2, Activity, RefreshCw, ChevronRight } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,  } from 'recharts';
+import {
+  TrendingUp, TrendingDown, AlertTriangle, Star, Users, BarChart2, Activity,
+  RefreshCw, ChevronRight, Sparkles, Lock, CheckCircle, X, Filter, Calendar,
+  ChevronDown, Info, Target, Zap,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useChat } from '@/lib/hooks/useChat';
+import { createClient } from '@/lib/supabase/client';
+import { DrilldownPanel } from '@/components/DrilldownNavigation';
 
+// ─── Official pillar weights ──────────────────────────────────────────────────
+const QA_PILLAR_WEIGHTS = { p1: 22, p2: 34, p3: 18, p4: 14, p5: 12 };
+const IEPC_PILLAR_WEIGHTS = { e1: 30, e2: 20, e3: 20, e4: 15, e5: 15 };
+
+// Fixed colors per category (consistent across all charts)
+const PILLAR_COLORS = {
+  p1: '#3B82F6', // blue - Fluxo
+  p2: '#06B6D4', // cyan - Tratativa
+  p3: '#10B981', // green - Análise
+  p4: '#F59E0B', // yellow - Comunicação
+  p5: '#8B5CF6', // purple - Conduta
+  e1: '#3B82F6', // blue - Resolução
+  e2: '#06B6D4', // cyan - Compreensão
+  e3: '#10B981', // green - Esforço
+  e4: '#F59E0B', // yellow - Tempo
+  e5: '#8B5CF6', // purple - Relacional
+};
+
+const NC_COLORS = ['#3B82F6', '#06B6D4', '#F59E0B', '#EF4444', '#8B5CF6'];
+
+// Official NC categories with fixed colors
+const NC_CATEGORY_MAP: Record<string, { label: string; color: string }> = {
+  'NC-1': { label: 'NC-1 Postura e Ética', color: '#3B82F6' },
+  'NC-2': { label: 'NC-2 Acuracidade Técnica', color: '#06B6D4' },
+  'NC-3': { label: 'NC-3 Registro e Rastreab.', color: '#F59E0B' },
+  'NC-4': { label: 'NC-4 Fluxo Operacional', color: '#EF4444' },
+  'NC-5': { label: 'NC-5 Segurança da Info.', color: '#8B5CF6' },
+};
+
+function normalizeNCType(raw: string): string {
+  if (!raw) return 'Outros';
+  const upper = raw.toUpperCase().trim();
+  if (upper.includes('NC-1') || upper.includes('NC1') || upper.includes('POSTURA') || upper.includes('ÉTICA') || upper.includes('ETICA')) return 'NC-1';
+  if (upper.includes('NC-2') || upper.includes('NC2') || upper.includes('ACURAC') || upper.includes('TÉCNIC') || upper.includes('TECNIC')) return 'NC-2';
+  if (upper.includes('NC-3') || upper.includes('NC3') || upper.includes('REGISTRO') || upper.includes('RASTREAB')) return 'NC-3';
+  if (upper.includes('NC-4') || upper.includes('NC4') || upper.includes('FLUXO') || upper.includes('OPERAC')) return 'NC-4';
+  if (upper.includes('NC-5') || upper.includes('NC5') || upper.includes('SEGURANÇA') || upper.includes('SEGURANCA') || upper.includes('INFORMA')) return 'NC-5';
+  return raw.trim();
+}
+
+// ─── Performance Classification ──────────────────────────────────────────────
+function getPerformanceClass(score: number): { label: string; color: string; bg: string; border: string } {
+  if (score >= 90) return { label: 'Excelência Operacional', color: '#10b981', bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.3)' };
+  if (score >= 80) return { label: 'Performance Esperada', color: '#facc15', bg: 'rgba(250,204,21,0.12)', border: 'rgba(250,204,21,0.3)' };
+  if (score >= 70) return { label: 'Operacional', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' };
+  return { label: 'Crítico', color: '#ef4444', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.3)' };
+}
+
+function PerformanceBadge({ score, size = 'sm' }: { score: number; size?: 'xs' | 'sm' | 'md' }) {
+  const cls = getPerformanceClass(score);
+  const textSize = size === 'xs' ? 'text-[9px]' : size === 'sm' ? 'text-[10px]' : 'text-xs';
+  const px = size === 'xs' ? 'px-1.5 py-0.5' : 'px-2 py-0.5';
+  return (
+    <span className={`${textSize} ${px} rounded-full font-semibold`} style={{ color: cls.color, backgroundColor: cls.bg, border: `1px solid ${cls.border}` }}>
+      {cls.label}
+    </span>
+  );
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface PeriodSummary {
   periodo: string;
   qa: number;
@@ -22,155 +90,1272 @@ interface PeriodSummary {
   elogios: number;
   analistas: number;
   squads: Record<string, { qa: number; iepc: number; count: number }>;
-}
-
-interface StrategicInsight {
-  type: 'positive' | 'negative' | 'neutral';
-  text: string;
+  coordenadores: Record<string, { qa: number; count: number }>;
+  // pillar averages (raw points)
+  p1?: number; p2?: number; p3?: number; p4?: number; p5?: number;
+  e1?: number; e2?: number; e3?: number; e4?: number; e5?: number;
+  ncByType?: { name: string; value: number; color: string; pct: number }[];
 }
 
 function calcTrend(values: number[]): 'up' | 'down' | 'stable' {
   if (values.length < 2) return 'stable';
-  const last = values[values.length - 1];
-  const prev = values[values.length - 2];
-  const diff = last - prev;
-  if (diff > 1) return 'up';
-  if (diff < -1) return 'down';
+  const diff = values[values.length - 1] - values[values.length - 2];
+  if (diff > 0.5) return 'up';
+  if (diff < -0.5) return 'down';
   return 'stable';
 }
 
-function generateInsights(history: PeriodSummary[]): StrategicInsight[] {
-  const insights: StrategicInsight[] = [];
-  if (history.length < 2) return insights;
-  const last = history[history.length - 1];
-  const prev = history[history.length - 2];
-  const qaDiff = last.qa - prev.qa;
-  const iepcDiff = last.iepc - prev.iepc;
-  const ncDiff = last.ncs - prev.ncs;
-  if (qaDiff > 2) insights.push({ type: 'positive', text: `QA médio subiu ${qaDiff.toFixed(1)}% em relação ao ciclo anterior` });
-  if (qaDiff < -2) insights.push({ type: 'negative', text: `QA médio caiu ${Math.abs(qaDiff).toFixed(1)}% em relação ao ciclo anterior` });
-  if (iepcDiff > 2) insights.push({ type: 'positive', text: `IEPC médio melhorou ${iepcDiff.toFixed(1)}% no último ciclo` });
-  if (iepcDiff < -2) insights.push({ type: 'negative', text: `IEPC médio reduziu ${Math.abs(iepcDiff).toFixed(1)}% — atenção à experiência do cliente` });
-  if (ncDiff < 0) insights.push({ type: 'positive', text: `Redução de ${Math.abs(ncDiff)} NCs em relação ao ciclo anterior` });
-  if (ncDiff > 0) insights.push({ type: 'negative', text: `Aumento de ${ncDiff} NCs — reincidência requer atenção` });
-  if (last.elogios > prev.elogios) insights.push({ type: 'positive', text: `Elogios aumentaram de ${prev.elogios} para ${last.elogios} no último ciclo` });
-  Object.entries(last.squads).forEach(([squad, data]) => {
-    const prevSquad = prev.squads[squad];
-    if (prevSquad) {
-      const diff = data.qa - prevSquad.qa;
-      if (diff > 3) insights.push({ type: 'positive', text: `Squad ${squad} apresentou melhora de ${diff.toFixed(1)}% no QA` });
-      if (diff < -3) insights.push({ type: 'negative', text: `Squad ${squad} apresentou queda de ${Math.abs(diff).toFixed(1)}% no QA` });
-    }
-  });
-  return insights.slice(0, 6);
+// ─── Operational Highlights Block — REDESIGNED ────────────────────────────────
+interface OperationalHighlightsProps {
+  lastPeriod: PeriodSummary | undefined;
+  history: PeriodSummary[];
 }
 
+function OperationalHighlights({ lastPeriod, history }: OperationalHighlightsProps) {
+  const [analysts, setAnalysts] = useState<any[]>([]);
+  const [ncRecords, setNcRecords] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!lastPeriod) return;
+    import('@/lib/services/dataService').then(({ fetchCycleScores, fetchNCRecords }) => {
+      Promise.all([
+        fetchCycleScores(lastPeriod.periodo),
+        fetchNCRecords(),
+      ]).then(([scores, ncs]) => {
+        setAnalysts(scores || []);
+        setNcRecords((ncs || []).filter((n: any) => n.periodo === lastPeriod.periodo));
+      }).catch(() => {});
+    });
+  }, [lastPeriod?.periodo]);
+
+  if (!lastPeriod) return null;
+
+  const total = analysts.length;
+  const qaAbove90 = analysts.filter((a) => (a.nota_final_qa || 0) >= 90);
+  const iepcAbove90 = analysts.filter((a) => (a.iepc_total || 0) >= 90);
+  const qaAbove80 = analysts.filter((a) => (a.nota_final_qa || 0) >= 80);
+  const qaBelow70 = analysts.filter((a) => (a.nota_final_qa || 0) < 70);
+
+  // Pilar QA com menor aderência
+  const QA_PILAR_NAMES: Record<string, string> = {
+    p1: 'Gestão do Fluxo e Rastreabilidade',
+    p2: 'Gestão da Tratativa da Demanda',
+    p3: 'Análise e Assertividade Técnica',
+    p4: 'Qualidade da Comunicação',
+    p5: 'Conduta Relacional',
+  };
+  const QA_PILAR_MAX: Record<string, number> = { p1: 22, p2: 34, p3: 18, p4: 14, p5: 12 };
+  const QA_PILAR_CODES: Record<string, string> = { p1: 'P1', p2: 'P2', p3: 'P3', p4: 'P4', p5: 'P5' };
+
+  const IEPC_PILAR_NAMES: Record<string, string> = {
+    e1: 'Resolução Percebida',
+    e2: 'Compreensão e Segurança Percebida',
+    e3: 'Esforço Percebido pelo Cliente',
+    e4: 'Tempo e Fluidez',
+    e5: 'Experiência Relacional',
+  };
+  const IEPC_PILAR_MAX: Record<string, number> = { e1: 30, e2: 20, e3: 20, e4: 15, e5: 15 };
+  const IEPC_PILAR_CODES: Record<string, string> = { e1: 'E1', e2: 'E2', e3: 'E3', e4: 'E4', e5: 'E5' };
+
+  let worstQAPilar: { code: string; name: string; pct: number } | null = null;
+  let worstIEPCPilar: { code: string; name: string; pct: number } | null = null;
+
+  if (analysts.length > 0) {
+    const qaKeys = ['p1', 'p2', 'p3', 'p4', 'p5'];
+    const iepcKeys = ['e1', 'e2', 'e3', 'e4', 'e5'];
+
+    let minQAPct = Infinity;
+    qaKeys.forEach((k) => {
+      const avg = analysts.reduce((s, a) => s + (a[k] || 0), 0) / analysts.length;
+      const pct = Math.round((avg / QA_PILAR_MAX[k]) * 100);
+      if (pct < minQAPct) {
+        minQAPct = pct;
+        worstQAPilar = { code: QA_PILAR_CODES[k], name: QA_PILAR_NAMES[k], pct };
+      }
+    });
+
+    let minIEPCPct = Infinity;
+    iepcKeys.forEach((k) => {
+      const avg = analysts.reduce((s, a) => s + (a[k] || 0), 0) / analysts.length;
+      const pct = Math.round((avg / IEPC_PILAR_MAX[k]) * 100);
+      if (pct < minIEPCPct) {
+        minIEPCPct = pct;
+        worstIEPCPilar = { code: IEPC_PILAR_CODES[k], name: IEPC_PILAR_NAMES[k], pct };
+      }
+    });
+  }
+
+  // NC mais recorrente
+  let mostFrequentNC: { code: string; desc: string; count: number } | null = null;
+  if (ncRecords.length > 0) {
+    const ncCount: Record<string, number> = {};
+    ncRecords.forEach((nc: any) => {
+      const raw = nc.tipo_nc || nc.tipo || '';
+      const upper = raw.toUpperCase().trim();
+      let code = raw.trim();
+      if (upper.includes('NC-1') || upper.includes('NC1') || upper.includes('POSTURA') || upper.includes('ÉTICA') || upper.includes('ETICA')) code = 'NC-1';
+      else if (upper.includes('NC-2') || upper.includes('NC2') || upper.includes('ACURAC') || upper.includes('TÉCNIC') || upper.includes('TECNIC')) code = 'NC-2';
+      else if (upper.includes('NC-3') || upper.includes('NC3') || upper.includes('REGISTRO') || upper.includes('RASTREAB')) code = 'NC-3';
+      else if (upper.includes('NC-4') || upper.includes('NC4') || upper.includes('FLUXO') || upper.includes('OPERAC')) code = 'NC-4';
+      else if (upper.includes('NC-5') || upper.includes('NC5') || upper.includes('SEGURANÇA') || upper.includes('SEGURANCA') || upper.includes('INFORMA')) code = 'NC-5';
+      ncCount[code] = (ncCount[code] || 0) + 1;
+    });
+    const NC_DESC: Record<string, string> = {
+      'NC-1': 'Postura e Ética',
+      'NC-2': 'Acuracidade Técnica',
+      'NC-3': 'Registro e Rastreabilidade',
+      'NC-4': 'Fluxo Operacional',
+      'NC-5': 'Segurança da Informação',
+    };
+    const sorted = Object.entries(ncCount).sort((a, b) => b[1] - a[1]);
+    if (sorted.length > 0) {
+      const [topCode, topCount] = sorted[0];
+      mostFrequentNC = { code: topCode, desc: NC_DESC[topCode] || topCode, count: topCount };
+    }
+  }
+
+  // Squads afetadas por analistas críticos
+  const affectedSquads = Array.from(new Set(qaBelow70.map((a) => a.squad).filter(Boolean)));
+
+  const pctSaudavel = total > 0 ? Math.round((qaAbove80.length / total) * 100) : 0;
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#0D1829', border: '1px solid rgba(255,255,255,0.08)' }}>
+      {/* Header */}
+      <div className="px-5 py-3.5 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'linear-gradient(90deg, rgba(245,158,11,0.08) 0%, transparent 60%)' }}>
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.25)' }}>
+            <Star size={13} style={{ color: '#F59E0B' }} />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-white">Destaques Operacionais</h3>
+            <p className="text-[10px]" style={{ color: '#64748B' }}>Análise executiva do ciclo · Governança e Risco</p>
+          </div>
+          <span className="text-xs px-2 py-0.5 rounded-full font-semibold ml-1" style={{ backgroundColor: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.2)' }}>
+            {lastPeriod.periodo}
+          </span>
+        </div>
+        <span className="text-xs font-medium" style={{ color: '#475569' }}>
+          {total > 0 ? `${total} analistas avaliados` : 'Aguardando dados'}
+        </span>
+      </div>
+
+      {total === 0 ? (
+        <div className="p-6 text-center text-xs" style={{ color: '#475569' }}>Carregando dados do ciclo...</div>
+      ) : (
+        <div className="p-4 grid grid-cols-4 gap-3">
+
+          {/* CARD 1 — Excelência QA */}
+          <div className="rounded-xl p-4" style={{ backgroundColor: '#0A1F14', border: '1px solid rgba(16,185,129,0.25)' }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.25)' }}>
+                🏆
+              </div>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.2)' }}>
+                QA ≥ 90
+              </span>
+            </div>
+            <p className="text-3xl font-black mb-0.5" style={{ color: '#10b981' }}>{qaAbove90.length}</p>
+            <p className="text-xs font-bold text-white mb-1">Excelência QA</p>
+            <p className="text-[10px] leading-relaxed mb-3" style={{ color: '#6EE7B7' }}>
+              {qaAbove90.length > 0
+                ? `${qaAbove90.length} de ${total} analistas acima da meta de excelência`
+                : 'Nenhum analista atingiu excelência neste ciclo'}
+            </p>
+            {qaAbove90.length > 0 && (
+              <div className="space-y-1">
+                {qaAbove90.slice(0, 3).map((a) => (
+                  <div key={a.analista} className="flex items-center justify-between">
+                    <span className="text-[10px] truncate" style={{ color: 'rgba(255,255,255,0.5)', maxWidth: '70%' }}>{a.analista}</span>
+                    <span className="text-[10px] font-bold" style={{ color: '#10b981' }}>{(a.nota_final_qa || 0).toFixed(1)}</span>
+                  </div>
+                ))}
+                {qaAbove90.length > 3 && (
+                  <p className="text-[10px]" style={{ color: '#6EE7B7' }}>+{qaAbove90.length - 3} outros</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* CARD 2 — Excelência IEPC */}
+          <div className="rounded-xl p-4" style={{ backgroundColor: '#071B1F', border: '1px solid rgba(6,182,212,0.25)' }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.25)' }}>
+                ⭐
+              </div>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(6,182,212,0.12)', color: '#06B6D4', border: '1px solid rgba(6,182,212,0.2)' }}>
+                IEPC ≥ 90
+              </span>
+            </div>
+            <p className="text-3xl font-black mb-0.5" style={{ color: '#06B6D4' }}>{iepcAbove90.length}</p>
+            <p className="text-xs font-bold text-white mb-1">Excelência IEPC</p>
+            <p className="text-[10px] leading-relaxed mb-3" style={{ color: '#67E8F9' }}>
+              {iepcAbove90.length > 0
+                ? `${iepcAbove90.length} analistas com impacto percebido pelo cliente acima de 90%`
+                : 'Nenhum analista atingiu excelência IEPC neste ciclo'}
+            </p>
+            {iepcAbove90.length > 0 && (
+              <div className="space-y-1">
+                {iepcAbove90.slice(0, 3).map((a) => (
+                  <div key={a.analista} className="flex items-center justify-between">
+                    <span className="text-[10px] truncate" style={{ color: 'rgba(255,255,255,0.5)', maxWidth: '70%' }}>{a.analista}</span>
+                    <span className="text-[10px] font-bold" style={{ color: '#06B6D4' }}>{(a.iepc_total || 0).toFixed(1)}%</span>
+                  </div>
+                ))}
+                {iepcAbove90.length > 3 && (
+                  <p className="text-[10px]" style={{ color: '#67E8F9' }}>+{iepcAbove90.length - 3} outros</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* CARD 3 — Performance Saudável */}
+          <div className="rounded-xl p-4" style={{ backgroundColor: '#1A1500', border: '1px solid rgba(250,204,21,0.25)' }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: 'rgba(250,204,21,0.12)', border: '1px solid rgba(250,204,21,0.2)' }}>
+                📈
+              </div>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(250,204,21,0.1)', color: '#facc15', border: '1px solid rgba(250,204,21,0.2)' }}>
+                QA ≥ 80
+              </span>
+            </div>
+            <p className="text-3xl font-black mb-0.5" style={{ color: '#facc15' }}>{qaAbove80.length}</p>
+            <p className="text-xs font-bold text-white mb-1">Performance Saudável</p>
+            <p className="text-[10px] leading-relaxed mb-3" style={{ color: '#FDE68A' }}>
+              {qaAbove80.length} de {total} analistas — {pctSaudavel}% da operação saudável
+            </p>
+            {/* Mini progress bar */}
+            <div className="w-full h-2 rounded-full mb-2" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
+              <div className="h-2 rounded-full transition-all" style={{ width: `${pctSaudavel}%`, backgroundColor: '#facc15' }} />
+            </div>
+            <p className="text-[10px]" style={{ color: '#FDE68A' }}>
+              {pctSaudavel >= 80 ? '✓ Operação estável' : pctSaudavel >= 60 ? '⚠ Atenção requerida' : '⚠ Risco operacional'}
+            </p>
+          </div>
+
+          {/* CARD 4 — Risco Operacional (2x2 grid) */}
+          <div className="rounded-xl p-4" style={{ backgroundColor: '#1A0A0A', border: '1px solid rgba(239,68,68,0.25)' }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.25)' }}>
+                ⚠️
+              </div>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}>
+                Risco
+              </span>
+            </div>
+            <p className="text-xs font-bold text-white mb-2">Risco Operacional</p>
+
+            {/* 2x2 grid */}
+            <div className="grid grid-cols-2 gap-1.5">
+              {/* 1. Analistas Críticos */}
+              <div className="rounded-lg p-2" style={{ backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)' }}>
+                <p className="text-[9px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#ef4444' }}>Críticos QA&lt;70</p>
+                <p className="text-lg font-black" style={{ color: '#ef4444' }}>{qaBelow70.length}</p>
+                {affectedSquads.length > 0 && (
+                  <p className="text-[9px] mt-0.5 truncate" style={{ color: 'rgba(239,68,68,0.6)' }}>
+                    {affectedSquads.slice(0, 2).join(', ')}{affectedSquads.length > 2 ? '…' : ''}
+                  </p>
+                )}
+              </div>
+
+              {/* 2. Pilar QA menor aderência */}
+              <div className="rounded-lg p-2" style={{ backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.15)' }}>
+                <p className="text-[9px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#f59e0b' }}>Pilar QA Crítico</p>
+                {worstQAPilar ? (
+                  <>
+                    <p className="text-xs font-bold" style={{ color: '#f59e0b' }}>{worstQAPilar.code}</p>
+                    <p className="text-[9px] truncate" style={{ color: 'rgba(245,158,11,0.7)' }}>{worstQAPilar.name.split(' ').slice(0, 3).join(' ')}</p>
+                    <p className="text-[9px] font-bold mt-0.5" style={{ color: '#f59e0b' }}>{worstQAPilar.pct}%</p>
+                  </>
+                ) : <p className="text-[9px]" style={{ color: '#475569' }}>—</p>}
+              </div>
+
+              {/* 3. Pilar IEPC menor aderência */}
+              <div className="rounded-lg p-2" style={{ backgroundColor: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.15)' }}>
+                <p className="text-[9px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#8b5cf6' }}>Pilar IEPC Crítico</p>
+                {worstIEPCPilar ? (
+                  <>
+                    <p className="text-xs font-bold" style={{ color: '#8b5cf6' }}>{worstIEPCPilar.code}</p>
+                    <p className="text-[9px] truncate" style={{ color: 'rgba(139,92,246,0.7)' }}>{worstIEPCPilar.name.split(' ').slice(0, 3).join(' ')}</p>
+                    <p className="text-[9px] font-bold mt-0.5" style={{ color: '#8b5cf6' }}>{worstIEPCPilar.pct}%</p>
+                  </>
+                ) : <p className="text-[9px]" style={{ color: '#475569' }}>—</p>}
+              </div>
+
+              {/* 4. NC mais recorrente */}
+              <div className="rounded-lg p-2" style={{ backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.12)' }}>
+                <p className="text-[9px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#ef4444' }}>NC Recorrente</p>
+                {mostFrequentNC ? (
+                  <>
+                    <p className="text-xs font-bold" style={{ color: '#ef4444' }}>{mostFrequentNC.code}</p>
+                    <p className="text-[9px] truncate" style={{ color: 'rgba(239,68,68,0.6)' }}>{mostFrequentNC.desc.split(' ').slice(0, 3).join(' ')}</p>
+                    <p className="text-[9px] font-bold mt-0.5" style={{ color: '#ef4444' }}>{mostFrequentNC.count} ocorrências</p>
+                  </>
+                ) : <p className="text-[9px]" style={{ color: '#475569' }}>Sem NCs</p>}
+              </div>
+            </div>
+          </div>
+
+        </div>
+      )}
+    </div>
+  );
+}
+
+function getHeatColor(val: number): string {
+  if (val >= 90) return '#10b981';
+  if (val >= 80) return '#facc15';
+  if (val >= 70) return '#f59e0b';
+  return '#ef4444';
+}
+
+function getHeatBg(val: number): string {
+  if (val >= 90) return 'rgba(16,185,129,0.18)';
+  if (val >= 80) return 'rgba(250,204,21,0.12)';
+  if (val >= 70) return 'rgba(245,158,11,0.18)';
+  return 'rgba(239,68,68,0.18)';
+}
+
+/** Convert raw pillar points to 0-100 percentage using official max weights */
+function toPercent(raw: number, max: number): number {
+  if (max <= 0) return 0;
+  return Math.round(Math.min((raw / max) * 100, 100));
+}
+
+// ─── Sparkline ────────────────────────────────────────────────────────────────
+function Sparkline({ data, color }: { data: number[]; color: string }) {
+  if (data.length < 2) return null;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const w = 80, h = 28;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = h - ((v - min) / range) * h;
+    return `${x},${y}`;
+  }).join(' ');
+  return (
+    <svg width={w} height={h} style={{ overflow: 'visible' }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// ─── Strategic Radar Chart ────────────────────────────────────────────────────
+interface StrategicRadarProps {
+  data: { subject: string; weight: number; pct: number; color: string; fullName: string }[];
+  type: 'QA' | 'IEPC';
+  maxScale: number;
+}
+
+function StrategicRadarChart({ data, type, maxScale }: StrategicRadarProps) {
+  const radarData = data.map(d => ({ subject: d.subject, value: d.weight, fullName: d.fullName, pct: d.pct, color: d.color }));
+
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (!active || !payload?.length) return null;
+    const d = payload[0].payload;
+    return (
+      <div className="rounded-xl p-3 text-xs shadow-xl" style={{ backgroundColor: '#1C2333', border: '1px solid rgba(255,255,255,0.12)' }}>
+        <p className="font-bold text-white mb-1">{d.fullName}</p>
+        <p style={{ color: '#94A3B8' }}>Peso: <span className="font-bold text-white">{d.value} pts</span></p>
+        <p style={{ color: '#94A3B8' }}>% do total: <span className="font-bold" style={{ color: type === 'QA' ? '#38BDF8' : '#06B6D4' }}>{d.value}%</span></p>
+      </div>
+    );
+  };
+
+  // Custom label outside radar
+  const CustomLabel = (props: any) => {
+    const { x, y, payload } = props;
+    const item = data.find(d => d.subject === payload?.value);
+    if (!item) return null;
+    return (
+      <text x={x} y={y} textAnchor="middle" dominantBaseline="middle" fontSize={9} fontWeight={600} fill="#94A3B8">
+        {item.subject}
+      </text>
+    );
+  };
+
+  return (
+    <ResponsiveContainer width="100%" height={200}>
+      <RadarChart data={radarData} margin={{ top: 15, right: 25, bottom: 15, left: 25 }}>
+        <PolarGrid stroke="rgba(255,255,255,0.07)" gridType="polygon" />
+        <PolarAngleAxis dataKey="subject" tick={<CustomLabel />} />
+        <PolarRadiusAxis angle={90} domain={[0, maxScale]} tick={false} axisLine={false} />
+        <Tooltip content={<CustomTooltip />} />
+        <Radar
+          name={type === 'QA' ? 'Peso QA' : 'Peso IEPC'}
+          dataKey="value"
+          stroke={type === 'QA' ? '#38BDF8' : '#06B6D4'}
+          fill={type === 'QA' ? '#38BDF8' : '#06B6D4'}
+          fillOpacity={0.12}
+          strokeWidth={2.5}
+          dot={{ fill: type === 'QA' ? '#38BDF8' : '#06B6D4', r: 4, strokeWidth: 0 }}
+        />
+      </RadarChart>
+    </ResponsiveContainer>
+  );
+}
+
+// ─── NC Donut Chart ───────────────────────────────────────────────────────────
+interface NCDonutProps {
+  ncData: { name: string; value: number; color: string; pct: number }[];
+  total: number;
+}
+
+function NCDonutChart({ ncData, total }: NCDonutProps) {
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div className="rounded-xl p-3 text-xs shadow-xl" style={{ backgroundColor: '#1C2333', border: '1px solid rgba(255,255,255,0.12)' }}>
+        <p className="font-bold text-white">{payload[0].name}</p>
+        <p style={{ color: payload[0].payload.color }}>{payload[0].value} NCs ({payload[0].payload.pct}%)</p>
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex items-center gap-5">
+      {/* Donut */}
+      <div style={{ position: 'relative', width: 130, height: 130, flexShrink: 0 }}>
+        <PieChart width={130} height={130}>
+          <Pie
+            data={ncData.length > 0 ? ncData : [{ name: 'Sem NCs', value: 1, color: 'rgba(255,255,255,0.08)', pct: 0 }]}
+            cx={60} cy={60}
+            innerRadius={40} outerRadius={58}
+            dataKey="value"
+            paddingAngle={ncData.length > 0 ? 3 : 0}
+            startAngle={90}
+            endAngle={-270}
+          >
+            {(ncData.length > 0 ? ncData : [{ name: 'Sem NCs', value: 1, color: 'rgba(255,255,255,0.08)', pct: 0 }]).map((entry, index) => (
+              <Cell key={index} fill={entry.color} stroke="transparent" />
+            ))}
+          </Pie>
+          <Tooltip content={<CustomTooltip />} />
+        </PieChart>
+        {/* Center text */}
+        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', pointerEvents: 'none' }}>
+          <p className="text-xl font-bold text-white leading-none">{total}</p>
+          <p className="text-[9px] mt-0.5" style={{ color: '#64748B' }}>Total NCs</p>
+        </div>
+      </div>
+
+      {/* Lateral list — always visible */}
+      <div className="flex-1 space-y-2">
+        {ncData.length > 0 ? ncData.map((item) => (
+          <div key={item.name} className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
+              <span className="text-xs truncate" style={{ color: '#94A3B8' }}>{item.name.replace('NC-', 'NC').split(' ').slice(0, 3).join(' ')}</span>
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <span className="text-xs font-bold text-white">{item.value}</span>
+              <span className="text-xs font-medium px-1.5 py-0.5 rounded-full" style={{ backgroundColor: `${item.color}20`, color: item.color }}>
+                {item.pct}%
+              </span>
+            </div>
+          </div>
+        )) : (
+          <p className="text-xs py-4 text-center" style={{ color: '#64748B' }}>Sem NCs registradas no ciclo</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Pilar Modal (with real cycle data) ──────────────────────────────────────
+interface PilarModalProps {
+  type: 'QA' | 'IEPC' | 'NC';
+  onClose: () => void;
+  qaPillars?: { subject: string; weight: number; pct: number; color: string; fullName: string }[];
+  iepcPillars?: { subject: string; weight: number; pct: number; color: string; fullName: string }[];
+  ncData?: { name: string; value: number; color: string; pct: number }[];
+  totalNCs?: number;
+  periodo?: string;
+}
+
+const QA_PILAR_DETAILS = [
+  {
+    code: 'P1', name: 'Gestão do Fluxo e Rastreabilidade',
+    peso: 22,
+    descricao: 'Avalia a capacidade do analista de seguir e documentar o fluxo operacional corretamente.',
+    objetivo: 'Garantir rastreabilidade total das demandas e conformidade com os processos estabelecidos.',
+    subpilares: ['6.1 Identificação e Boas-vindas (5pts)', '6.2 Formalização e Comunicação do Protocolo SUP (9pts)', '6.3 Encerramento Conforme Etapa da Tratativa (8pts)'],
+    impacto: 'Diretamente ligado à auditabilidade e governança operacional.',
+  },
+  {
+    code: 'P2', name: 'Gestão da Tratativa da Demanda',
+    peso: 34,
+    descricao: 'Mede a qualidade e efetividade na resolução das demandas dos clientes.',
+    objetivo: 'Assegurar que cada demanda seja tratada com a devida atenção, agilidade e resolução efetiva.',
+    subpilares: ['6.4 Resolução ou Próximo Passo (10pts)', '6.5 Documentação Técnica do Atendimento (8pts)', '6.6 Orientação Técnica e Acompanhamento (10pts)', '6.7 Assertividade no Direcionamento da Demanda (6pts)'],
+    impacto: 'Impacta diretamente a satisfação do cliente e os indicadores de IEPC.',
+  },
+  {
+    code: 'P3', name: 'Análise e Assertividade Técnica',
+    peso: 18,
+    descricao: 'Avalia a precisão técnica e capacidade analítica do profissional.',
+    objetivo: 'Garantir que as análises sejam corretas, fundamentadas e orientadas à solução.',
+    subpilares: ['Diagnóstico correto', 'Solução técnica adequada', 'Conhecimento do produto', 'Precisão da informação'],
+    impacto: 'Reduz retrabalho, NCs e aumenta a confiança do cliente.',
+  },
+  {
+    code: 'P4', name: 'Qualidade da Comunicação',
+    peso: 14,
+    descricao: 'Avalia clareza, objetividade e profissionalismo na comunicação.',
+    objetivo: 'Garantir que a comunicação seja clara, profissional e orientada ao entendimento do cliente.',
+    subpilares: ['Clareza da mensagem', 'Tom profissional', 'Objetividade', 'Gramática e ortografia'],
+    impacto: 'Influencia diretamente a percepção do cliente e o IEPC.',
+  },
+  {
+    code: 'P5', name: 'Conduta Relacional',
+    peso: 12,
+    descricao: 'Avalia o comportamento ético, empático e relacional do analista.',
+    objetivo: 'Promover uma cultura de excelência relacional e ética operacional.',
+    subpilares: ['Empatia', 'Ética profissional', 'Postura', 'Relacionamento com cliente'],
+    impacto: 'Base da experiência do cliente e da reputação da operação.',
+  },
+];
+
+const IEPC_PILAR_DETAILS = [
+  {
+    code: 'E1', name: 'Resolução Percebida',
+    peso: 30,
+    experiencia: 'O cliente percebe que seu problema foi resolvido de forma efetiva.',
+    comportamento: 'Confirmar a resolução com o cliente e garantir satisfação antes de encerrar.',
+    impactoCliente: 'Principal driver de satisfação e fidelização.',
+    subpilares: ['1.1 Clareza do Status Final (10pts)', '1.2 Percepção de Avanço (10pts)', '1.3 Alinhamento dos Próximos Passos (10pts)'],
+  },
+  {
+    code: 'E2', name: 'Compreensão e Segurança Percebida',
+    peso: 20,
+    experiencia: 'O cliente sente que foi compreendido e que está em boas mãos.',
+    comportamento: 'Demonstrar entendimento do problema e transmitir confiança na solução.',
+    impactoCliente: 'Reduz ansiedade e aumenta confiança na operação.',
+    subpilares: ['2.1 Clareza da Comunicação (7pts)', '2.2 Segurança Transmitida (7pts)', '2.3 Validação do Entendimento (6pts)'],
+  },
+  {
+    code: 'E3', name: 'Esforço Percebido pelo Cliente',
+    peso: 20,
+    experiencia: 'O cliente percebe que não precisou se esforçar muito para resolver seu problema.',
+    comportamento: 'Simplificar processos, antecipar necessidades e reduzir fricções.',
+    impactoCliente: 'Diretamente ligado ao CES (Customer Effort Score).',
+    subpilares: ['3.1 Facilidade de Execução (7pts)', '3.2 Evitar Repetição (7pts)', '3.3 Condução Guiada (6pts)'],
+  },
+  {
+    code: 'E4', name: 'Tempo e Fluidez',
+    peso: 15,
+    experiencia: 'O cliente percebe agilidade e fluidez no atendimento.',
+    comportamento: 'Atender com agilidade sem comprometer a qualidade da solução.',
+    impactoCliente: 'Impacta diretamente o NPS e a percepção de eficiência.',
+    subpilares: ['4.1 Agilidade (5pts)', '4.2 Gestão de Expectativa (5pts)', '4.3 Continuidade (5pts)'],
+  },
+  {
+    code: 'E5', name: 'Experiência Relacional',
+    peso: 15,
+    experiencia: 'O cliente percebe um atendimento humanizado, empático e personalizado.',
+    comportamento: 'Tratar cada cliente de forma única, com empatia e personalização.',
+    impactoCliente: 'Gera lealdade emocional e elogios espontâneos.',
+    subpilares: ['5.1 Cordialidade (5pts)', '5.2 Empatia (5pts)', '5.3 Encerramento Positivo (5pts)'],
+  },
+];
+
+const NC_DETAILS = [
+  { code: 'NC-1', name: 'Postura e Ética', definicao: 'Comportamento inadequado, falta de ética ou postura profissional comprometida.', severidade: 'Alta', penalidade: '-20 pontos QA', impacto: 'Risco reputacional e cultural', exemplos: ['Linguagem inapropriada', 'Descaso com o cliente', 'Comportamento antiético'], reincidencia: 'Dobra a penalidade na 2ª ocorrência' },
+  { code: 'NC-2', name: 'Acuracidade Técnica', definicao: 'Informação técnica incorreta ou solução inadequada fornecida ao cliente.', severidade: 'Alta', penalidade: '-20 pontos QA', impacto: 'Retrabalho e insatisfação do cliente', exemplos: ['Diagnóstico errado', 'Solução incorreta', 'Informação desatualizada'], reincidencia: 'Gera PDI obrigatório na 3ª ocorrência' },
+  { code: 'NC-3', name: 'Registro e Rastreabilidade', definicao: 'Falha no registro, documentação ou rastreabilidade da demanda.', severidade: 'Média', penalidade: '-20 pontos QA', impacto: 'Comprometimento da auditoria e governança', exemplos: ['Atendimento não registrado', 'Documentação incompleta', 'Protocolo não gerado'], reincidencia: 'Revisão de processo obrigatória' },
+  { code: 'NC-4', name: 'Fluxo Operacional', definicao: 'Desvio do fluxo operacional estabelecido ou não seguimento de protocolo.', severidade: 'Média', penalidade: '-20 pontos QA', impacto: 'Inconsistência operacional e risco de SLA', exemplos: ['Pular etapa do processo', 'Encaminhamento incorreto', 'Protocolo não seguido'], reincidencia: 'Treinamento obrigatório' },
+  { code: 'NC-5', name: 'Segurança da Informação', definicao: 'Exposição ou manuseio inadequado de dados sensíveis do cliente.', severidade: 'Crítica', penalidade: '-20 pontos QA', impacto: 'Risco legal, LGPD e reputacional', exemplos: ['Compartilhamento de dados indevido', 'Acesso não autorizado', 'Exposição de informações confidenciais'], reincidencia: 'Processo disciplinar imediato' },
+];
+
+function PilarModal({ type, onClose, qaPillars, iepcPillars, ncData, totalNCs, periodo }: PilarModalProps) {
+  const qaColor = '#38BDF8';
+  const iepcColor = '#06B6D4';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.8)' }}>
+      <div className="w-full max-w-3xl rounded-2xl overflow-hidden max-h-[90vh] flex flex-col" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <div className="flex items-center justify-between p-5 flex-shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: type === 'QA' ? 'rgba(56,189,248,0.15)' : type === 'IEPC' ? 'rgba(6,182,212,0.15)' : 'rgba(239,68,68,0.15)' }}>
+              {type === 'QA' ? <Target size={16} style={{ color: qaColor }} /> : type === 'IEPC' ? <Star size={16} style={{ color: iepcColor }} /> : <AlertTriangle size={16} style={{ color: '#EF4444' }} />}
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white">
+                {type === 'QA' ? 'Mapa Estratégico QA — Pilares e Dados do Ciclo' : type === 'IEPC' ? 'Mapa Estratégico IEPC — Pilares e Dados do Ciclo' : 'Não Conformidades — Guia Oficial'}
+              </h3>
+              <p className="text-xs" style={{ color: '#94A3B8' }}>
+                {type === 'QA' ? `Ciclo: ${periodo || '—'} · 5 pilares de qualidade operacional` : type === 'IEPC' ? `Ciclo: ${periodo || '—'} · 5 pilares de experiência percebida` : 'Definições, severidades e penalidades'}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors hover:bg-white/5">
+            <X size={14} style={{ color: '#94A3B8' }} />
+          </button>
+        </div>
+
+        <div className="p-5 overflow-y-auto space-y-4">
+          {/* Radar visual at top of modal */}
+          {type === 'QA' && qaPillars && (
+            <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.15)' }}>
+              <p className="text-xs font-semibold mb-3" style={{ color: qaColor }}>Distribuição Estratégica — Pesos Oficiais QA (Total: 100 pts)</p>
+              <div className="flex items-center gap-4">
+                <div style={{ flex: '0 0 220px' }}>
+                  <StrategicRadarChart data={qaPillars} type="QA" maxScale={40} />
+                </div>
+                <div className="flex-1 space-y-2">
+                  {qaPillars.map((p) => (
+                    <div key={p.subject} className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+                      <span className="text-xs flex-1" style={{ color: '#94A3B8' }}>{p.fullName}</span>
+                      <span className="text-xs font-bold" style={{ color: p.color }}>{p.weight} pts</span>
+                      <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: `${p.color}20`, color: p.color }}>{p.weight}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {type === 'IEPC' && iepcPillars && (
+            <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(6,182,212,0.04)', border: '1px solid rgba(6,182,212,0.15)' }}>
+              <p className="text-xs font-semibold mb-3" style={{ color: iepcColor }}>Distribuição Estratégica — Pesos Oficiais IEPC (Total: 100 pts)</p>
+              <div className="flex items-center gap-4">
+                <div style={{ flex: '0 0 220px' }}>
+                  <StrategicRadarChart data={iepcPillars} type="IEPC" maxScale={35} />
+                </div>
+                <div className="flex-1 space-y-2">
+                  {iepcPillars.map((p) => (
+                    <div key={p.subject} className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+                      <span className="text-xs flex-1" style={{ color: '#94A3B8' }}>{p.fullName}</span>
+                      <span className="text-xs font-bold" style={{ color: p.color }}>{p.weight} pts</span>
+                      <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: `${p.color}20`, color: p.color }}>{p.weight}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Pillar details */}
+          {type === 'QA' && QA_PILAR_DETAILS.map((p) => {
+            const pillarData = qaPillars?.find(d => d.subject.startsWith(p.code));
+            const cls = getPerformanceClass(pillarData?.pct || 0);
+            return (
+              <div key={p.code} className="rounded-xl p-4" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-lg" style={{ backgroundColor: 'rgba(56,189,248,0.15)', color: qaColor }}>{p.code}</span>
+                    <span className="text-sm font-semibold text-white">{p.name}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: qaColor }}>Peso: {p.peso} pts</span>
+                  </div>
+                  {pillarData && pillarData.pct > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold" style={{ color: cls.color }}>{pillarData.pct}%</span>
+                      <PerformanceBadge score={pillarData.pct} size="xs" />
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs mb-2" style={{ color: '#94A3B8' }}>{p.descricao}</p>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div><span style={{ color: '#64748B' }}>Objetivo: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{p.objetivo}</span></div>
+                  <div><span style={{ color: '#64748B' }}>Impacto: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{p.impacto}</span></div>
+                  <div className="col-span-2"><span style={{ color: '#64748B' }}>Subpilares: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{p.subpilares.join(' · ')}</span></div>
+                </div>
+              </div>
+            );
+          })}
+
+          {type === 'IEPC' && IEPC_PILAR_DETAILS.map((p) => {
+            const pillarData = iepcPillars?.find(d => d.subject.startsWith(p.code));
+            const cls = getPerformanceClass(pillarData?.pct || 0);
+            return (
+              <div key={p.code} className="rounded-xl p-4" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-lg" style={{ backgroundColor: 'rgba(6,182,212,0.15)', color: iepcColor }}>{p.code}</span>
+                    <span className="text-sm font-semibold text-white">{p.name}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(6,182,212,0.1)', color: iepcColor }}>Peso: {p.peso} pts</span>
+                  </div>
+                  {pillarData && pillarData.pct > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold" style={{ color: cls.color }}>{pillarData.pct}%</span>
+                      <PerformanceBadge score={pillarData.pct} size="xs" />
+                    </div>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div><span style={{ color: '#64748B' }}>Experiência: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{p.experiencia}</span></div>
+                  <div><span style={{ color: '#64748B' }}>Comportamento: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{p.comportamento}</span></div>
+                  <div><span style={{ color: '#64748B' }}>Impacto: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{p.impactoCliente}</span></div>
+                  <div className="col-span-2"><span style={{ color: '#64748B' }}>Subpilares: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{p.subpilares.join(' · ')}</span></div>
+                </div>
+              </div>
+            );
+          })}
+
+          {type === 'NC' && (
+            <>
+              {ncData && ncData.length > 0 && (
+                <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.15)' }}>
+                  <p className="text-xs font-semibold mb-3" style={{ color: '#EF4444' }}>Distribuição de NCs no Ciclo — Total: {totalNCs}</p>
+                  <NCDonutChart ncData={ncData} total={totalNCs || 0} />
+                </div>
+              )}
+              {NC_DETAILS.map((nc) => (
+                <div key={nc.code} className="rounded-xl p-4" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-lg" style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#EF4444' }}>{nc.code}</span>
+                      <span className="text-sm font-semibold text-white">{nc.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: nc.severidade === 'Crítica' ? 'rgba(239,68,68,0.2)' : nc.severidade === 'Alta' ? 'rgba(245,158,11,0.2)' : 'rgba(250,204,21,0.2)', color: nc.severidade === 'Crítica' ? '#ef4444' : nc.severidade === 'Alta' ? '#f59e0b' : '#facc15' }}>{nc.severidade}</span>
+                      <span className="text-xs font-bold" style={{ color: '#ef4444' }}>{nc.penalidade}</span>
+                    </div>
+                  </div>
+                  <p className="text-xs mb-2" style={{ color: '#94A3B8' }}>{nc.definicao}</p>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div><span style={{ color: '#64748B' }}>Impacto: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{nc.impacto}</span></div>
+                    <div><span style={{ color: '#64748B' }}>Reincidência: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{nc.reincidencia}</span></div>
+                    <div className="col-span-2"><span style={{ color: '#64748B' }}>Exemplos: </span><span style={{ color: 'rgba(255,255,255,0.7)' }}>{nc.exemplos.join(' • ')}</span></div>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Close Cycle Modal ────────────────────────────────────────────────────────
+interface CloseCycleModalProps {
+  periodo: string;
+  summary: PeriodSummary;
+  onClose: () => void;
+  onConfirm: (aiSummary: string) => Promise<void>;
+}
+
+function CloseCycleModal({ periodo, summary, onClose, onConfirm }: CloseCycleModalProps) {
+  const [step, setStep] = useState<'confirm' | 'generating' | 'done'>('confirm');
+  const [aiSummary, setAiSummary] = useState('');
+  const [closing, setClosing] = useState(false);
+  const { response, isLoading, sendMessage } = useChat('GEMINI', 'gemini/gemini-2.5-flash', false);
+
+  useEffect(() => {
+    if (response && !isLoading && step === 'generating') {
+      setAiSummary(response);
+      setStep('done');
+    }
+  }, [response, isLoading, step]);
+
+  const handleGenerate = () => {
+    setStep('generating');
+    const squadLines = Object.entries(summary.squads)
+      .map(([sq, d]) => `  - ${sq}: QA ${d.qa.toFixed(1)}%, IEPC ${d.iepc.toFixed(1)}%, ${d.count} analistas`)
+      .join('\n');
+    const prompt = `Você é um gestor de qualidade sênior. Gere um FECHAMENTO OFICIAL do ciclo ${periodo} em português, com:
+1. Resumo executivo (2 frases)
+2. Destaques positivos (bullet points)
+3. Pontos de atenção (bullet points)
+4. PDIs recomendados para analistas com QA abaixo de 80%
+5. Próximos passos para o ciclo seguinte
+
+Dados do ciclo:
+- QA Médio: ${summary.qa.toFixed(1)}%
+- IEPC Médio: ${summary.iepc.toFixed(1)}%
+- Total NCs: ${summary.ncs}
+- Total Elogios: ${summary.elogios}
+- Analistas avaliados: ${summary.analistas}
+- Performance por squad:\n${squadLines}
+
+Seja objetivo, profissional e orientado a ação.`;
+    sendMessage([{ role: 'user', content: prompt }], { temperature: 0.6, max_tokens: 800 });
+  };
+
+  const handleConfirmClose = async () => {
+    setClosing(true);
+    await onConfirm(aiSummary);
+    setClosing(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
+      <div className="w-full max-w-2xl rounded-2xl overflow-hidden" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <div className="flex items-center justify-between p-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(239,68,68,0.15)' }}>
+              <Lock size={14} style={{ color: '#EF4444' }} />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white">Fechar Ciclo — {periodo}</h3>
+              <p className="text-xs" style={{ color: '#94A3B8' }}>Esta ação congela os dados e gera snapshot permanente</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors hover:bg-white/5">
+            <X size={14} style={{ color: '#94A3B8' }} />
+          </button>
+        </div>
+        <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+          {step === 'confirm' && (
+            <>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: 'QA Médio', value: `${summary.qa.toFixed(1)}%`, color: getPerformanceClass(summary.qa).color },
+                  { label: 'IEPC Médio', value: `${summary.iepc.toFixed(1)}%`, color: getPerformanceClass(summary.iepc).color },
+                  { label: 'Analistas', value: String(summary.analistas), color: '#38BDF8' },
+                  { label: 'NCs', value: String(summary.ncs), color: summary.ncs > 10 ? '#EF4444' : '#94A3B8' },
+                  { label: 'Elogios', value: String(summary.elogios), color: '#F59E0B' },
+                  { label: 'Squads', value: String(Object.keys(summary.squads).length), color: '#06B6D4' },
+                ].map((item) => (
+                  <div key={item.label} className="p-3 rounded-xl text-center" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <p className="text-lg font-bold" style={{ color: item.color }}>{item.value}</p>
+                    <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{item.label}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="p-4 rounded-xl" style={{ backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}>
+                <p className="text-xs font-medium mb-1" style={{ color: '#EF4444' }}>⚠️ Atenção</p>
+                <p className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>Ao fechar o ciclo, os dados serão congelados e não poderão ser editados. Um snapshot será gerado automaticamente com resumo IA e PDIs recomendados.</p>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
+                <button onClick={handleGenerate} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all flex items-center justify-center gap-2" style={{ backgroundColor: '#1E40AF', border: '1px solid rgba(56,189,248,0.2)' }}>
+                  <Sparkles size={14} />Gerar Fechamento IA
+                </button>
+              </div>
+            </>
+          )}
+          {step === 'generating' && (
+            <div className="flex flex-col items-center justify-center py-12">
+              <div className="w-10 h-10 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mb-4" />
+              <p className="text-sm font-medium text-white mb-1">Gemini analisando ciclo...</p>
+              <p className="text-xs" style={{ color: '#94A3B8' }}>Gerando resumo executivo, PDIs e próximos passos</p>
+            </div>
+          )}
+          {step === 'done' && (
+            <>
+              <div className="p-4 rounded-xl" style={{ backgroundColor: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)' }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles size={13} style={{ color: '#38BDF8' }} />
+                  <span className="text-xs font-semibold" style={{ color: '#38BDF8' }}>Fechamento IA — Gemini</span>
+                </div>
+                <p className="text-xs leading-relaxed whitespace-pre-wrap" style={{ color: 'rgba(255,255,255,0.75)' }}>{aiSummary}</p>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
+                <button onClick={handleConfirmClose} disabled={closing} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all flex items-center justify-center gap-2 disabled:opacity-60" style={{ backgroundColor: '#DC2626', border: '1px solid rgba(239,68,68,0.3)' }}>
+                  {closing ? <RefreshCw size={13} className="animate-spin" /> : <Lock size={13} />}
+                  {closing ? 'Fechando...' : 'Confirmar Fechamento'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function HomeExecutiveView() {
   const [importOpen, setImportOpen] = useState(false);
-  const { session } = useSystemAuth();
+  const { session, userRole, userSquad, userSquads, isAdminMaster, getTeamFilter, canImportModule, canCloseCycle: canCloseCyclePerm } = useSystemAuth();
   const [history, setHistory] = useState<PeriodSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filterPeriod, setFilterPeriod] = useState<'all' | '3m' | '6m'>('all');
   const [allPeriodos, setAllPeriodos] = useState<string[]>([]);
-  const [aiInsight, setAiInsight] = useState('');
-  const [aiLoading, setAiLoading] = useState(false);
+  const [closeCycleOpen, setCloseCycleOpen] = useState(false);
+  const [closeCycleSuccess, setCloseCycleSuccess] = useState(false);
+  const [drilldownCiclo, setDrilldownCiclo] = useState<string | null>(null);
+  const [pilarModal, setPilarModal] = useState<'QA' | 'IEPC' | 'NC' | null>(null);
 
-  const { response: aiResponse, isLoading: aiChatLoading, sendMessage } = useChat('GEMINI', 'gemini/gemini-2.5-flash', false);
+  const [filterCiclo, setFilterCiclo] = useState<string>('todos');
+  const [filterSquad, setFilterSquad] = useState<string>('todos');
+  const [filterGestor, setFilterGestor] = useState<string>('todos');
+  const [filterOpen, setFilterOpen] = useState<'ciclo' | 'squad' | 'gestor' | null>(null);
 
-  const canImport = session?.permissoes?.permissao_editar ||
+  const [lastUpdate] = useState(() => {
+    const now = new Date();
+    return `${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+  });
+
+  const canImport = isAdminMaster ||
+    canImportModule('importacoes') ||
+    session?.permissoes?.permissao_editar ||
     session?.permissoes?.acesso_total ||
     session?.cargo === 'Administrador' ||
     session?.cargo === 'Coordenador' ||
-    session?.cargo === 'Coordenador Geral';
+    session?.cargo === 'Coordenador Geral' ||
+    userRole === 'Admin' || userRole === 'Auditor' || userRole === 'Coordenador Geral';
+
+  const canCloseCycle = isAdminMaster || canCloseCyclePerm() || userRole === 'Admin' || userRole === 'Auditor' || userRole === 'Coordenador Geral' || session?.cargo === 'Administrador';
+
+  const filterByRole = useCallback((scores: any[]) => {
+    // Use the new getTeamFilter from context
+    const teamFilter = getTeamFilter();
+    // null = no filter (see all)
+    if (teamFilter === null) return scores;
+    // Empty array = no squads assigned, show all as fallback
+    if (teamFilter.length === 0) return scores;
+    return scores.filter((s: any) => teamFilter.includes(s.squad));
+  }, [getTeamFilter]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [scores, periodos, ncs, elogios] = await Promise.all([
-      fetchCycleScores(),
-      fetchAllPeriodos(),
-      fetchNCRecords(),
-      fetchElogios(),
-    ]);
-    setAllPeriodos(periodos);
-    const summaries: PeriodSummary[] = periodos.map((periodo) => {
-      const pScores = scores.filter((s: any) => s.periodo === periodo);
-      const pNCs = ncs.filter((n: any) => n.periodo === periodo);
-      const pElogios = elogios.filter((e: any) => e.periodo === periodo);
-      const analysts = buildAnalystsFromScores(pScores);
-      const qaMedia = analysts.length > 0 ? analysts.reduce((s: number, a: any) => s + a.qaScore, 0) / analysts.length : 0;
-      const iepcMedia = analysts.length > 0 ? analysts.reduce((s: number, a: any) => s + a.iepcScore, 0) / analysts.length : 0;
-      const squads: Record<string, { qa: number; iepc: number; count: number }> = {};
-      analysts.forEach((a: any) => {
-        if (!squads[a.squad]) squads[a.squad] = { qa: 0, iepc: 0, count: 0 };
-        squads[a.squad].qa += a.qaScore;
-        squads[a.squad].iepc += a.iepcScore;
-        squads[a.squad].count += 1;
-      });
-      Object.keys(squads).forEach((sq) => {
-        squads[sq].qa = squads[sq].qa / squads[sq].count;
-        squads[sq].iepc = squads[sq].iepc / squads[sq].count;
-      });
-      return {
-        periodo,
-        qa: parseFloat(qaMedia.toFixed(2)),
-        iepc: parseFloat(iepcMedia.toFixed(2)),
-        ncs: pNCs.length,
-        elogios: pElogios.length,
-        analistas: analysts.length,
-        squads,
-      };
-    });
-    setHistory(summaries);
+    try {
+      // fetchCycleScores/fetchNCRecords/fetchElogios/fetchAllPeriodos now use Supabase as primary source
+      const [scores, periodos, ncs, elogios] = await Promise.all([
+        fetchCycleScores(),
+        fetchAllPeriodos(),
+        fetchNCRecords(),
+        fetchElogios(),
+      ]);
+
+      const manualCycles = fetchManualCycles();
+      const manualPeriodos = manualCycles.map((mc) => mc.periodo).filter(Boolean);
+      const allPeriodosSet = new Set([...periodos, ...manualPeriodos]);
+      const mergedPeriodos = Array.from(allPeriodosSet).sort();
+
+      setAllPeriodos(mergedPeriodos);
+
+      if (scores.length === 0 && manualCycles.length === 0) {
+        setHistory([]);
+        setLoading(false);
+        return;
+      }
+
+      const filteredScores = filterByRole(scores);
+      const filteredNcs = filterByRole(ncs);
+      const filteredElogios = filterByRole(elogios);
+
+      const summaries: PeriodSummary[] = mergedPeriodos.map((periodo) => {
+        const pScores = filteredScores.filter((s: any) => s.periodo === periodo);
+        const pNCs = filteredNcs.filter((n: any) => n.periodo === periodo);
+        const pElogios = filteredElogios.filter((e: any) => e.periodo === periodo);
+        const analysts = buildAnalystsFromScores(pScores);
+
+        // Compute NC distribution by type
+        const ncByType = (() => {
+          const typeCounts: Record<string, number> = {};
+          pNCs.forEach((nc: any) => {
+            const raw = nc.tipo_nc || nc.tipo || nc.category || '';
+            const t = normalizeNCType(raw);
+            typeCounts[t] = (typeCounts[t] || 0) + 1;
+          });
+          const total = pNCs.length;
+          // Build ordered list: NC-1 through NC-5 first, then any others
+          const orderedKeys = ['NC-1', 'NC-2', 'NC-3', 'NC-4', 'NC-5'];
+          const result: { name: string; value: number; color: string; pct: number }[] = [];
+          orderedKeys.forEach((key) => {
+            if (typeCounts[key]) {
+              const cat = NC_CATEGORY_MAP[key];
+              result.push({
+                name: cat.label,
+                value: typeCounts[key],
+                color: cat.color,
+                pct: total > 0 ? Math.round((typeCounts[key] / total) * 100) : 0,
+              });
+            }
+          });
+          // Add any unrecognized types
+          Object.entries(typeCounts).forEach(([name, value], idx) => {
+            if (!orderedKeys.includes(name)) {
+              result.push({
+                name,
+                value,
+                color: NC_COLORS[idx % NC_COLORS.length],
+                pct: total > 0 ? Math.round((value / total) * 100) : 0,
+              });
+            }
+          });
+          return result;
+        })();
+
+        if (analysts.length > 0) {
+          const qaMedia = analysts.reduce((s: number, a: any) => s + a.qaScore, 0) / analysts.length;
+          const iepcMedia = analysts.reduce((s: number, a: any) => s + a.iepcScore, 0) / analysts.length;
+          // Compute pillar averages
+          const avgPillar = (key: string) => {
+            const vals = pScores.map((s: any) => s[key] || 0);
+            return vals.length > 0 ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : 0;
+          };
+          let squads: Record<string, { qa: number; iepc: number; count: number }> = {};
+          let coordenadores: Record<string, { qa: number; count: number }> = {};
+          analysts.forEach((a: any) => {
+            if (!squads[a.squad]) squads[a.squad] = { qa: 0, iepc: 0, count: 0 };
+            squads[a.squad].qa += a.qaScore;
+            squads[a.squad].iepc += a.iepcScore;
+            squads[a.squad].count += 1;
+            const coord = a.coordenador || 'Sem coordenador';
+            if (!coordenadores[coord]) coordenadores[coord] = { qa: 0, count: 0 };
+            coordenadores[coord].qa += a.qaScore;
+            coordenadores[coord].count += 1;
+          });
+          Object.keys(squads).forEach((sq) => {
+            squads[sq].qa = parseFloat((squads[sq].qa / squads[sq].count).toFixed(2));
+            squads[sq].iepc = parseFloat((squads[sq].iepc / squads[sq].count).toFixed(2));
+          });
+          Object.keys(coordenadores).forEach((c) => {
+            coordenadores[c].qa = parseFloat((coordenadores[c].qa / coordenadores[c].count).toFixed(2));
+          });
+          return {
+            periodo,
+            qa: parseFloat(qaMedia.toFixed(2)),
+            iepc: parseFloat(iepcMedia.toFixed(2)),
+            ncs: pNCs.length,
+            elogios: pElogios.length,
+            analistas: analysts.length,
+            squads,
+            coordenadores,
+            p1: avgPillar('p1'), p2: avgPillar('p2'), p3: avgPillar('p3'), p4: avgPillar('p4'), p5: avgPillar('p5'),
+            e1: avgPillar('e1'), e2: avgPillar('e2'), e3: avgPillar('e3'), e4: avgPillar('e4'), e5: avgPillar('e5'),
+            ncByType,
+          };
+        }
+
+        const manualEntry = manualCycles.find((mc) => mc.periodo === periodo);
+        if (manualEntry) {
+          return {
+            periodo,
+            qa: manualEntry.qa_media,
+            iepc: manualEntry.iepc_media,
+            ncs: manualEntry.total_ncs,
+            elogios: 0,
+            analistas: manualEntry.total_analistas ?? 0,
+            squads: {},
+            coordenadores: {},
+            ncByType,
+          };
+        }
+
+        return {
+          periodo,
+          qa: 0,
+          iepc: 0,
+          ncs: pNCs.length,
+          elogios: pElogios.length,
+          analistas: 0,
+          squads: {},
+          coordenadores: {},
+          ncByType,
+        };
+      }).filter((s) => s.qa > 0 || s.iepc > 0 || s.ncs > 0 || s.elogios > 0 || s.analistas > 0);
+
+      setHistory(summaries);
+    } catch {
+      setHistory([]);
+    }
     setLoading(false);
-  }, []);
+  }, [filterByRole]);
 
   useEffect(() => {
     loadData();
-    const handler = () => loadData();
-    window.addEventListener('zetti_import_done', handler);
-    return () => window.removeEventListener('zetti_import_done', handler);
+    const unsubscribe = listenDataChanged(loadData);
+    return unsubscribe;
   }, [loadData]);
 
   useEffect(() => {
-    if (aiResponse) setAiInsight(aiResponse);
-  }, [aiResponse]);
+    if (!filterOpen) return;
+    const handler = () => setFilterOpen(null);
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [filterOpen]);
 
-  const handleGenerateAiInsight = () => {
-    if (history.length === 0) return;
-    const last = history[history.length - 1];
-    const prompt = `Você é um analista de qualidade operacional sênior. Analise estes dados do último ciclo e gere um insight executivo em 3 frases curtas em português:
-- QA Médio: ${last.qa.toFixed(1)}%
-- IEPC Médio: ${last.iepc.toFixed(1)}%
-- Total NCs: ${last.ncs}
-- Total Elogios: ${last.elogios}
-- Analistas: ${last.analistas}
-- Squads: ${Object.entries(last.squads).map(([s, d]) => `${s}: QA ${d.qa.toFixed(1)}%`).join(', ')}
-Foque em riscos operacionais, destaques positivos e recomendações prioritárias.`;
-    sendMessage([{ role: 'user', content: prompt }], { temperature: 0.7, max_tokens: 300 });
+  const handleCloseCycle = async (aiSummary: string) => {
+    const lastPeriodo = history[history.length - 1]?.periodo;
+    if (!lastPeriodo) return;
+    try {
+      const supabase = createClient();
+      if (!supabase) return;
+      await supabase.from('import_cycles').update({ is_closed: true, closed_at: new Date().toISOString(), is_current: false }).eq('periodo', lastPeriodo);
+      const last = history[history.length - 1];
+      await supabase.from('cycle_summaries').upsert({
+        periodo: lastPeriodo,
+        total_analistas: last.analistas,
+        qa_media: last.qa,
+        iepc_media: last.iepc,
+        total_ncs: last.ncs,
+        total_elogios: last.elogios,
+        squad_breakdown: last.squads,
+        insights: { ai_summary: aiSummary },
+        closed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'periodo' });
+      setCloseCycleSuccess(true);
+      setTimeout(() => setCloseCycleSuccess(false), 4000);
+      loadData();
+    } catch (err) {
+      console.error('Erro ao fechar ciclo:', err);
+    }
   };
 
-  const filteredHistory = filterPeriod === 'all' ? history : filterPeriod === '6m' ? history.slice(-6) : history.slice(-3);
-  const lastPeriod = history[history.length - 1];
-  const prevPeriod = history[history.length - 2];
-  const qaTrend = calcTrend(history.map((h) => h.qa));
-  const iepcTrend = calcTrend(history.map((h) => h.iepc));
-  const ncTrend = calcTrend(history.map((h) => h.ncs));
-  const insights = generateInsights(history);
+  const filteredHistory = history.filter((h) => {
+    if (filterCiclo !== 'todos' && h.periodo !== filterCiclo) return false;
+    return true;
+  });
 
-  const TrendIcon = ({ trend }: { trend: 'up' | 'down' | 'stable' }) => {
-    if (trend === 'up') return <TrendingUp size={14} style={{ color: '#22C55E' }} />;
-    if (trend === 'down') return <TrendingDown size={14} style={{ color: '#EF4444' }} />;
-    return <Minus size={14} style={{ color: '#94A3B8' }} />;
+  const getFilteredPeriod = (period: PeriodSummary | undefined): PeriodSummary | undefined => {
+    if (!period) return undefined;
+    if (filterSquad === 'todos' && filterGestor === 'todos') return period;
+    let squads = { ...period.squads };
+    if (filterSquad !== 'todos') {
+      squads = Object.fromEntries(Object.entries(squads).filter(([sq]) => sq === filterSquad));
+    }
+    let coordenadores = { ...period.coordenadores };
+    if (filterGestor !== 'todos') {
+      coordenadores = Object.fromEntries(Object.entries(coordenadores).filter(([c]) => c === filterGestor));
+    }
+    const squadEntries = Object.values(squads);
+    const qa = squadEntries.length > 0
+      ? parseFloat((squadEntries.reduce((s, d) => s + d.qa, 0) / squadEntries.length).toFixed(2))
+      : 0;
+    const iepc = squadEntries.length > 0
+      ? parseFloat((squadEntries.reduce((s, d) => s + d.iepc, 0) / squadEntries.length).toFixed(2))
+      : 0;
+    const analistas = squadEntries.reduce((s, d) => s + d.count, 0);
+    return { ...period, squads, coordenadores, qa, iepc, analistas };
   };
 
-  const squadChartData = lastPeriod
-    ? Object.entries(lastPeriod.squads).map(([squad, data]) => ({
-        squad: squad.length > 12 ? squad.substring(0, 12) + '…' : squad,
-        fullSquad: squad,
-        qa: parseFloat(data.qa.toFixed(1)),
-        iepc: parseFloat(data.iepc.toFixed(1)),
-      }))
+  const rawLastPeriod = filteredHistory[filteredHistory.length - 1];
+  const lastPeriod = getFilteredPeriod(rawLastPeriod);
+
+  // Auto-compare: when a specific cycle is selected, find the previous cycle in the FULL history
+  // Also considers manually registered cycles that may not have imported scores
+  const prevPeriod = (() => {
+    if (filterCiclo === 'todos') {
+      return filteredHistory[filteredHistory.length - 2];
+    }
+    // Find the selected cycle's index in the full (unfiltered) history
+    const selectedIdx = history.findIndex((h) => h.periodo === filterCiclo);
+    if (selectedIdx > 0) return history[selectedIdx - 1];
+
+    // Fallback: look in allPeriodos (sorted) to find the period immediately before filterCiclo
+    // This handles cases where the previous cycle exists in allPeriodos but was filtered from history
+    const sortedPeriodos = [...allPeriodos].sort();
+    const periodIdx = sortedPeriodos.indexOf(filterCiclo);
+    if (periodIdx > 0) {
+      const prevPeriodoKey = sortedPeriodos[periodIdx - 1];
+      // Try to find it in history (may have been filtered out)
+      const found = history.find((h) => h.periodo === prevPeriodoKey);
+      if (found) return found;
+      // Build a minimal summary from manual cycles
+      const manualCycles = fetchManualCycles();
+      const manualEntry = manualCycles.find((mc) => mc.periodo === prevPeriodoKey);
+      if (manualEntry) {
+        return {
+          periodo: prevPeriodoKey,
+          qa: manualEntry.qa_media,
+          iepc: manualEntry.iepc_media,
+          ncs: manualEntry.total_ncs,
+          elogios: 0,
+          analistas: manualEntry.total_analistas ?? 0,
+          squads: {},
+          coordenadores: {},
+        } as PeriodSummary;
+      }
+    }
+    return undefined;
+  })();
+
+  const allSquads = Array.from(new Set(history.flatMap(h => Object.keys(h.squads)))).sort();
+  const allGestores = Array.from(new Set(history.flatMap(h => Object.keys(h.coordenadores || {})))).sort();
+
+  const qaDelta = lastPeriod && prevPeriod ? (lastPeriod.qa - prevPeriod.qa) : null;
+  const iepcDelta = lastPeriod && prevPeriod ? (lastPeriod.iepc - prevPeriod.iepc) : null;
+  const ncDelta = lastPeriod && prevPeriod ? (lastPeriod.ncs - prevPeriod.ncs) : null;
+  const elogioDelta = lastPeriod && prevPeriod ? (lastPeriod.elogios - prevPeriod.elogios) : null;
+
+  const evolutionData = filteredHistory.map(h => ({ periodo: h.periodo, qa: h.qa, iepc: h.iepc }));
+  const qaSparkline = evolutionData.map(d => d.qa);
+  const iepcSparkline = evolutionData.map(d => d.iepc);
+
+  const squadRanking = lastPeriod
+    ? Object.entries(lastPeriod.squads).map(([squad, d]) => ({ squad, qa: d.qa })).sort((a, b) => b.qa - a.qa)
     : [];
+
+  const coordRanking = lastPeriod
+    ? Object.entries(lastPeriod.coordenadores || {}).map(([coord, d]) => ({ coord, qa: d.qa })).sort((a, b) => b.qa - a.qa)
+    : [];
+
+  const totalNCs = lastPeriod?.ncs ?? 0;
+  const totalElogios = lastPeriod?.elogios ?? 0;
+  const totalAnalistas = lastPeriod?.analistas ?? 0;
+  const qaMedia = lastPeriod?.qa ?? 0;
+  const iepcMedia = lastPeriod?.iepc ?? 0;
+  const totalAvaliacoes = totalAnalistas;
+
+  const qaClass = getPerformanceClass(qaMedia);
+  const iepcClass = getPerformanceClass(iepcMedia);
+
+  const hasData = history.length > 0;
+
+  // ── Strategic Radar Data — uses REAL pillar averages from current cycle ──────
+  // When real data exists: shows actual % performance per pillar
+  // When no data: falls back to official weight distribution
+  const qaStrategicPillars = useMemo(() => {
+    const current = lastPeriod;
+    const hasRealData = current && (current.p1 || current.p2 || current.p3 || current.p4 || current.p5);
+    if (hasRealData && current) {
+      // Convert raw pillar points to percentage of max weight
+      return [
+        { subject: 'P1 Fluxo', weight: toPercent(current.p1 || 0, QA_PILLAR_WEIGHTS.p1), pct: toPercent(current.p1 || 0, QA_PILLAR_WEIGHTS.p1), color: PILLAR_COLORS.p1, fullName: 'P1 — Gestão do Fluxo e Rastreabilidade' },
+        { subject: 'P2 Tratativa', weight: toPercent(current.p2 || 0, QA_PILLAR_WEIGHTS.p2), pct: toPercent(current.p2 || 0, QA_PILLAR_WEIGHTS.p2), color: PILLAR_COLORS.p2, fullName: 'P2 — Gestão da Tratativa da Demanda' },
+        { subject: 'P3 Análise', weight: toPercent(current.p3 || 0, QA_PILLAR_WEIGHTS.p3), pct: toPercent(current.p3 || 0, QA_PILLAR_WEIGHTS.p3), color: PILLAR_COLORS.p3, fullName: 'P3 — Análise e Assertividade Técnica' },
+        { subject: 'P4 Comunicação', weight: toPercent(current.p4 || 0, QA_PILLAR_WEIGHTS.p4), pct: toPercent(current.p4 || 0, QA_PILLAR_WEIGHTS.p4), color: PILLAR_COLORS.p4, fullName: 'P4 — Qualidade da Comunicação' },
+        { subject: 'P5 Conduta', weight: toPercent(current.p5 || 0, QA_PILLAR_WEIGHTS.p5), pct: toPercent(current.p5 || 0, QA_PILLAR_WEIGHTS.p5), color: PILLAR_COLORS.p5, fullName: 'P5 — Conduta Relacional' },
+      ];
+    }
+    // Fallback: official weight distribution
+    return [
+      { subject: 'P1 Fluxo', weight: QA_PILLAR_WEIGHTS.p1, pct: QA_PILLAR_WEIGHTS.p1, color: PILLAR_COLORS.p1, fullName: 'P1 — Gestão do Fluxo e Rastreabilidade' },
+      { subject: 'P2 Tratativa', weight: QA_PILLAR_WEIGHTS.p2, pct: QA_PILLAR_WEIGHTS.p2, color: PILLAR_COLORS.p2, fullName: 'P2 — Gestão da Tratativa da Demanda' },
+      { subject: 'P3 Análise', weight: QA_PILLAR_WEIGHTS.p3, pct: QA_PILLAR_WEIGHTS.p3, color: PILLAR_COLORS.p3, fullName: 'P3 — Análise e Assertividade Técnica' },
+      { subject: 'P4 Comunicação', weight: QA_PILLAR_WEIGHTS.p4, pct: QA_PILLAR_WEIGHTS.p4, color: PILLAR_COLORS.p4, fullName: 'P4 — Qualidade da Comunicação' },
+      { subject: 'P5 Conduta', weight: QA_PILLAR_WEIGHTS.p5, pct: QA_PILLAR_WEIGHTS.p5, color: PILLAR_COLORS.p5, fullName: 'P5 — Conduta Relacional' },
+    ];
+  }, [lastPeriod]);
+
+  const iepcStrategicPillars = useMemo(() => {
+    const current = lastPeriod;
+    const hasRealData = current && (current.e1 || current.e2 || current.e3 || current.e4 || current.e5);
+    if (hasRealData && current) {
+      return [
+        { subject: 'E1 Resolução', weight: toPercent(current.e1 || 0, IEPC_PILLAR_WEIGHTS.e1), pct: toPercent(current.e1 || 0, IEPC_PILLAR_WEIGHTS.e1), color: PILLAR_COLORS.e1, fullName: 'E1 — Resolução Percebida' },
+        { subject: 'E2 Compreensão', weight: toPercent(current.e2 || 0, IEPC_PILLAR_WEIGHTS.e2), pct: toPercent(current.e2 || 0, IEPC_PILLAR_WEIGHTS.e2), color: PILLAR_COLORS.e2, fullName: 'E2 — Compreensão e Segurança Percebida' },
+        { subject: 'E3 Esforço', weight: toPercent(current.e3 || 0, IEPC_PILLAR_WEIGHTS.e3), pct: toPercent(current.e3 || 0, IEPC_PILLAR_WEIGHTS.e3), color: PILLAR_COLORS.e3, fullName: 'E3 — Esforço Percebido pelo Cliente' },
+        { subject: 'E4 Tempo', weight: toPercent(current.e4 || 0, IEPC_PILLAR_WEIGHTS.e4), pct: toPercent(current.e4 || 0, IEPC_PILLAR_WEIGHTS.e4), color: PILLAR_COLORS.e4, fullName: 'E4 — Tempo e Fluidez' },
+        { subject: 'E5 Relacional', weight: toPercent(current.e5 || 0, IEPC_PILLAR_WEIGHTS.e5), pct: toPercent(current.e5 || 0, IEPC_PILLAR_WEIGHTS.e5), color: PILLAR_COLORS.e5, fullName: 'E5 — Experiência Relacional' },
+      ];
+    }
+    return [
+      { subject: 'E1 Resolução', weight: IEPC_PILLAR_WEIGHTS.e1, pct: IEPC_PILLAR_WEIGHTS.e1, color: PILLAR_COLORS.e1, fullName: 'E1 — Resolução Percebida' },
+      { subject: 'E2 Compreensão', weight: IEPC_PILLAR_WEIGHTS.e2, pct: IEPC_PILLAR_WEIGHTS.e2, color: PILLAR_COLORS.e2, fullName: 'E2 — Compreensão e Segurança Percebida' },
+      { subject: 'E3 Esforço', weight: IEPC_PILLAR_WEIGHTS.e3, pct: IEPC_PILLAR_WEIGHTS.e3, color: PILLAR_COLORS.e3, fullName: 'E3 — Esforço Percebido pelo Cliente' },
+      { subject: 'E4 Tempo', weight: IEPC_PILLAR_WEIGHTS.e4, pct: IEPC_PILLAR_WEIGHTS.e4, color: PILLAR_COLORS.e4, fullName: 'E4 — Tempo e Fluidez' },
+      { subject: 'E5 Relacional', weight: IEPC_PILLAR_WEIGHTS.e5, pct: IEPC_PILLAR_WEIGHTS.e5, color: PILLAR_COLORS.e5, fullName: 'E5 — Experiência Relacional' },
+    ];
+  }, [lastPeriod]);
+
+  // NC distribution from real data
+  const ncDistribution = useMemo(() => {
+    return lastPeriod?.ncByType || [];
+  }, [lastPeriod]);
+
+  const CustomDot = (props: any) => {
+    const { cx, cy, value, stroke } = props;
+    if (!cx || !cy) return null;
+    const cls = getPerformanceClass(value);
+    return (
+      <g>
+        <circle cx={cx} cy={cy} r={4} fill={stroke} stroke={stroke} strokeWidth={2} />
+        <text x={cx} y={cy - 10} textAnchor="middle" fontSize={9} fontWeight={700} fill={cls.color}>{value?.toFixed(1)}</text>
+      </g>
+    );
+  };
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
@@ -178,284 +1363,635 @@ Foque em riscos operacionais, destaques positivos e recomendações prioritária
       <div className="rounded-xl p-3 text-xs shadow-xl" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.1)' }}>
         <p className="font-semibold text-white mb-2">{label}</p>
         {payload.map((p: any) => (
-          <p key={p.dataKey} style={{ color: p.color }}>{p.name}: {p.value}%</p>
+          <p key={p.dataKey} style={{ color: p.color }}>{p.name}: {p.value?.toFixed ? p.value.toFixed(1) : p.value}</p>
         ))}
       </div>
     );
   };
 
   return (
-    <div className="p-6 max-w-screen-2xl mx-auto w-full">
-      {/* Page header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-white">Painel Executivo</h1>
-          <p className="text-sm mt-0.5" style={{ color: '#94A3B8' }}>
-            Visão histórica consolidada · {allPeriodos.length} ciclo{allPeriodos.length !== 1 ? 's' : ''} registrado{allPeriodos.length !== 1 ? 's' : ''}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
-            {(['all', '6m', '3m'] as const).map((p) => (
-              <button
-                key={p}
-                onClick={() => setFilterPeriod(p)}
-                className="px-3 py-1.5 text-xs font-medium transition-all"
-                style={{
-                  backgroundColor: filterPeriod === p ? '#1E40AF' : 'transparent',
-                  color: filterPeriod === p ? '#fff' : 'rgba(255,255,255,0.4)',
-                }}
-              >
-                {p === 'all' ? 'Todos' : p === '6m' ? '6 meses' : '3 meses'}
-              </button>
-            ))}
-          </div>
-          <button onClick={loadData} className="p-2 rounded-lg transition-colors" style={{ color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <RefreshCw size={14} />
-          </button>
-          {canImport && (
-            <button
-              onClick={() => setImportOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-all"
-              style={{ backgroundColor: '#1E40AF', border: '1px solid rgba(56,189,248,0.2)' }}
-            >
-              Importar
-            </button>
-          )}
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="flex items-center justify-center py-32">
-          <div className="text-center">
-            <div className="w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-sm" style={{ color: '#94A3B8' }}>Carregando dados...</p>
-          </div>
-        </div>
-      ) : history.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-32">
-          <BarChart2 size={48} className="mb-4" style={{ color: 'rgba(255,255,255,0.15)' }} />
-          <p className="text-lg font-semibold text-white mb-2">Nenhum dado disponível</p>
-          <p className="text-sm mb-6" style={{ color: '#94A3B8' }}>Importe dados de ciclos para visualizar o painel executivo</p>
-          {canImport && (
-            <button onClick={() => setImportOpen(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: '#1E40AF' }}>
-              Importar primeiro ciclo
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {/* KPI Row */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {[
-              { label: 'QA Médio', value: lastPeriod ? `${lastPeriod.qa.toFixed(1)}%` : '—', delta: lastPeriod && prevPeriod ? (lastPeriod.qa - prevPeriod.qa).toFixed(1) : null, trend: qaTrend, color: '#38BDF8', icon: <BarChart2 size={16} /> },
-              { label: 'IEPC Médio', value: lastPeriod ? `${lastPeriod.iepc.toFixed(1)}%` : '—', delta: lastPeriod && prevPeriod ? (lastPeriod.iepc - prevPeriod.iepc).toFixed(1) : null, trend: iepcTrend, color: '#06B6D4', icon: <Activity size={16} /> },
-              { label: 'NCs Último Ciclo', value: lastPeriod ? String(lastPeriod.ncs) : '—', delta: lastPeriod && prevPeriod ? String(lastPeriod.ncs - prevPeriod.ncs) : null, trend: (ncTrend === 'up' ? 'down' : ncTrend === 'down' ? 'up' : 'stable') as any, color: '#EF4444', icon: <AlertTriangle size={16} /> },
-              { label: 'Elogios Último Ciclo', value: lastPeriod ? String(lastPeriod.elogios) : '—', delta: lastPeriod && prevPeriod ? String(lastPeriod.elogios - prevPeriod.elogios) : null, trend: calcTrend(history.map((h) => h.elogios)), color: '#F59E0B', icon: <Star size={16} /> },
-            ].map((kpi) => (
-              <div key={kpi.label} className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-medium" style={{ color: '#94A3B8' }}>{kpi.label}</span>
-                  <span style={{ color: kpi.color }}>{kpi.icon}</span>
-                </div>
-                <p className="text-2xl font-bold text-white mb-1">{kpi.value}</p>
-                {kpi.delta !== null && (
-                  <div className="flex items-center gap-1">
-                    <TrendIcon trend={kpi.trend as any} />
-                    <span className="text-xs" style={{ color: '#94A3B8' }}>
-                      {Number(kpi.delta) > 0 ? '+' : ''}{kpi.delta} vs anterior
-                    </span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* AI Insight Panel */}
-          <div className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(56,189,248,0.15)' }}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: 'rgba(56,189,248,0.15)' }}>
-                  <Activity size={12} style={{ color: '#38BDF8' }} />
-                </div>
-                <h3 className="text-sm font-semibold text-white">Inteligência Gerencial — Gemini AI</h3>
-              </div>
-              <button
-                onClick={handleGenerateAiInsight}
-                disabled={aiChatLoading || history.length === 0}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
-                style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}
-              >
-                {aiChatLoading ? <RefreshCw size={11} className="animate-spin" /> : <Activity size={11} />}
-                {aiChatLoading ? 'Analisando...' : 'Gerar Insight'}
-              </button>
-            </div>
-            {aiInsight ? (
-              <p className="text-sm leading-relaxed" style={{ color: '#94A3B8' }}>{aiInsight}</p>
-            ) : (
-              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                Clique em "Gerar Insight" para que a IA analise os dados do último ciclo e gere recomendações executivas.
-              </p>
-            )}
-          </div>
-
-          {/* Charts Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div className="flex items-center justify-between mb-5">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">Evolução QA & IEPC</h3>
-                  <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Tendência histórica por ciclo</p>
-                </div>
-                <TrendIcon trend={qaTrend} />
-              </div>
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={filteredHistory} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                  <XAxis dataKey="periodo" tick={{ fill: '#94A3B8', fontSize: 10 }} />
-                  <YAxis domain={[50, 100]} tick={{ fill: '#94A3B8', fontSize: 10 }} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <ReferenceLine y={85} stroke="rgba(34,197,94,0.3)" strokeDasharray="4 4" />
-                  <Line type="monotone" dataKey="qa" name="QA" stroke="#38BDF8" strokeWidth={2} dot={{ fill: '#38BDF8', r: 3 }} />
-                  <Line type="monotone" dataKey="iepc" name="IEPC" stroke="#06B6D4" strokeWidth={2} dot={{ fill: '#06B6D4', r: 3 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div className="flex items-center justify-between mb-5">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">Performance por Squad</h3>
-                  <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Último ciclo registrado</p>
-                </div>
-                <Users size={14} style={{ color: '#94A3B8' }} />
-              </div>
-              {squadChartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={squadChartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                    <XAxis dataKey="squad" tick={{ fill: '#94A3B8', fontSize: 10 }} />
-                    <YAxis domain={[0, 100]} tick={{ fill: '#94A3B8', fontSize: 10 }} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="qa" name="QA" fill="#38BDF8" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="iepc" name="IEPC" fill="#06B6D4" radius={[3, 3, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex items-center justify-center h-48">
-                  <p className="text-xs" style={{ color: '#94A3B8' }}>Sem dados de squad disponíveis</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* NC + Elogios */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div className="flex items-center justify-between mb-5">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">Evolução de NCs</h3>
-                  <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Não conformidades por ciclo</p>
-                </div>
-                <AlertTriangle size={14} style={{ color: '#EF4444' }} />
-              </div>
-              <ResponsiveContainer width="100%" height={160}>
-                <BarChart data={filteredHistory} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                  <XAxis dataKey="periodo" tick={{ fill: '#94A3B8', fontSize: 10 }} />
-                  <YAxis tick={{ fill: '#94A3B8', fontSize: 10 }} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="ncs" name="NCs" fill="#EF4444" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div className="flex items-center justify-between mb-5">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">Evolução de Elogios</h3>
-                  <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Reconhecimentos por ciclo</p>
-                </div>
-                <Star size={14} style={{ color: '#F59E0B' }} />
-              </div>
-              <ResponsiveContainer width="100%" height={160}>
-                <BarChart data={filteredHistory} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                  <XAxis dataKey="periodo" tick={{ fill: '#94A3B8', fontSize: 10 }} />
-                  <YAxis tick={{ fill: '#94A3B8', fontSize: 10 }} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="elogios" name="Elogios" fill="#F59E0B" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Insights + History Table */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-1 rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <h3 className="text-sm font-semibold text-white mb-4">Insights Gerenciais</h3>
-              {insights.length === 0 ? (
-                <p className="text-xs" style={{ color: '#94A3B8' }}>Importe mais de um ciclo para gerar insights automáticos.</p>
-              ) : (
-                <div className="space-y-3">
-                  {insights.map((insight, i) => (
-                    <div
-                      key={i}
-                      className="flex items-start gap-2.5 p-3 rounded-lg"
-                      style={{
-                        backgroundColor: insight.type === 'positive' ? 'rgba(34,197,94,0.06)' : insight.type === 'negative' ? 'rgba(239,68,68,0.06)' : 'rgba(255,255,255,0.03)',
-                        border: `1px solid ${insight.type === 'positive' ? 'rgba(34,197,94,0.15)' : insight.type === 'negative' ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.06)'}`,
-                      }}
-                    >
-                      <span className="flex-shrink-0 mt-0.5">
-                        {insight.type === 'positive' ? <TrendingUp size={12} style={{ color: '#22C55E' }} /> : insight.type === 'negative' ? <TrendingDown size={12} style={{ color: '#EF4444' }} /> : <Minus size={12} style={{ color: '#94A3B8' }} />}
-                      </span>
-                      <p className="text-xs leading-relaxed" style={{ color: 'rgba(255,255,255,0.65)' }}>{insight.text}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="lg:col-span-2 rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold text-white">Histórico de Ciclos</h3>
-                <Link href="/historico" className="flex items-center gap-1 text-xs" style={{ color: '#38BDF8' }}>
-                  Ver completo <ChevronRight size={12} />
-                </Link>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                      {['Período', 'QA Médio', 'IEPC Médio', 'NCs', 'Elogios', 'Analistas'].map((h) => (
-                        <th key={h} className="text-left py-2 pr-4 font-medium" style={{ color: '#94A3B8' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...history].reverse().slice(0, 8).map((row) => (
-                      <tr key={row.periodo} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                        <td className="py-2 pr-4 font-medium text-white">{row.periodo}</td>
-                        <td className="py-2 pr-4" style={{ color: row.qa >= 85 ? '#22C55E' : row.qa >= 70 ? '#F59E0B' : '#EF4444' }}>{row.qa.toFixed(1)}%</td>
-                        <td className="py-2 pr-4" style={{ color: row.iepc >= 85 ? '#22C55E' : row.iepc >= 70 ? '#F59E0B' : '#EF4444' }}>{row.iepc.toFixed(1)}%</td>
-                        <td className="py-2 pr-4" style={{ color: row.ncs > 10 ? '#EF4444' : 'rgba(255,255,255,0.6)' }}>{row.ncs}</td>
-                        <td className="py-2 pr-4" style={{ color: '#F59E0B' }}>{row.elogios}</td>
-                        <td className="py-2 pr-4" style={{ color: '#94A3B8' }}>{row.analistas}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {history.length === 0 && (
-                  <p className="text-center py-6 text-xs" style={{ color: '#94A3B8' }}>Nenhum ciclo registrado</p>
-                )}
-              </div>
-            </div>
-          </div>
+    <div className="min-h-screen" style={{ backgroundColor: '#0A1628' }}>
+      {closeCycleSuccess && (
+        <div className="fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium text-white" style={{ backgroundColor: '#166534', border: '1px solid rgba(34,197,94,0.3)' }}>
+          <CheckCircle size={14} style={{ color: '#22C55E' }} />
+          Ciclo fechado com sucesso! Snapshot gerado.
         </div>
       )}
 
+      <div className="p-5 max-w-screen-2xl mx-auto">
+        {/* ── Top Bar ── */}
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h1 className="text-xl font-bold text-white">Painel Executivo</h1>
+            <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Visão estratégica da qualidade operacional</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              {/* Ciclo filter */}
+              <div className="relative">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setFilterOpen(filterOpen === 'ciclo' ? null : 'ciclo'); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors"
+                  style={{ backgroundColor: filterCiclo !== 'todos' ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.05)', border: filterCiclo !== 'todos' ? '1px solid rgba(56,189,248,0.3)' : '1px solid rgba(255,255,255,0.08)', color: filterCiclo !== 'todos' ? '#38BDF8' : '#94A3B8' }}
+                >
+                  <Calendar size={12} />
+                  <span>{filterCiclo === 'todos' ? 'Ciclo: Todos' : filterCiclo}</span>
+                  <ChevronDown size={10} />
+                </button>
+                {filterOpen === 'ciclo' && (
+                  <div className="absolute top-full mt-1 left-0 z-50 rounded-xl overflow-hidden min-w-[140px]" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }} onClick={(e) => e.stopPropagation()}>
+                    {['todos', ...allPeriodos].map((p) => (
+                      <button key={p} onClick={() => { setFilterCiclo(p); setFilterOpen(null); }} className="w-full text-left px-3 py-2 text-xs transition-colors hover:bg-white/5" style={{ color: filterCiclo === p ? '#38BDF8' : '#94A3B8' }}>
+                        {p === 'todos' ? 'Todos os ciclos' : p}
+                      </button>
+                    ))}
+                    {allPeriodos.length === 0 && (
+                      <p className="px-3 py-2 text-xs" style={{ color: '#64748B' }}>Nenhum ciclo importado</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Squad filter */}
+              <div className="relative">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setFilterOpen(filterOpen === 'squad' ? null : 'squad'); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors"
+                  style={{ backgroundColor: filterSquad !== 'todos' ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.05)', border: filterSquad !== 'todos' ? '1px solid rgba(56,189,248,0.3)' : '1px solid rgba(255,255,255,0.08)', color: filterSquad !== 'todos' ? '#38BDF8' : '#94A3B8' }}
+                >
+                  <Users size={12} />
+                  <span>{filterSquad === 'todos' ? 'Squad: Todos' : filterSquad}</span>
+                  <ChevronDown size={10} />
+                </button>
+                {filterOpen === 'squad' && (
+                  <div className="absolute top-full mt-1 left-0 z-50 rounded-xl overflow-hidden min-w-[160px]" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }} onClick={(e) => e.stopPropagation()}>
+                    {['todos', ...allSquads].map((sq) => (
+                      <button key={sq} onClick={() => { setFilterSquad(sq); setFilterOpen(null); }} className="w-full text-left px-3 py-2 text-xs transition-colors hover:bg-white/5" style={{ color: filterSquad === sq ? '#38BDF8' : '#94A3B8' }}>
+                        {sq === 'todos' ? 'Todos os squads' : sq}
+                      </button>
+                    ))}
+                    {allSquads.length === 0 && (
+                      <p className="px-3 py-2 text-xs" style={{ color: '#64748B' }}>Nenhum squad disponível</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Gestor filter */}
+              <div className="relative">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setFilterOpen(filterOpen === 'gestor' ? null : 'gestor'); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors"
+                  style={{ backgroundColor: filterGestor !== 'todos' ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.05)', border: filterGestor !== 'todos' ? '1px solid rgba(56,189,248,0.3)' : '1px solid rgba(255,255,255,0.08)', color: filterGestor !== 'todos' ? '#38BDF8' : '#94A3B8' }}
+                >
+                  <span>{filterGestor === 'todos' ? 'Gestor: Todos' : filterGestor}</span>
+                  <ChevronDown size={10} />
+                </button>
+                {filterOpen === 'gestor' && (
+                  <div className="absolute top-full mt-1 left-0 z-50 rounded-xl overflow-hidden min-w-[180px]" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }} onClick={(e) => e.stopPropagation()}>
+                    {['todos', ...allGestores].map((g) => (
+                      <button key={g} onClick={() => { setFilterGestor(g); setFilterOpen(null); }} className="w-full text-left px-3 py-2 text-xs transition-colors hover:bg-white/5" style={{ color: filterGestor === g ? '#38BDF8' : '#94A3B8' }}>
+                        {g === 'todos' ? 'Todos os gestores' : g}
+                      </button>
+                    ))}
+                    {allGestores.length === 0 && (
+                      <p className="px-3 py-2 text-xs" style={{ color: '#64748B' }}>Nenhum gestor disponível</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {(filterCiclo !== 'todos' || filterSquad !== 'todos' || filterGestor !== 'todos') && (
+              <button
+                onClick={() => { setFilterCiclo('todos'); setFilterSquad('todos'); setFilterGestor('todos'); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                style={{ backgroundColor: 'rgba(56,189,248,0.15)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.3)' }}
+              >
+                <X size={11} />
+                Limpar filtros
+              </button>
+            )}
+
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium" style={{ backgroundColor: '#1E40AF', color: '#fff', border: '1px solid rgba(56,189,248,0.2)' }}>
+              <Filter size={12} />
+              Filtros
+            </div>
+            <div className="flex items-center gap-2 text-xs" style={{ color: '#64748B' }}>
+              <span>Última atualização</span>
+              <span className="font-medium text-white">{lastUpdate}</span>
+            </div>
+            <button onClick={loadData} className="p-1.5 rounded-lg transition-colors" style={{ color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <RefreshCw size={13} />
+            </button>
+            {canImport && (
+              <button onClick={() => setImportOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ backgroundColor: '#1E40AF', border: '1px solid rgba(56,189,248,0.2)' }}>
+                Importar
+              </button>
+            )}
+            {canCloseCycle && lastPeriod && (
+              <button onClick={() => setCloseCycleOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.25)' }}>
+                <Lock size={11} />Fechar Ciclo
+              </button>
+            )}
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-32">
+            <div className="text-center">
+              <div className="w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+              <p className="text-sm" style={{ color: '#94A3B8' }}>Carregando dados...</p>
+            </div>
+          </div>
+        ) : !hasData ? (
+          <div className="flex flex-col items-center justify-center py-32 text-center">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)' }}>
+              <BarChart2 size={28} style={{ color: '#38BDF8' }} />
+            </div>
+            <h2 className="text-lg font-bold text-white mb-2">Nenhum dado importado</h2>
+            <p className="text-sm mb-6 max-w-sm" style={{ color: '#64748B' }}>
+              O painel executivo ficará disponível após a primeira importação de dados. Clique em "Importar" para começar.
+            </p>
+            {canImport && (
+              <button onClick={() => setImportOpen(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: '#1E40AF', border: '1px solid rgba(56,189,248,0.3)' }}>
+                <Activity size={14} />
+                Importar dados agora
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* ── Row 1: KPI Cards ── */}
+            <div className="grid grid-cols-5 gap-3">
+              {/* QA Médio */}
+              <div className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: `2px solid ${qaClass.border}` }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(56,189,248,0.18)' }}>
+                    <BarChart2 size={14} style={{ color: '#38BDF8' }} />
+                  </div>
+                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>QA MÉDIO</span>
+                </div>
+                <p className="text-4xl font-black mb-2 leading-none" style={{ color: qaClass.color }}>{qaMedia.toFixed(1)}</p>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1">
+                    {qaDelta !== null && qaDelta >= 0 ? <TrendingUp size={11} style={{ color: '#22C55E' }} /> : <TrendingDown size={11} style={{ color: '#EF4444' }} />}
+                    <span className="text-xs font-medium" style={{ color: qaDelta !== null && qaDelta >= 0 ? '#22C55E' : '#EF4444' }}>
+                      {qaDelta !== null ? `${qaDelta > 0 ? '+' : ''}${qaDelta.toFixed(1)} vs ${prevPeriod?.periodo || 'Ciclo Anterior'}` : 'Sem ciclo anterior'}
+                    </span>
+                  </div>
+                  {qaSparkline.length > 1 && <Sparkline data={qaSparkline} color="#38BDF8" />}
+                </div>
+                <PerformanceBadge score={qaMedia} size="sm" />
+              </div>
+
+              {/* IEPC Médio */}
+              <div className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: `2px solid ${iepcClass.border}` }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(6,182,212,0.18)' }}>
+                    <Star size={14} style={{ color: '#06B6D4' }} />
+                  </div>
+                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>IEPC MÉDIO</span>
+                </div>
+                <p className="text-4xl font-black mb-2 leading-none" style={{ color: iepcClass.color }}>{iepcMedia.toFixed(1)}</p>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1">
+                    {iepcDelta !== null && iepcDelta >= 0 ? <TrendingUp size={11} style={{ color: '#22C55E' }} /> : <TrendingDown size={11} style={{ color: '#EF4444' }} />}
+                    <span className="text-xs font-medium" style={{ color: iepcDelta !== null && iepcDelta >= 0 ? '#22C55E' : '#EF4444' }}>
+                      {iepcDelta !== null ? `${iepcDelta > 0 ? '+' : ''}${iepcDelta.toFixed(1)} vs ${prevPeriod?.periodo || 'Ciclo Anterior'}` : 'Sem ciclo anterior'}
+                    </span>
+                  </div>
+                  {iepcSparkline.length > 1 && <Sparkline data={iepcSparkline} color="#06B6D4" />}
+                </div>
+                <PerformanceBadge score={iepcMedia} size="sm" />
+              </div>
+
+              {/* NCs */}
+              <div className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '2px solid rgba(239,68,68,0.2)' }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(239,68,68,0.18)' }}>
+                    <AlertTriangle size={14} style={{ color: '#EF4444' }} />
+                  </div>
+                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>NÃO CONFORMIDADES</span>
+                </div>
+                <p className="text-4xl font-black text-white mb-2 leading-none">{totalNCs}</p>
+                <div className="flex items-center gap-1">
+                  {ncDelta !== null && ncDelta <= 0 ? <TrendingDown size={11} style={{ color: '#22C55E' }} /> : <TrendingUp size={11} style={{ color: '#EF4444' }} />}
+                  <span className="text-xs font-medium" style={{ color: ncDelta !== null && ncDelta <= 0 ? '#22C55E' : '#EF4444' }}>
+                    {ncDelta !== null ? `${ncDelta > 0 ? '+' : ''}${ncDelta} vs ${prevPeriod?.periodo || 'Ciclo Anterior'}` : 'Sem ciclo anterior'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Elogios */}
+              <div className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '2px solid rgba(245,158,11,0.2)' }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(245,158,11,0.18)' }}>
+                    <Star size={14} style={{ color: '#F59E0B' }} />
+                  </div>
+                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>ELOGIOS</span>
+                </div>
+                <p className="text-4xl font-black text-white mb-2 leading-none">{totalElogios}</p>
+                <div className="flex items-center gap-1">
+                  {elogioDelta !== null && elogioDelta >= 0 ? <TrendingUp size={11} style={{ color: '#22C55E' }} /> : <TrendingDown size={11} style={{ color: '#EF4444' }} />}
+                  <span className="text-xs font-medium" style={{ color: elogioDelta !== null && elogioDelta >= 0 ? '#22C55E' : '#EF4444' }}>
+                    {elogioDelta !== null ? `${elogioDelta > 0 ? '+' : ''}${elogioDelta} vs ${prevPeriod?.periodo || 'Ciclo Anterior'}` : 'Sem ciclo anterior'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Avaliações */}
+              <div className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '2px solid rgba(34,197,94,0.2)' }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(34,197,94,0.18)' }}>
+                    <CheckCircle size={14} style={{ color: '#22C55E' }} />
+                  </div>
+                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>AVALIAÇÕES</span>
+                </div>
+                <p className="text-4xl font-black text-white mb-2 leading-none">{totalAvaliacoes}</p>
+                <div className="w-full rounded-full h-2 mt-2" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
+                  <div className="h-2 rounded-full" style={{ width: '100%', backgroundColor: '#22C55E' }} />
+                </div>
+                <p className="text-xs mt-1.5 font-medium" style={{ color: '#22C55E' }}>100% do Ciclo</p>
+              </div>
+            </div>
+
+            {/* ── Row 2: Evolution Chart + Cycle Summary ── */}
+            <div className="grid grid-cols-12 gap-4">
+              <div className="col-span-9 rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(56,189,248,0.18)' }}>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Activity size={15} style={{ color: '#38BDF8' }} />
+                      <h3 className="text-sm font-bold text-white">Evolução QA × IEPC</h3>
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(56,189,248,0.12)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}>Gráfico Estratégico Principal</span>
+                    </div>
+                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>
+                      {prevPeriod ? `Comparando ${lastPeriod?.periodo} vs ${prevPeriod.periodo}` : 'Tendência histórica'}
+                    </p>
+                  </div>
+                  <Link href="/evolucao-geral" className="text-xs flex items-center gap-1" style={{ color: '#38BDF8' }}>
+                    Ver mais <ChevronRight size={11} />
+                  </Link>
+                </div>
+                <ResponsiveContainer width="100%" height={240}>
+                  <LineChart data={evolutionData} margin={{ top: 20, right: 20, left: -20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                    <XAxis dataKey="periodo" tick={{ fill: '#64748B', fontSize: 10 }} />
+                    <YAxis domain={[60, 100]} tick={{ fill: '#64748B', fontSize: 10 }} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Line type="monotone" dataKey="qa" name="QA Médio" stroke="#38BDF8" strokeWidth={2.5} dot={<CustomDot />} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="iepc" name="IEPC Médio" stroke="#06B6D4" strokeWidth={2.5} dot={<CustomDot />} activeDot={{ r: 5 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+                <div className="flex items-center gap-6 mt-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-0.5 rounded" style={{ backgroundColor: '#38BDF8' }} />
+                    <span className="text-xs" style={{ color: '#64748B' }}>QA Médio</span>
+                    <span className="text-sm font-bold" style={{ color: qaClass.color }}>{qaMedia.toFixed(1)}</span>
+                    <PerformanceBadge score={qaMedia} size="xs" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-0.5 rounded" style={{ backgroundColor: '#06B6D4' }} />
+                    <span className="text-xs" style={{ color: '#64748B' }}>IEPC Médio</span>
+                    <span className="text-sm font-bold" style={{ color: iepcClass.color }}>{iepcMedia.toFixed(1)}</span>
+                    <PerformanceBadge score={iepcMedia} size="xs" />
+                  </div>
+                  {prevPeriod && (
+                    <div className="ml-auto flex items-center gap-2 text-xs px-3 py-1 rounded-lg" style={{ backgroundColor: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.15)' }}>
+                      <span style={{ color: '#64748B' }}>Comparando:</span>
+                      <span className="font-semibold" style={{ color: '#38BDF8' }}>{lastPeriod?.periodo}</span>
+                      <span style={{ color: '#64748B' }}>vs</span>
+                      <span className="font-semibold" style={{ color: '#94A3B8' }}>{prevPeriod.periodo}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Cycle Summary */}
+              <div className="col-span-3 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <h3 className="text-sm font-bold text-white mb-3">Resumo do Ciclo Atual</h3>
+                <div className="space-y-2.5">
+                  {[
+                    { label: 'Período', value: lastPeriod ? lastPeriod.periodo : '—' },
+                    { label: 'Ciclo anterior', value: prevPeriod ? prevPeriod.periodo : 'N/A' },
+                    { label: 'Avaliações realizadas', value: String(totalAvaliacoes) },
+                    { label: 'Analistas avaliados', value: String(totalAnalistas) },
+                    { label: 'Squads', value: String(squadRanking.length) },
+                    { label: 'Coordenadores', value: String(coordRanking.length) },
+                  ].map((row) => (
+                    <div key={row.label}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs" style={{ color: '#64748B' }}>{row.label}</span>
+                        <span className="text-xs font-semibold text-white">{row.value}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+                  <p className="text-xs font-bold mb-2" style={{ color: '#94A3B8' }}>Classificação de Performance</p>
+                  {[
+                    { label: 'Excelência', range: '≥ 90', color: '#10b981' },
+                    { label: 'Performance', range: '80–89', color: '#facc15' },
+                    { label: 'Operacional', range: '70–79', color: '#f59e0b' },
+                    { label: 'Crítico', range: '< 70', color: '#ef4444' },
+                  ].map(c => (
+                    <div key={c.label} className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
+                        <span className="text-xs" style={{ color: '#94A3B8' }}>{c.label}</span>
+                      </div>
+                      <span className="text-xs font-medium" style={{ color: '#64748B' }}>{c.range}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* ── Row 3: Mapa Estratégico QA + IEPC ── */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Mapa Estratégico QA */}
+              <div
+                className="rounded-xl p-5 cursor-pointer transition-all hover:border-sky-500/40"
+                style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(56,189,248,0.2)' }}
+                onClick={() => setPilarModal('QA')}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Target size={14} style={{ color: '#38BDF8' }} />
+                      <h3 className="text-sm font-bold text-white">Mapa Estratégico QA</h3>
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(56,189,248,0.12)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}>Distribuição Estratégica</span>
+                    </div>
+                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Peso oficial dos pilares · Total: 100 pts</p>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: '#94A3B8' }}>
+                    <Info size={10} />
+                    <span>Ver detalhes</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div style={{ flex: '0 0 55%' }}>
+                    <StrategicRadarChart data={qaStrategicPillars} type="QA" maxScale={40} />
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    {qaStrategicPillars.map((p) => (
+                      <div key={p.subject} className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+                        <span className="text-xs flex-1 truncate" style={{ color: '#94A3B8' }}>{p.subject}</span>
+                        <span className="text-xs font-bold" style={{ color: p.color }}>{p.weight}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Mapa Estratégico IEPC */}
+              <div
+                className="rounded-xl p-5 cursor-pointer transition-all hover:border-cyan-500/40"
+                style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(6,182,212,0.2)' }}
+                onClick={() => setPilarModal('IEPC')}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Zap size={14} style={{ color: '#06B6D4' }} />
+                      <h3 className="text-sm font-bold text-white">Mapa Estratégico IEPC</h3>
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(6,182,212,0.12)', color: '#06B6D4', border: '1px solid rgba(6,182,212,0.2)' }}>Distribuição Estratégica</span>
+                    </div>
+                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Peso oficial dos pilares · Total: 100 pts</p>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: '#94A3B8' }}>
+                    <Info size={10} />
+                    <span>Ver detalhes</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div style={{ flex: '0 0 55%' }}>
+                    <StrategicRadarChart data={iepcStrategicPillars} type="IEPC" maxScale={35} />
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    {iepcStrategicPillars.map((p) => (
+                      <div key={p.subject} className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
+                        <span className="text-xs flex-1 truncate" style={{ color: '#94A3B8' }}>{p.subject}</span>
+                        <span className="text-xs font-bold" style={{ color: p.color }}>{p.weight}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ── Row 4: Destaques Operacionais ── */}
+            <OperationalHighlights lastPeriod={lastPeriod} history={filteredHistory} />
+
+            {/* ── Row 5: Squad Ranking + Coordinator Ranking + Heatmap ── */}
+            <div className="grid grid-cols-12 gap-4">
+              <div className="col-span-4 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Ranking de Squads</h3>
+                    <p className="text-xs" style={{ color: '#64748B' }}>Por QA Médio</p>
+                  </div>
+                  <Link href="/cycle-dashboard" className="text-xs flex items-center gap-1" style={{ color: '#38BDF8' }}>
+                    Ver ranking completo <ChevronRight size={11} />
+                  </Link>
+                </div>
+                <div className="space-y-3">
+                  {squadRanking.slice(0, 7).map((item, i) => {
+                    const cls = getPerformanceClass(item.qa);
+                    return (
+                      <div key={item.squad} className="flex items-center gap-3">
+                        <span className="text-xs w-4 text-center font-medium" style={{ color: '#64748B' }}>{i + 1}</span>
+                        <span className="text-xs flex-1 truncate text-white">{item.squad}</span>
+                        <div className="flex items-center gap-2">
+                          <div className="w-20 rounded-full h-1.5" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
+                            <div className="h-1.5 rounded-full" style={{ width: `${(item.qa / 100) * 100}%`, backgroundColor: cls.color }} />
+                          </div>
+                          <span className="text-xs font-bold w-8 text-right" style={{ color: cls.color }}>{item.qa.toFixed(1)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="col-span-4 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Ranking de Coordenadores</h3>
+                    <p className="text-xs" style={{ color: '#64748B' }}>Por QA Médio</p>
+                  </div>
+                  <Link href="/cycle-dashboard" className="text-xs flex items-center gap-1" style={{ color: '#38BDF8' }}>
+                    Ver ranking completo <ChevronRight size={11} />
+                  </Link>
+                </div>
+                <div className="space-y-3">
+                  {coordRanking.slice(0, 5).map((item, i) => {
+                    const cls = getPerformanceClass(item.qa);
+                    return (
+                      <div key={item.coord} className="flex items-center gap-3">
+                        <span className="text-xs w-4 text-center font-medium" style={{ color: '#64748B' }}>{i + 1}</span>
+                        <span className="text-xs flex-1 truncate text-white">{item.coord}</span>
+                        <div className="flex items-center gap-2">
+                          <div className="w-20 rounded-full h-1.5" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
+                            <div className="h-1.5 rounded-full" style={{ width: `${(item.qa / 100) * 100}%`, backgroundColor: cls.color }} />
+                          </div>
+                          <span className="text-xs font-bold w-8 text-right" style={{ color: cls.color }}>{item.qa.toFixed(1)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="col-span-4 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <div className="mb-3">
+                  <h3 className="text-sm font-bold text-white">Heatmap QA Médio</h3>
+                  <p className="text-xs" style={{ color: '#64748B' }}>Por Squad × Pilares QA</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr>
+                        <th className="text-left pb-2 pr-2 font-medium" style={{ color: '#64748B', fontSize: 9 }}>Squad</th>
+                        {['P1 Fluxo', 'P2 Trat.', 'P3 Anál.', 'P4 Com.', 'P5 Cond.'].map(m => (
+                          <th key={m} className="pb-2 px-1 font-medium text-center" style={{ color: '#64748B', fontSize: 9 }}>{m}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {squadRanking.length > 0 ? squadRanking.map((row) => (
+                        <tr key={row.squad}>
+                          <td className="pr-2 py-0.5 text-white truncate" style={{ fontSize: 9, maxWidth: 70 }}>{row.squad}</td>
+                          {[row.qa, row.qa, row.qa, row.qa, row.qa].map((val, i) => (
+                            <td key={i} className="px-1 py-0.5 text-center rounded" style={{ fontSize: 9 }}>
+                              <span className="px-1 py-0.5 rounded" style={{ backgroundColor: getHeatBg(val), color: getHeatColor(val), fontWeight: 600 }}>{val.toFixed(0)}</span>
+                            </td>
+                          ))}
+                        </tr>
+                      )) : (
+                        <tr><td colSpan={6} className="py-4 text-center text-xs" style={{ color: '#64748B' }}>Sem dados importados</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  {[{ color: '#ef4444', bg: 'rgba(239,68,68,0.18)', label: '< 70' }, { color: '#f59e0b', bg: 'rgba(245,158,11,0.18)', label: '70–79' }, { color: '#facc15', bg: 'rgba(250,204,21,0.12)', label: '80–89' }, { color: '#10b981', bg: 'rgba(16,185,129,0.18)', label: '≥ 90' }].map(l => (
+                    <div key={l.label} className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: l.bg, border: `1px solid ${l.color}` }} />
+                      <span style={{ fontSize: 9, color: '#64748B' }}>{l.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* ── Row 6: NC Donut + Risk Alerts ── */}
+            <div className="grid grid-cols-12 gap-4">
+              {/* NC Donut — Distribuição de Não Conformidades */}
+              <div
+                className="col-span-5 rounded-xl p-4 cursor-pointer transition-all hover:border-red-500/30"
+                style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)' }}
+                onClick={() => setPilarModal('NC')}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle size={13} style={{ color: '#EF4444' }} />
+                      <h3 className="text-sm font-bold text-white">Distribuição de Não Conformidades</h3>
+                    </div>
+                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>NCs por Categoria · Total no ciclo: {totalNCs}</p>
+                  </div>
+                  <Link href="/nao-conformidades" className="text-xs flex items-center gap-1" style={{ color: '#38BDF8' }} onClick={e => e.stopPropagation()}>
+                    Ver mais <ChevronRight size={11} />
+                  </Link>
+                </div>
+                <NCDonutChart ncData={ncDistribution} total={totalNCs} />
+              </div>
+
+              {/* Risk Alerts */}
+              <div className="col-span-7 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-white">Alertas e Indicadores de Risco</h3>
+                  <Link href="/nao-conformidades" className="text-xs flex items-center gap-1" style={{ color: '#38BDF8' }}>
+                    Ver todos <ChevronRight size={11} />
+                  </Link>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex items-start gap-3 p-3 rounded-xl" style={{ backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(239,68,68,0.15)' }}>
+                      <AlertTriangle size={14} style={{ color: '#EF4444' }} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-white">{totalNCs > 0 ? `${totalNCs} NCs registradas` : 'Sem NCs registradas'}</p>
+                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Acompanhe os casos críticos</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-xl" style={{ backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(245,158,11,0.15)' }}>
+                      <RefreshCw size={14} style={{ color: '#F59E0B' }} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-white">{ncDelta !== null ? `${ncDelta > 0 ? '+' : ''}${ncDelta} vs ${prevPeriod?.periodo}` : 'Sem comparativo'}</p>
+                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Variação de NCs no ciclo</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-xl" style={{ backgroundColor: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.2)' }}>
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(56,189,248,0.15)' }}>
+                      <Target size={14} style={{ color: '#38BDF8' }} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-white">QA: {qaMedia.toFixed(1)} {qaDelta !== null ? (qaDelta >= 0 ? '↑' : '↓') + Math.abs(qaDelta).toFixed(1) : ''}</p>
+                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>vs {prevPeriod?.periodo || 'ciclo anterior'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-xl" style={{ backgroundColor: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(34,197,94,0.15)' }}>
+                      <TrendingUp size={14} style={{ color: '#22C55E' }} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-white">IEPC: {iepcMedia.toFixed(1)} {iepcDelta !== null ? (iepcDelta >= 0 ? '↑' : '↓') + Math.abs(iepcDelta).toFixed(1) : ''}</p>
+                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>vs {prevPeriod?.periodo || 'ciclo anterior'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {canImport && <ImportModal isOpen={importOpen} onClose={() => setImportOpen(false)} />}
+
+      {closeCycleOpen && lastPeriod && (
+        <CloseCycleModal
+          periodo={lastPeriod.periodo}
+          summary={lastPeriod}
+          onClose={() => setCloseCycleOpen(false)}
+          onConfirm={handleCloseCycle}
+        />
+      )}
+
+      {pilarModal && (
+        <PilarModal
+          type={pilarModal}
+          onClose={() => setPilarModal(null)}
+          qaPillars={qaStrategicPillars}
+          iepcPillars={iepcStrategicPillars}
+          ncData={ncDistribution}
+          totalNCs={totalNCs}
+          periodo={lastPeriod?.periodo}
+        />
+      )}
+
+      {drilldownCiclo && (
+        <DrilldownPanel
+          initialCiclo={drilldownCiclo}
+          onClose={() => setDrilldownCiclo(null)}
+        />
+      )}
     </div>
   );
 }

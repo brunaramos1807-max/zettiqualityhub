@@ -1,6 +1,5 @@
 'use client';
-import React, { useState, useEffect, useCallback } from 'react';
-
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 
 import ImportModal from '@/components/ImportModal';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
@@ -13,6 +12,7 @@ import {
   buildAnalystsFromScores,
   type RealAnalyst,
 } from '@/lib/services/dataService';
+import { getActiveCycle } from '@/lib/services/supabaseDataService';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { Activity, AlertTriangle, Users, TrendingUp, RefreshCw, BarChart2, ChevronUp, ChevronDown } from 'lucide-react';
 
@@ -32,6 +32,12 @@ function CicloAtualContent() {
   const [lastClosedAnalysts, setLastClosedAnalysts] = useState<RealAnalyst[]>([]);
   const [currentPeriodo, setCurrentPeriodo] = useState('');
   const [lastPeriodo, setLastPeriodo] = useState('');
+  const [allPeriodos, setAllPeriodos] = useState<string[]>([]);
+  const [selectedPeriodo, setSelectedPeriodo] = useState<string>('');
+  const [activeCycleDefault, setActiveCycleDefault] = useState<string>('');
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Use a ref to track selected periodo without causing stale closures
+  const selectedPeriodoRef = useRef<string>('');
 
   const canImport = session?.permissoes?.permissao_editar ||
     session?.permissoes?.acesso_total ||
@@ -39,26 +45,53 @@ function CicloAtualContent() {
     session?.cargo === 'Coordenador' ||
     session?.cargo === 'Coordenador Geral';
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (overridePeriodo?: string) => {
     setLoading(true);
-    const [scores, periodos, allNCs, allElogios] = await Promise.all([
+    const [scores, periodos, allNCs, allElogios, savedActiveCycle] = await Promise.all([
       fetchCycleScores(),
       fetchAllPeriodos(),
       fetchNCRecords(),
       fetchElogios(),
+      getActiveCycle(),
     ]);
 
-    if (periodos.length === 0) {
+    setAllPeriodos(periodos);
+
+    // Determine which cycle to display
+    // Priority: overridePeriodo > selectedPeriodoRef > savedActiveCycle > periodos[0]
+    const currentSelected = selectedPeriodoRef.current;
+
+    // The active cycle from settings (may not have data yet)
+    const activeCycleFromSettings = savedActiveCycle || '';
+    setActiveCycleDefault(activeCycleFromSettings || (periodos.length > 0 ? periodos[0] : ''));
+
+    // Build the full list including the active cycle even if it has no data
+    const allPeriodsWithActive = activeCycleFromSettings && !periodos.includes(activeCycleFromSettings)
+      ? [activeCycleFromSettings, ...periodos]
+      : periodos;
+
+    if (allPeriodsWithActive.length === 0) {
       setLoading(false);
       return;
     }
 
-    // Current = latest period, last closed = second to last
-    const current = periodos[periodos.length - 1];
-    const lastClosed = periodos.length > 1 ? periodos[periodos.length - 2] : '';
+    setAllPeriodos(allPeriodsWithActive);
+
+    const current = overridePeriodo
+      ? overridePeriodo
+      : (currentSelected && allPeriodsWithActive.includes(currentSelected))
+        ? currentSelected
+        : activeCycleFromSettings || allPeriodsWithActive[0];
+
+    const currentIdx = allPeriodsWithActive.indexOf(current);
+    const lastClosed = currentIdx < allPeriodsWithActive.length - 1 ? allPeriodsWithActive[currentIdx + 1] : '';
 
     setCurrentPeriodo(current);
     setLastPeriodo(lastClosed);
+    if (!currentSelected) {
+      setSelectedPeriodo(current);
+      selectedPeriodoRef.current = current;
+    }
 
     const currentScores = scores.filter((s: any) => s.periodo === current);
     const lastScores = lastClosed ? scores.filter((s: any) => s.periodo === lastClosed) : [];
@@ -74,10 +107,33 @@ function CicloAtualContent() {
 
   useEffect(() => {
     loadData();
-    const handler = () => loadData();
-    window.addEventListener('zetti_import_done', handler);
-    return () => window.removeEventListener('zetti_import_done', handler);
+
+    const handleImport = () => loadData();
+    const handleCycleChange = () => {
+      // Reset selected periodo so it picks up the new active cycle
+      selectedPeriodoRef.current = '';
+      setSelectedPeriodo('');
+      loadData();
+    };
+    window.addEventListener('zetti_import_done', handleImport);
+    window.addEventListener('zetti_active_cycle_changed', handleCycleChange);
+
+    pollingRef.current = setInterval(() => {
+      loadData();
+    }, 30000);
+
+    return () => {
+      window.removeEventListener('zetti_import_done', handleImport);
+      window.removeEventListener('zetti_active_cycle_changed', handleCycleChange);
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
   }, [loadData]);
+
+  const handlePeriodoChange = (periodo: string) => {
+    setSelectedPeriodo(periodo);
+    selectedPeriodoRef.current = periodo;
+    loadData(periodo);
+  };
 
   const qaMedia = analysts.length > 0
     ? analysts.reduce((s, a) => s + a.qaScore, 0) / analysts.length
@@ -96,7 +152,6 @@ function CicloAtualContent() {
   const qaDiff = qaMedia - lastQaMedia;
   const iepcDiff = iepcMedia - lastIepcMedia;
 
-  // Squad breakdown
   const squadMap: Record<string, { qa: number; iepc: number; count: number; ncs: number }> = {};
   analysts.forEach((a) => {
     if (!squadMap[a.squad]) squadMap[a.squad] = { qa: 0, iepc: 0, count: 0, ncs: 0 };
@@ -113,12 +168,10 @@ function CicloAtualContent() {
     count: d.count,
   }));
 
-  // Top and critical analysts
   const sortedByQA = [...analysts].sort((a, b) => b.qaScore - a.qaScore);
   const topAnalysts = sortedByQA.slice(0, 5);
   const criticalAnalysts = sortedByQA.slice(-3).reverse();
 
-  // NC types breakdown
   const ncTypes: Record<string, number> = {};
   ncs.forEach((nc) => {
     const tipo = nc.tipo_nc || 'Outros';
@@ -156,12 +209,17 @@ function CicloAtualContent() {
       <main className="flex-1">
         <div className="flex items-start justify-between mb-6">
           <div>
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
               <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
               <h1 className="text-xl font-bold text-white">Ciclo Atual</h1>
               {currentPeriodo && (
                 <span className="px-2 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: '#60A5FA' }}>
                   {currentPeriodo}
+                </span>
+              )}
+              {currentPeriodo === activeCycleDefault && (
+                <span className="px-2 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: 'rgba(34,197,94,0.12)', color: '#22C55E' }}>
+                  Ciclo Ativo
                 </span>
               )}
             </div>
@@ -170,9 +228,29 @@ function CicloAtualContent() {
               {lastPeriodo && ` · Comparativo com ${lastPeriodo}`}
             </p>
           </div>
-          <button onClick={loadData} className="p-2 rounded-lg transition-colors" style={{ color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <RefreshCw size={14} />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Cycle Selector */}
+            {allPeriodos.length > 0 && (
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.4)' }}>Ciclo:</label>
+                <select
+                  value={selectedPeriodo || currentPeriodo}
+                  onChange={(e) => handlePeriodoChange(e.target.value)}
+                  className="px-3 py-1.5 rounded-lg text-sm text-white outline-none"
+                  style={{ backgroundColor: '#111827', border: '1px solid rgba(255,255,255,0.12)' }}
+                >
+                  {allPeriodos.map((p) => (
+                    <option key={p} value={p}>
+                      {p}{p === activeCycleDefault ? ' ★' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <button onClick={() => loadData(selectedPeriodo || undefined)} className="p-2 rounded-lg transition-colors" style={{ color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <RefreshCw size={14} />
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -182,7 +260,7 @@ function CicloAtualContent() {
         ) : analysts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-32">
             <Activity size={48} className="mb-4" style={{ color: 'rgba(255,255,255,0.15)' }} />
-            <p className="text-lg font-semibold text-white mb-2">Nenhum dado do ciclo atual</p>
+            <p className="text-lg font-semibold text-white mb-2">Nenhum dado para o ciclo {currentPeriodo || 'selecionado'}</p>
             <p className="text-sm mb-6" style={{ color: 'rgba(255,255,255,0.4)' }}>Importe dados para acompanhar o ciclo em andamento</p>
             {canImport && (
               <button onClick={() => setImportOpen(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: '#1E40AF' }}>
@@ -308,7 +386,7 @@ function CicloAtualContent() {
 
             {/* Full analyst table */}
             <div className="rounded-xl p-5" style={{ backgroundColor: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <h3 className="text-sm font-semibold text-white mb-4">Ranking do Ciclo Atual — {currentPeriodo}</h3>
+              <h3 className="text-sm font-semibold text-white mb-4">Ranking do Ciclo — {currentPeriodo}</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>

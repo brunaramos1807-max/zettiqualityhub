@@ -30,7 +30,7 @@ import type { ViewMode } from './CycleFilters';
 
 export default function CycleDashboard() {
   const searchParams = useSearchParams();
-  const { session } = useSystemAuth();
+  const { session, userRole, userSquad, userSquads } = useSystemAuth();
   const [importOpen, setImportOpen] = useState(false);
   const [selectedSquad, setSelectedSquad] = useState<string>('all');
   const [selectedAnalyst, setSelectedAnalyst] = useState<string>('all');
@@ -48,11 +48,26 @@ export default function CycleDashboard() {
   // Role-based permissions
   const canImport = session?.permissoes?.permissao_editar || session?.permissoes?.acesso_total || session?.cargo === 'Administrador' || session?.cargo === 'Coordenador' || session?.cargo === 'Coordenador Geral';
   const canExport = session?.permissoes?.permissao_acessar_relatorios || session?.permissoes?.acesso_total || session?.cargo === 'Administrador';
+
+  // Coordinators can see all squads general data but cannot drill into analysts from other squads
+  const isCoordinator = userRole === 'Coordenador';
+  const coordinatorSquads = isCoordinator
+    ? (userSquads.length > 0 ? userSquads : (userSquad ? [userSquad] : []))
+    : [];
+
+  // allowedSquads: null = all squads visible; array = restricted to those squads
   const allowedSquads = session?.permissoes?.visualizar_todas_equipes || session?.permissoes?.acesso_total
     ? null // null = all squads
     : session?.permissoes?.visualizar_equipes_especificas?.length
     ? session.permissoes.visualizar_equipes_especificas
-    : null;
+    : null; // coordinators see all squads (general data), restriction is only on analyst drilldown
+
+  // Can a coordinator drill into a specific analyst's details?
+  const canViewAnalystDetail = (analystSquad: string) => {
+    if (!isCoordinator) return true; // non-coordinators: always allowed
+    if (coordinatorSquads.length === 0) return true; // no squad restriction
+    return coordinatorSquads.includes(analystSquad);
+  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -96,6 +111,8 @@ export default function CycleDashboard() {
 
   const handleAnalystSelect = (analystId: string) => {
     const found = allAnalysts.find((a) => a.id === analystId) || null;
+    // Coordinators can only drill into analysts from their own squads
+    if (found && !canViewAnalystDetail(found.squad)) return;
     setDrilldownAnalyst(found);
     setSelectedAnalyst(analystId);
   };
@@ -314,6 +331,7 @@ export default function CycleDashboard() {
                     <AnalystsOverviewTable
                       analysts={filteredAnalysts}
                       onSelectAnalyst={handleAnalystSelect}
+                      canViewDetail={canViewAnalystDetail}
                     />
                   )}
                 </>
@@ -351,6 +369,7 @@ export default function CycleDashboard() {
                       <AnalystsOverviewTable
                         analysts={filteredAnalysts}
                         onSelectAnalyst={handleAnalystSelect}
+                        canViewDetail={canViewAnalystDetail}
                       />
                     </div>
                   </div>
@@ -384,9 +403,11 @@ export default function CycleDashboard() {
 function AnalystsOverviewTable({
   analysts,
   onSelectAnalyst,
+  canViewDetail,
 }: {
   analysts: RealAnalyst[];
   onSelectAnalyst: (id: string) => void;
+  canViewDetail?: (squad: string) => boolean;
 }) {
   const getScoreColor = (score: number) =>
     score >= 85 ? '#22C55E' : score >= 70 ? '#EAB308' : '#EF4444';
@@ -431,14 +452,16 @@ function AnalystsOverviewTable({
             </tr>
           </thead>
           <tbody>
-            {analysts.map((analyst) => (
+            {analysts.map((analyst) => {
+              const canDetail = !canViewDetail || canViewDetail(analyst.squad);
+              return (
               <tr
                 key={`row-${analyst.id}`}
-                className="cursor-pointer transition-colors"
+                className={canDetail ? "cursor-pointer transition-colors" : "transition-colors"}
                 style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
                 onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.03)')}
                 onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                onClick={() => onSelectAnalyst(analyst.id)}
+                onClick={() => canDetail && onSelectAnalyst(analyst.id)}
               >
                 <td className="py-3 px-3 font-medium text-white">{analyst.name}</td>
                 <td className="py-3 px-3" style={{ color: '#8B949E' }}>{analyst.squad}</td>
@@ -477,12 +500,19 @@ function AnalystsOverviewTable({
                   </span>
                 </td>
                 <td className="py-3 px-3">
-                  <button className="text-xs font-medium" style={{ color: '#3B82F6' }}>
-                    Ver detalhes →
-                  </button>
+                  {canDetail ? (
+                    <button className="text-xs font-medium" style={{ color: '#3B82F6' }}>
+                      Ver detalhes →
+                    </button>
+                  ) : (
+                    <span className="text-xs font-medium" style={{ color: '#64748B' }} title="Acesso restrito — outra equipe">
+                      🔒 Restrito
+                    </span>
+                  )}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

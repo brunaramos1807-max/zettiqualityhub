@@ -1,6 +1,11 @@
-import React from 'react';
-import LoginScreen from './components/LoginScreen';
+'use client';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
-export default function SignUpLoginPage() {
-  return <LoginScreen />;
+export default function SignUpLoginRedirect() {
+  const router = useRouter();
+  useEffect(() => {
+    router?.replace('/');
+  }, [router]);
+  return null;
 }
