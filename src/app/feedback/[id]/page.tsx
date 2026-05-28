@@ -1108,7 +1108,6 @@ function PDIDevBlock({ pdiObjetivos, setPdiObjetivos, mensagemEvolutiva, onMensa
         {/* Objective Cards */}
         <div className="space-y-4">
           {pdiObjetivos.map((obj, index) => {
-            const statusCfg = OBJ_STATUS_CFG[obj.status];
             return (
               <div key={obj.id} className="rounded-xl p-4 space-y-3 print-card"
                 style={{ background: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.18)' }}>
@@ -1116,9 +1115,6 @@ function PDIDevBlock({ pdiObjetivos, setPdiObjetivos, mensagemEvolutiva, onMensa
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-sky-400 uppercase tracking-wider">Objetivo {index + 1}</span>
-                    <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: statusCfg.bg, color: statusCfg.color }}>
-                      {statusCfg.icon} {statusCfg.label}
-                    </span>
                   </div>
                   {pdiObjetivos.length > 1 && (
                     <button type="button" onClick={() => removeObj(index)}
@@ -1129,29 +1125,15 @@ function PDIDevBlock({ pdiObjetivos, setPdiObjetivos, mensagemEvolutiva, onMensa
                   )}
                 </div>
 
-                {/* Categoria + Status row */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-sky-400/70">Categoria</label>
-                    <input
-                      value={obj.categoria}
-                      onChange={(e) => updateObj(index, { ...obj, categoria: e.target.value })}
-                      placeholder="Ex: Técnico, Comportamental..."
-                      className={inputCls} style={inputStyle}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-sky-400/70">Status</label>
-                    <select
-                      value={obj.status}
-                      onChange={(e) => updateObj(index, { ...obj, status: e.target.value as PdiObjetivo['status'] })}
-                      className={inputCls} style={{ ...inputStyle, color: statusCfg.color }}
-                    >
-                      <option value="nao_cumprido">Não Cumprido</option>
-                      <option value="parcial">Parcial</option>
-                      <option value="cumprido">Cumprido</option>
-                    </select>
-                  </div>
+                {/* Categoria */}
+                <div>
+                  <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-sky-400/70">Categoria</label>
+                  <input
+                    value={obj.categoria}
+                    onChange={(e) => updateObj(index, { ...obj, categoria: e.target.value })}
+                    placeholder="Ex: Técnico, Comportamental..."
+                    className={inputCls} style={inputStyle}
+                  />
                 </div>
 
                 {/* Objetivo */}
