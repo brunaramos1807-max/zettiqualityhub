@@ -981,6 +981,74 @@ export default function FeedbackViewPage() {
                   placeholder="Deixe em branco — será exibida no bloco PDI abaixo"
                 />
               </div>
+
+              {/* PDI Objetivos */}
+              <div className="pt-2 border-t border-[#1E3050]">
+                <label className="block text-[11px] font-semibold uppercase tracking-wider mb-3 text-sky-400">Objetivos de Desenvolvimento (PDI)</label>
+                <div className="space-y-3">
+                  {pdiObjetivos.map((obj, index) => (
+                    <div key={obj.id} className="rounded-xl p-4 space-y-3"
+                      style={{ background: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.18)' }}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-sky-400 uppercase tracking-wider">Objetivo {index + 1}</span>
+                        {pdiObjetivos.length > 1 && (
+                          <button type="button" onClick={() => setPdiObjetivos(prev => prev.filter((_, i) => i !== index))}
+                            className="p-1 rounded hover:bg-red-500/10 transition-colors"
+                            style={{ color: '#EF4444' }}>
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-sky-400/70">Categoria</label>
+                        <input
+                          value={obj.categoria}
+                          onChange={(e) => setPdiObjetivos(prev => prev.map((o, i) => i === index ? { ...o, categoria: e.target.value } : o))}
+                          placeholder="Ex: Técnico, Comportamental..."
+                          className="w-full bg-[#07101F] border border-[#1E3050] rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 transition-colors"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-sky-400/70">Objetivo</label>
+                        <input
+                          value={obj.objetivo}
+                          onChange={(e) => setPdiObjetivos(prev => prev.map((o, i) => i === index ? { ...o, objetivo: e.target.value } : o))}
+                          placeholder="Descreva o objetivo de desenvolvimento..."
+                          className="w-full bg-[#07101F] border border-[#1E3050] rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 transition-colors"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-teal-400/70">Ação Esperada</label>
+                        <textarea
+                          value={obj.acao_esperada}
+                          onChange={(e) => setPdiObjetivos(prev => prev.map((o, i) => i === index ? { ...o, acao_esperada: e.target.value } : o))}
+                          placeholder="Ação esperada para atingir o objetivo..."
+                          rows={2}
+                          className="w-full bg-[#07101F] border border-[#1E3050] rounded-lg px-3 py-2 text-sm text-slate-200 resize-none focus:outline-none focus:border-teal-500/50 transition-colors"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold uppercase tracking-wider mb-1.5 text-green-400/70">Resultado Esperado</label>
+                        <textarea
+                          value={obj.resultado_esperado}
+                          onChange={(e) => setPdiObjetivos(prev => prev.map((o, i) => i === index ? { ...o, resultado_esperado: e.target.value } : o))}
+                          placeholder="Resultado esperado ao final do ciclo..."
+                          rows={2}
+                          className="w-full bg-[#07101F] border border-[#1E3050] rounded-lg px-3 py-2 text-sm text-slate-200 resize-none focus:outline-none focus:border-green-500/50 transition-colors"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPdiObjetivos(prev => [...prev, newPdiObjetivo()])}
+                  className="mt-3 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold w-full justify-center transition-all hover:bg-sky-500/10"
+                  style={{ color: '#38BDF8', border: '1px dashed rgba(56,189,248,0.4)', backgroundColor: 'rgba(56,189,248,0.04)' }}
+                >
+                  <Plus size={14} /> Adicionar Objetivo
+                </button>
+              </div>
             </div>
             <div className="flex items-center justify-end gap-3 mt-5">
               <button onClick={() => setEditOpen(false)} className="px-4 py-2 rounded-lg text-sm text-slate-400 hover:bg-slate-700 transition-colors">Cancelar</button>
