@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   MessageSquare, Plus, Upload, Search, Eye, Edit2, Trash2,
   History, X, CheckSquare, Square, Trash, Users, BarChart2,
-  TrendingUp, Sparkles
+  TrendingUp, Sparkles, ArrowUpDown, RefreshCw, ChevronUp, ChevronDown
 } from 'lucide-react';
 
 interface Feedback {
@@ -23,6 +23,9 @@ interface Feedback {
   analistas?: { nome: string; equipe: string; coordenador: string } | null;
 }
 
+type SortField = 'nome' | 'ciclo' | 'qa_score' | 'created_at';
+type SortDir = 'asc' | 'desc';
+
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-500/20 text-gray-400 border border-gray-600/20',
   generated: 'bg-blue-500/20 text-blue-300 border border-blue-600/20',
@@ -36,10 +39,41 @@ const STATUS_LABELS: Record<string, string> = {
   approved: 'Aprovado', sent: 'Enviado',
 };
 
+const SORT_OPTIONS: { value: SortField; label: string }[] = [
+  { value: 'nome', label: 'Nome' },
+  { value: 'ciclo', label: 'Ciclo' },
+  { value: 'qa_score', label: 'Score QA' },
+  { value: 'created_at', label: 'Data' },
+];
+
+function parseCiclo(c: string): number {
+  if (!c) return 0;
+  const m = c.match(/^(\d{2})\/(\d{4})$/);
+  if (m) return parseInt(m[2]) * 100 + parseInt(m[1]);
+  return 0;
+}
+
+function sortFeedbacks(list: Feedback[], field: SortField, dir: SortDir): Feedback[] {
+  return [...list].sort((a, b) => {
+    let cmp = 0;
+    if (field === 'nome') {
+      cmp = (a.analistas?.nome || '').localeCompare(b.analistas?.nome || '', 'pt-BR');
+    } else if (field === 'ciclo') {
+      cmp = parseCiclo(a.ciclo) - parseCiclo(b.ciclo);
+    } else if (field === 'qa_score') {
+      cmp = (a.qa_score ?? -1) - (b.qa_score ?? -1);
+    } else if (field === 'created_at') {
+      cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    }
+    return dir === 'asc' ? cmp : -cmp;
+  });
+}
+
 export default function FeedbackListPage() {
   const supabase = createClient();
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterEquipe, setFilterEquipe] = useState('');
@@ -49,13 +83,16 @@ export default function FeedbackListPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const [userName, setUserName] = useState('Coordenador');
+  const [sortField, setSortField] = useState<SortField>('created_at');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
 
-  const fetchFeedbacks = useCallback(async () => {
-    setLoading(true);
+  const fetchFeedbacks = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+
     let query = supabase
       .from('feedbacks')
-      .select('id, ciclo, qa_score, iepc_score, aderencia_score, posicao_squad, total_squad, status, origem, created_at, analistas(nome, equipe, coordenador)')
-      .order('created_at', { ascending: false });
+      .select('id, ciclo, qa_score, iepc_score, aderencia_score, posicao_squad, total_squad, status, origem, created_at, analistas(nome, equipe, coordenador)');
 
     if (filterStatus) query = query.eq('status', filterStatus);
     if (filterCiclo) query = query.eq('ciclo', filterCiclo);
@@ -80,7 +117,8 @@ export default function FeedbackListPage() {
     const cq = [...new Set(list.map((f) => f.ciclo).filter(Boolean))] as string[];
     setEquipes(eq);
     setCiclos(cq);
-    setLoading(false);
+    if (isRefresh) setRefreshing(false);
+    else setLoading(false);
   }, [filterStatus, filterEquipe, filterCiclo, search]);
 
   useEffect(() => { fetchFeedbacks(); }, [fetchFeedbacks]);
@@ -126,15 +164,32 @@ export default function FeedbackListPage() {
     }
   };
 
+  const handleSortClick = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDir('asc');
+    }
+  };
+
+  const sortedFeedbacks = sortFeedbacks(feedbacks, sortField, sortDir);
+
   // KPI totals from filtered list
   const totalFeedbacks = feedbacks.length;
   const totalEquipes = new Set(feedbacks.map((f) => f.analistas?.equipe).filter(Boolean)).size;
-  const totalAtendimentos = feedbacks.reduce((acc, f) => acc + (f.posicao_squad ? 1 : 0), 0);
   const avgQA = feedbacks.length > 0
     ? Math.round(feedbacks.filter(f => f.qa_score).reduce((a, f) => a + (f.qa_score || 0), 0) / (feedbacks.filter(f => f.qa_score).length || 1))
     : 0;
 
   const hasFilters = !!(filterStatus || filterEquipe || filterCiclo || search);
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown size={10} className="text-slate-700 ml-1" />;
+    return sortDir === 'asc'
+      ? <ChevronUp size={10} className="text-sky-400 ml-1" />
+      : <ChevronDown size={10} className="text-sky-400 ml-1" />;
+  };
 
   return (
     <EnterpriseLayout>
@@ -155,6 +210,15 @@ export default function FeedbackListPage() {
               </p>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={() => fetchFeedbacks(true)}
+                disabled={refreshing}
+                title="Atualizar lista"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors border border-[#1E3050] text-slate-400 hover:text-slate-200 hover:bg-[#1E3050]/60 disabled:opacity-50"
+              >
+                <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+                {refreshing ? 'Atualizando...' : 'Atualizar'}
+              </button>
               <Link
                 href="/feedback/import"
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors border border-[#1E3050] text-slate-400 hover:text-slate-200 hover:bg-[#1E3050]/60"
@@ -190,7 +254,7 @@ export default function FeedbackListPage() {
           ))}
         </div>
 
-        {/* ── FILTERS ── */}
+        {/* ── FILTERS + SORT ── */}
         <div className="flex flex-wrap gap-2 items-center">
           <div className="relative flex-1 min-w-44">
             <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" />
@@ -216,6 +280,24 @@ export default function FeedbackListPage() {
               {sel.options.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
           ))}
+          {/* Sort selector */}
+          <div className="flex items-center gap-1 px-3 py-2 rounded-lg bg-[#0F1B31] border border-[#1E3050]">
+            <ArrowUpDown size={11} className="text-slate-500 flex-shrink-0" />
+            <select
+              value={sortField}
+              onChange={(e) => { setSortField(e.target.value as SortField); setSortDir('asc'); }}
+              className="text-xs text-white outline-none bg-transparent"
+            >
+              {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <button
+              onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+              className="ml-1 text-slate-400 hover:text-sky-400 transition-colors"
+              title={sortDir === 'asc' ? 'Crescente' : 'Decrescente'}
+            >
+              {sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            </button>
+          </div>
           {hasFilters && (
             <button
               onClick={() => { setFilterStatus(''); setFilterEquipe(''); setFilterCiclo(''); setSearch(''); }}
@@ -258,9 +340,31 @@ export default function FeedbackListPage() {
                       : <Square size={13} />}
                   </button>
                 </th>
-                {['Analista', 'Equipe', 'Ciclo', 'QA', 'IEPC', 'Aderência', 'Status', 'Ações'].map((h) => (
-                  <th key={h} className="px-3 py-2.5 text-left font-medium text-[10px] uppercase tracking-widest text-slate-600">{h}</th>
-                ))}
+                {/* Sortable column headers */}
+                <th className="px-3 py-2.5 text-left font-medium text-[10px] uppercase tracking-widest text-slate-600">
+                  <button onClick={() => handleSortClick('nome')} className="flex items-center hover:text-slate-300 transition-colors">
+                    Analista <SortIcon field="nome" />
+                  </button>
+                </th>
+                <th className="px-3 py-2.5 text-left font-medium text-[10px] uppercase tracking-widest text-slate-600">Equipe</th>
+                <th className="px-3 py-2.5 text-left font-medium text-[10px] uppercase tracking-widest text-slate-600">
+                  <button onClick={() => handleSortClick('ciclo')} className="flex items-center hover:text-slate-300 transition-colors">
+                    Ciclo <SortIcon field="ciclo" />
+                  </button>
+                </th>
+                <th className="px-3 py-2.5 text-left font-medium text-[10px] uppercase tracking-widest text-slate-600">
+                  <button onClick={() => handleSortClick('qa_score')} className="flex items-center hover:text-slate-300 transition-colors">
+                    QA <SortIcon field="qa_score" />
+                  </button>
+                </th>
+                <th className="px-3 py-2.5 text-left font-medium text-[10px] uppercase tracking-widest text-slate-600">IEPC</th>
+                <th className="px-3 py-2.5 text-left font-medium text-[10px] uppercase tracking-widest text-slate-600">Aderência</th>
+                <th className="px-3 py-2.5 text-left font-medium text-[10px] uppercase tracking-widest text-slate-600">Status</th>
+                <th className="px-3 py-2.5 text-left font-medium text-[10px] uppercase tracking-widest text-slate-600">
+                  <button onClick={() => handleSortClick('created_at')} className="flex items-center hover:text-slate-300 transition-colors">
+                    Ações <SortIcon field="created_at" />
+                  </button>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -271,13 +375,13 @@ export default function FeedbackListPage() {
                     Carregando...
                   </div>
                 </td></tr>
-              ) : feedbacks.length === 0 ? (
+              ) : sortedFeedbacks.length === 0 ? (
                 <tr><td colSpan={9} className="px-4 py-12 text-center text-slate-600">
                   <MessageSquare size={28} className="mx-auto mb-2 opacity-20" />
                   <p className="text-sm">Nenhum feedback encontrado</p>
                   <p className="text-xs mt-1 opacity-60">Importe um JSON ou crie manualmente</p>
                 </td></tr>
-              ) : feedbacks.map((fb) => (
+              ) : sortedFeedbacks.map((fb) => (
                 <tr
                   key={fb.id}
                   className={`border-t border-[#1E3050]/60 transition-colors hover:bg-[#0F1B31]/40 ${selected.has(fb.id) ? 'bg-sky-900/10' : ''}`}
@@ -327,6 +431,7 @@ export default function FeedbackListPage() {
         <p className="text-[10px] text-slate-700">
           {feedbacks.length} feedback{feedbacks.length !== 1 ? 's' : ''} {hasFilters ? 'filtrado' : 'total'}
           {selected.size > 0 && ` · ${selected.size} selecionado(s)`}
+          {' · '}ordenado por {SORT_OPTIONS.find(o => o.value === sortField)?.label} ({sortDir === 'asc' ? 'crescente' : 'decrescente'})
         </p>
       </div>
     </EnterpriseLayout>

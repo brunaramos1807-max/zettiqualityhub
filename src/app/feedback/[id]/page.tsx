@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
-import { useParams } from 'next/navigation';
-import { AlertTriangle, Printer, Star, ChevronDown, ChevronUp, Quote, Maximize2, Minimize2, Edit3, Share2, CheckCircle, X, Save, Award, Users, Zap, TrendingUp, Heart, Target, Download, BookOpen, Plus, Trash2, Circle } from 'lucide-react';
+import { useParams, useRouter } from 'next/navigation';
+import { AlertTriangle, Printer, Star, ChevronDown, ChevronUp, Quote, Maximize2, Minimize2, Edit3, Share2, CheckCircle, X, Save, Award, Users, Zap, TrendingUp, Heart, Target, Download, BookOpen, Plus, Trash2, Circle, ArrowLeft, RefreshCw } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis
@@ -101,6 +101,7 @@ function getMotivationalMessage(qa: number | null, iepc: number | null, ncs: num
 
 export default function FeedbackViewPage() {
   const params = useParams();
+  const router = useRouter();
   const supabase = createClient();
   const [snapshot, setSnapshot] = useState<any>(null);
   const [rawFeedback, setRawFeedback] = useState<any>(null);
@@ -108,6 +109,7 @@ export default function FeedbackViewPage() {
   const [historico, setHistorico] = useState<any[]>([]);
   const [elogios, setElogios] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [presentationMode, setPresentationMode] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editFields, setEditFields] = useState<any>({});
@@ -120,9 +122,11 @@ export default function FeedbackViewPage() {
   const [pdiObjetivos, setPdiObjetivos] = useState<PdiObjetivo[]>([newPdiObjetivo()]);
   const [dbNCs, setDbNCs] = useState<any[]>([]);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (isRefresh = false) => {
     const id = params?.id as string;
     if (!id) return;
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
 
     const { data: rawData } = await supabase
       .from('feedbacks')
@@ -130,7 +134,7 @@ export default function FeedbackViewPage() {
       .eq('id', id)
       .maybeSingle();
 
-    if (!rawData) { setLoading(false); return; }
+        if (!rawData) { if (isRefresh) setRefreshing(false); else setLoading(false); return; }
 
     setRawFeedback(rawData);
     setPublicToken(rawData.public_token || null);
@@ -224,6 +228,7 @@ export default function FeedbackViewPage() {
     }
 
     setLoading(false);
+    setRefreshing(false);
   }, [params?.id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -644,6 +649,12 @@ export default function FeedbackViewPage() {
         {/* ── TOP ACTION BAR ── */}
         <div className="print-hide flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => router.back()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#0F1B31] text-slate-400 border border-[#1E3050] hover:text-slate-200 hover:bg-[#1E3050]/60 transition-all"
+            >
+              <ArrowLeft size={12} /> Voltar
+            </button>
             <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-sky-900/40 text-sky-300 border border-sky-700/30">
               {analistaCiclo}
             </span>
@@ -678,6 +689,15 @@ export default function FeedbackViewPage() {
             </button>
             <button onClick={handleDownloadTxt} className="print-hide flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-teal-900/30 text-teal-300 border border-teal-700/30 hover:bg-teal-800/40 transition-all">
               <Download size={12} /> Baixar TXT
+            </button>
+            <button
+              onClick={() => fetchData(true)}
+              disabled={refreshing}
+              className="print-hide flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700/50 hover:bg-slate-700 transition-all disabled:opacity-50"
+              title="Atualizar dados"
+            >
+              <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+              {refreshing ? 'Atualizando...' : 'Atualizar'}
             </button>
             <button onClick={() => window.print()} className="print-hide flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-900/40 text-sky-300 border border-sky-700/30 hover:bg-sky-800/50 transition-all">
               <Printer size={12} /> Baixar PDF
