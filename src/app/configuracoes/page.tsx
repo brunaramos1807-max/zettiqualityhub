@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
-import { Users, Briefcase, Lock, Plus, Edit2, Trash2, X, Save, CheckCircle, Loader2, UserCheck, Clock, AlertTriangle, RefreshCw, Key, Database, Copy, ToggleLeft, ToggleRight, Search, Upload, History, Trash, Link, Activity, Eye, FileText, Presentation, ChevronDown, ChevronRight, Globe, UserX, Layers, BarChart3, ShieldCheck, SlidersHorizontal } from 'lucide-react';
+import { Users, Briefcase, Lock, Plus, Edit2, Trash2, X, Save, CheckCircle, Loader2, UserCheck, Clock, AlertTriangle, RefreshCw, Key, Database, Copy, ToggleLeft, ToggleRight, Search, Upload, History, Trash, Link, Activity, Eye, FileText, Presentation, ChevronDown, ChevronRight, Globe, UserX, Layers, BarChart3, ShieldCheck, SlidersHorizontal, Camera } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -850,6 +850,105 @@ function AddUserModal({ cargos, onClose, onSave, actorEmail }: AddUserModalProps
   );
 }
 
+// ─── Profile Photo Upload Modal ───────────────────────────────────────────────
+
+interface PhotoUploadModalProps {
+  user: UserProfile;
+  onClose: () => void;
+  onSave: (url: string) => void;
+}
+
+function PhotoUploadModal({ user, onClose, onSave }: PhotoUploadModalProps) {
+  const [uploading, setUploading] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { setError('Arquivo muito grande. Máximo 5MB.'); return; }
+    if (!file.type.startsWith('image/')) { setError('Apenas imagens são permitidas.'); return; }
+
+    setError('');
+    const reader = new FileReader();
+    reader.onload = (ev) => setPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+
+    setUploading(true);
+    try {
+      const supabase = createClient();
+      const ext = file.name.split('.').pop() || 'jpg';
+      const fileName = `${user.id}-${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from('analistas-avatar')
+        .upload(fileName, file, { upsert: true, contentType: file.type });
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage.from('analistas-avatar').getPublicUrl(fileName);
+      const publicUrl = urlData?.publicUrl;
+      if (!publicUrl) throw new Error('Erro ao obter URL pública');
+
+      // Update user_profiles with avatar_url
+      await supabase.from('user_profiles').update({ avatar_url: publicUrl, updated_at: new Date().toISOString() }).eq('id', user.id);
+
+      onSave(publicUrl);
+    } catch (err: any) {
+      setError(err?.message || 'Erro ao fazer upload');
+    }
+    setUploading(false);
+  };
+
+  const initials = (user.full_name || user.email || 'U').split(' ').slice(0, 2).map((n: string) => n[0]).join('').toUpperCase();
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.8)' }}>
+      <div className="w-full max-w-sm rounded-2xl overflow-hidden" style={{ backgroundColor: '#0A1628', border: '1px solid rgba(56,189,248,0.2)', boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}>
+        <div className="flex items-center justify-between p-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <h3 className="font-bold text-white flex items-center gap-2"><Camera size={15} style={{ color: '#38BDF8' }} /> Foto de Perfil</h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#94A3B8' }}><X size={16} /></button>
+        </div>
+        <div className="p-5 flex flex-col items-center gap-4">
+          {/* Preview */}
+          <div className="relative">
+            <div className="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center text-2xl font-bold text-white"
+              style={{ background: preview ? 'transparent' : 'linear-gradient(135deg, #1E40AF, #3B82F6)', border: '3px solid rgba(56,189,248,0.3)' }}>
+              {preview ? (
+                <img src={preview} alt="Preview" className="w-full h-full object-cover" />
+              ) : initials}
+            </div>
+            {uploading && (
+              <div className="absolute inset-0 rounded-full flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}>
+                <Loader2 size={20} className="animate-spin text-sky-400" />
+              </div>
+            )}
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-white text-center">{user.full_name || user.email}</p>
+            <p className="text-xs text-center mt-0.5" style={{ color: '#64748B' }}>{user.role || 'Usuário'}</p>
+          </div>
+          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-60"
+            style={{ backgroundColor: '#1E40AF', border: '1px solid rgba(56,189,248,0.3)' }}
+          >
+            {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+            {uploading ? 'Enviando...' : 'Selecionar Foto'}
+          </button>
+          <p className="text-xs text-center" style={{ color: '#64748B' }}>JPG, PNG ou WebP · Máximo 5MB</p>
+          {error && <p className="text-xs px-3 py-2 rounded-lg w-full text-center" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>{error}</p>}
+        </div>
+        <div className="p-5" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <button onClick={onClose} className="w-full py-2.5 rounded-xl text-sm font-medium hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Analistas Tab ────────────────────────────────────────────────────────────
 
 interface AnalistasTabProps {
@@ -1266,6 +1365,7 @@ function ConfiguracoesContent() {
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [editingUser, setEditingUser] = useState<UserProfile | undefined>();
   const [showAddUser, setShowAddUser] = useState(false);
+  const [photoUploadUser, setPhotoUploadUser] = useState<UserProfile | undefined>();
   const [editingCargo, setEditingCargo] = useState<Cargo | null | undefined>(undefined);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'user' | 'cargo'; id: string; label?: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -1957,6 +2057,19 @@ function ConfiguracoesContent() {
           onClose={() => setEditingUser(undefined)}
           actorEmail={actorEmail}
           onSave={() => { showSuccessToast('Acesso atualizado!'); loadAll(); setEditingUser(undefined); }}
+        />
+      )}
+
+      {/* Photo Upload Modal */}
+      {photoUploadUser && (
+        <PhotoUploadModal
+          user={photoUploadUser}
+          onClose={() => setPhotoUploadUser(undefined)}
+          onSave={(url) => {
+            showSuccessToast('Foto atualizada com sucesso!');
+            setUsers((prev) => prev.map((u) => u.id === photoUploadUser.id ? { ...u, avatar_url: url } as any : u));
+            setPhotoUploadUser(undefined);
+          }}
         />
       )}
 

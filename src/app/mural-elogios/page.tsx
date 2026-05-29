@@ -59,6 +59,9 @@ function MuralContent() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<'mural' | 'charts'>('charts');
 
+  // Medal config for top 3
+  const MEDALS = ['🥇', '🥈', '🥉'];
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -358,20 +361,27 @@ function MuralContent() {
           {/* Top Analysts Sidebar */}
           <div className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
             <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-              <Award size={14} style={{ color: '#F59E0B' }} /> Top Analistas
+              <Award size={14} style={{ color: '#F59E0B' }} /> Ranking Analistas
             </h3>
             <div className="space-y-3">
               {topAnalysts.map((a, i) => (
-                <div key={a.name} className="flex items-center gap-3">
-                  <span className="text-xs font-bold w-5 text-center" style={{ color: i === 0 ? '#F59E0B' : i === 1 ? '#94A3B8' : i === 2 ? '#CD7F32' : 'rgba(255,255,255,0.3)' }}>#{i + 1}</span>
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ backgroundColor: getSquadColor(a.squad) }}>
+                <div key={a.name} className="flex items-center gap-3 p-2 rounded-xl transition-all"
+                  style={{
+                    backgroundColor: i === 0 ? 'rgba(245,158,11,0.08)' : i === 1 ? 'rgba(148,163,184,0.05)' : i === 2 ? 'rgba(205,127,50,0.05)' : 'transparent',
+                    border: i < 3 ? `1px solid ${i === 0 ? 'rgba(245,158,11,0.2)' : i === 1 ? 'rgba(148,163,184,0.15)' : 'rgba(205,127,50,0.15)'}` : '1px solid transparent',
+                  }}>
+                  <span className="text-base w-6 text-center flex-shrink-0">{i < 3 ? MEDALS[i] : `#${i + 1}`}</span>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ backgroundColor: getSquadColor(a.squad) }}>
                     {getInitials(a.name)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-white truncate">{a.name}</p>
+                    <p className="text-xs font-semibold text-white truncate">{a.name}</p>
                     <p className="text-xs" style={{ color: '#94A3B8', fontSize: '10px' }}>{a.squad}</p>
                   </div>
-                  <span className="text-xs font-bold" style={{ color: '#F59E0B' }}>{a.count}</span>
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span className="text-sm font-bold" style={{ color: i === 0 ? '#F59E0B' : i === 1 ? '#94A3B8' : i === 2 ? '#CD7F32' : '#64748B' }}>{a.count}</span>
+                    {a.destaques > 0 && <span className="text-xs" style={{ color: '#F59E0B', fontSize: '9px' }}>⭐ {a.destaques}</span>}
+                  </div>
                 </div>
               ))}
               {topAnalysts.length === 0 && <p className="text-xs" style={{ color: '#94A3B8' }}>Nenhum dado disponível</p>}
@@ -387,61 +397,73 @@ function MuralContent() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {filtered.map((elogio) => (
-                  <div key={elogio.id} className="rounded-xl p-5 transition-all"
+                  <div key={elogio.id}
+                    className="rounded-2xl p-5 transition-all hover:scale-[1.01]"
                     style={{
-                      backgroundColor: elogio.destaque ? 'rgba(245,158,11,0.08)' : '#0F1B31',
+                      backgroundColor: elogio.destaque ? 'rgba(245,158,11,0.06)' : '#0F1B31',
                       border: `1px solid ${elogio.destaque ? 'rgba(245,158,11,0.35)' : 'rgba(255,255,255,0.08)'}`,
-                      boxShadow: elogio.destaque ? '0 4px 16px rgba(245,158,11,0.12), 0 1px 4px rgba(0,0,0,0.4)' : '0 2px 8px rgba(0,0,0,0.3)',
+                      boxShadow: elogio.destaque ? '0 8px 32px rgba(245,158,11,0.12), 0 2px 8px rgba(0,0,0,0.4)' : '0 2px 8px rgba(0,0,0,0.3)',
                     }}>
+                    {/* Card Header */}
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0" style={{ backgroundColor: getSquadColor(elogio.squad), boxShadow: '0 2px 6px rgba(0,0,0,0.3)' }}>
-                          {getInitials(elogio.colaborador)}
+                        <div className="relative">
+                          <div className="w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
+                            style={{
+                              background: `linear-gradient(135deg, ${getSquadColor(elogio.squad)}, ${getSquadColor(elogio.squad)}80)`,
+                              boxShadow: `0 4px 12px ${getSquadColor(elogio.squad)}40`,
+                            }}>
+                            {getInitials(elogio.colaborador)}
+                          </div>
+                          {elogio.destaque && (
+                            <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-xs"
+                              style={{ backgroundColor: '#F59E0B', boxShadow: '0 2px 6px rgba(245,158,11,0.5)' }}>
+                              ⭐
+                            </div>
+                          )}
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-white">{elogio.colaborador}</p>
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: `${getSquadColor(elogio.squad)}20`, color: getSquadColor(elogio.squad) }}>{elogio.squad}</span>
-                            {elogio.periodo && <span className="text-xs" style={{ color: '#64748B' }}>{elogio.periodo}</span>}
+                          <p className="text-sm font-bold text-white">{elogio.colaborador}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                            <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: `${getSquadColor(elogio.squad)}20`, color: getSquadColor(elogio.squad), border: `1px solid ${getSquadColor(elogio.squad)}30` }}>{elogio.squad}</span>
+                            {elogio.periodo && <span className="text-xs font-mono" style={{ color: '#64748B' }}>{elogio.periodo}</span>}
                           </div>
                         </div>
                       </div>
                       <button onClick={() => handleToggleDestaque(elogio)} disabled={togglingId === elogio.id}
                         title={elogio.destaque ? 'Remover destaque' : 'Marcar como destaque'}
-                        className="p-1.5 rounded-lg transition-all hover:scale-110 disabled:opacity-50"
-                        style={{ color: elogio.destaque ? '#F59E0B' : 'rgba(255,255,255,0.25)', backgroundColor: elogio.destaque ? 'rgba(245,158,11,0.12)' : 'transparent' }}>
-                        <Star size={15} fill={elogio.destaque ? '#F59E0B' : 'none'} />
+                        className="p-1.5 rounded-xl transition-all hover:scale-110 disabled:opacity-50"
+                        style={{ color: elogio.destaque ? '#F59E0B' : 'rgba(255,255,255,0.2)', backgroundColor: elogio.destaque ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.04)', border: `1px solid ${elogio.destaque ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.08)'}` }}>
+                        <Star size={14} fill={elogio.destaque ? '#F59E0B' : 'none'} />
                       </button>
                     </div>
-                    <div className="rounded-lg p-3 mb-3" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                      <p className="text-sm leading-relaxed italic" style={{ color: 'rgba(255,255,255,0.75)' }}>"{elogio.elogio}"</p>
+
+                    {/* Quote */}
+                    <div className="rounded-xl p-3.5 mb-3 relative" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <span className="absolute top-2 left-3 text-2xl leading-none" style={{ color: 'rgba(255,255,255,0.08)', fontFamily: 'Georgia, serif' }}>"</span>
+                      <p className="text-sm leading-relaxed pl-4" style={{ color: 'rgba(255,255,255,0.8)', fontStyle: 'italic' }}>{elogio.elogio}</p>
                     </div>
-                    <div className="flex items-center gap-3 flex-wrap mt-1">
-                      {elogio.cliente ? (
-                        <p className="text-xs" style={{ color: '#94A3B8' }}><span style={{ color: '#64748B' }}>Cliente:</span> {elogio.cliente}</p>
-                      ) : null}
-                      {elogio.protocolo ? (
-                        <p className="text-xs" style={{ color: '#94A3B8' }}><span style={{ color: '#64748B' }}>Protocolo:</span> {elogio.protocolo}</p>
-                      ) : null}
-                      {elogio.atendimento ? (
-                        <p className="text-xs" style={{ color: '#94A3B8' }}><span style={{ color: '#64748B' }}>Atendimento:</span> {elogio.atendimento}</p>
-                      ) : null}
-                      {!elogio.cliente && !elogio.protocolo && !elogio.atendimento && (
-                        <p className="text-xs" style={{ color: '#475569' }}>Sem dados de atendimento</p>
+
+                    {/* Meta */}
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {elogio.cliente && (
+                        <p className="text-xs flex items-center gap-1" style={{ color: '#64748B' }}>
+                          <span style={{ color: '#475569' }}>Cliente:</span> <span style={{ color: '#94A3B8' }}>{elogio.cliente}</span>
+                        </p>
+                      )}
+                      {elogio.protocolo && (
+                        <p className="text-xs flex items-center gap-1" style={{ color: '#64748B' }}>
+                          <span style={{ color: '#475569' }}>Protocolo:</span> <span className="font-mono" style={{ color: '#94A3B8' }}>{elogio.protocolo}</span>
+                        </p>
                       )}
                     </div>
-                    {elogio.destaque && (
-                      <div className="mt-2 flex items-center gap-1">
-                        <Star size={10} fill="#F59E0B" style={{ color: '#F59E0B' }} />
-                        <span className="text-xs font-medium" style={{ color: '#F59E0B' }}>Destaque</span>
-                      </div>
-                    )}
                   </div>
                 ))}
                 {filtered.length === 0 && (
-                  <div className="col-span-2 text-center py-12">
-                    <Heart size={32} className="mx-auto mb-3" style={{ color: 'rgba(255,255,255,0.1)' }} />
-                    <p className="text-sm" style={{ color: '#94A3B8' }}>Nenhum elogio encontrado</p>
+                  <div className="col-span-2 text-center py-16">
+                    <Heart size={40} className="mx-auto mb-3" style={{ color: 'rgba(255,255,255,0.08)' }} />
+                    <p className="text-sm font-medium text-white mb-1">Nenhum elogio encontrado</p>
+                    <p className="text-xs" style={{ color: '#64748B' }}>Ajuste os filtros ou importe dados de elogios</p>
                   </div>
                 )}
               </div>

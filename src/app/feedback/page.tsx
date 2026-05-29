@@ -3,11 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
-import {
-  MessageSquare, Plus, Upload, Search, Eye, Edit2, Trash2,
-  History, X, CheckSquare, Square, Trash, Users, BarChart2,
-  TrendingUp, Sparkles, ArrowUpDown, RefreshCw, ChevronUp, ChevronDown
-} from 'lucide-react';
+import { MessageSquare, Plus, Upload, Search, Eye, Edit2, Trash2, History, X, CheckSquare, Square, Trash, Users, BarChart2, TrendingUp, Sparkles, ArrowUpDown, RefreshCw, ChevronUp, ChevronDown } from 'lucide-react';
 
 interface Feedback {
   id: string;
@@ -26,18 +22,41 @@ interface Feedback {
 type SortField = 'nome' | 'ciclo' | 'qa_score' | 'created_at';
 type SortDir = 'asc' | 'desc';
 
+// Real operational statuses
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-500/20 text-gray-400 border border-gray-600/20',
+  gerado: 'bg-blue-500/20 text-blue-300 border border-blue-600/20',
   generated: 'bg-blue-500/20 text-blue-300 border border-blue-600/20',
-  reviewed: 'bg-yellow-500/20 text-yellow-300 border border-yellow-600/20',
-  approved: 'bg-green-500/20 text-green-300 border border-green-600/20',
+  enviado: 'bg-purple-500/20 text-purple-300 border border-purple-600/20',
   sent: 'bg-purple-500/20 text-purple-300 border border-purple-600/20',
+  lido: 'bg-cyan-500/20 text-cyan-300 border border-cyan-600/20',
+  reviewed: 'bg-yellow-500/20 text-yellow-300 border border-yellow-600/20',
+  validado: 'bg-amber-500/20 text-amber-300 border border-amber-600/20',
+  approved: 'bg-green-500/20 text-green-300 border border-green-600/20',
+  fechado: 'bg-slate-500/20 text-slate-400 border border-slate-600/20',
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  draft: 'Rascunho', generated: 'Gerado', reviewed: 'Revisado',
-  approved: 'Aprovado', sent: 'Enviado',
+  draft: 'Rascunho',
+  gerado: 'Gerado',
+  generated: 'Gerado',
+  enviado: 'Enviado',
+  sent: 'Enviado',
+  lido: 'Lido',
+  reviewed: 'Revisado',
+  validado: 'Validado',
+  approved: 'Aprovado',
+  fechado: 'Fechado',
 };
+
+// Status options for dropdown (real operational flow)
+const STATUS_OPTIONS = [
+  { value: 'gerado', label: 'Gerado', color: '#60A5FA' },
+  { value: 'enviado', label: 'Enviado', color: '#A78BFA' },
+  { value: 'lido', label: 'Lido', color: '#22D3EE' },
+  { value: 'validado', label: 'Validado', color: '#FBBF24' },
+  { value: 'fechado', label: 'Fechado', color: '#94A3B8' },
+];
 
 const SORT_OPTIONS: { value: SortField; label: string }[] = [
   { value: 'nome', label: 'Nome' },
@@ -85,6 +104,7 @@ export default function FeedbackListPage() {
   const [userName, setUserName] = useState('Coordenador');
   const [sortField, setSortField] = useState<SortField>('created_at');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
 
   const fetchFeedbacks = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -148,6 +168,17 @@ export default function FeedbackListPage() {
     fetchFeedbacks();
   };
 
+  const handleStatusChange = async (id: string, newStatus: string) => {
+    setUpdatingStatus(id);
+    try {
+      await supabase.from('feedbacks').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', id);
+      setFeedbacks((prev) => prev.map((f) => f.id === id ? { ...f, status: newStatus } : f));
+    } catch (err) {
+      console.error('Status update error:', err);
+    }
+    setUpdatingStatus(null);
+  };
+
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -175,11 +206,13 @@ export default function FeedbackListPage() {
 
   const sortedFeedbacks = sortFeedbacks(feedbacks, sortField, sortDir);
 
-  // KPI totals from filtered list
   const totalFeedbacks = feedbacks.length;
   const totalEquipes = new Set(feedbacks.map((f) => f.analistas?.equipe).filter(Boolean)).size;
   const avgQA = feedbacks.length > 0
     ? Math.round(feedbacks.filter(f => f.qa_score).reduce((a, f) => a + (f.qa_score || 0), 0) / (feedbacks.filter(f => f.qa_score).length || 1))
+    : 0;
+  const avgIEPC = feedbacks.filter(f => f.iepc_score != null).length > 0
+    ? Math.round(feedbacks.filter(f => f.iepc_score != null).reduce((a, f) => a + (f.iepc_score || 0), 0) / feedbacks.filter(f => f.iepc_score != null).length)
     : 0;
 
   const hasFilters = !!(filterStatus || filterEquipe || filterCiclo || search);
@@ -241,7 +274,7 @@ export default function FeedbackListPage() {
             { label: 'Total de Feedbacks', value: totalFeedbacks, icon: <MessageSquare size={14} />, color: 'text-sky-400', note: hasFilters ? 'filtrado' : 'total' },
             { label: 'Equipes', value: totalEquipes, icon: <Users size={14} />, color: 'text-teal-400', note: 'equipes distintas' },
             { label: 'QA Médio', value: avgQA ? `${avgQA}` : '—', icon: <BarChart2 size={14} />, color: 'text-purple-400', note: 'score médio' },
-            { label: 'Ciclos', value: ciclos.length, icon: <TrendingUp size={14} />, color: 'text-amber-400', note: 'ciclos ativos' },
+            { label: 'IEPC Médio', value: avgIEPC ? `${avgIEPC}%` : '—', icon: <TrendingUp size={14} />, color: 'text-amber-400', note: 'índice médio' },
           ].map((kpi, i) => (
             <div key={i} className="rounded-xl border border-[#1E3050] bg-[#0F1B31] px-4 py-3 hover:border-sky-900/40 transition-all">
               <div className="flex items-center gap-2 mb-1.5">
@@ -265,21 +298,30 @@ export default function FeedbackListPage() {
               className="w-full pl-8 pr-3 py-2 rounded-lg text-xs text-white outline-none bg-[#0F1B31] border border-[#1E3050] focus:border-sky-700/50 transition-colors"
             />
           </div>
-          {[
-            { value: filterStatus, onChange: setFilterStatus, options: Object.entries(STATUS_LABELS), placeholder: 'Todos os status' },
-            { value: filterEquipe, onChange: setFilterEquipe, options: equipes.map(e => [e, e]), placeholder: 'Todas as equipes' },
-            { value: filterCiclo, onChange: setFilterCiclo, options: ciclos.map(c => [c, c]), placeholder: 'Todos os ciclos' },
-          ].map((sel, i) => (
-            <select
-              key={i}
-              value={sel.value}
-              onChange={(e) => sel.onChange(e.target.value)}
-              className="px-3 py-2 rounded-lg text-xs text-white outline-none bg-[#0F1B31] border border-[#1E3050] focus:border-sky-700/50 transition-colors"
-            >
-              <option value="">{sel.placeholder}</option>
-              {sel.options.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-          ))}
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="px-3 py-2 rounded-lg text-xs text-white outline-none bg-[#0F1B31] border border-[#1E3050] focus:border-sky-700/50 transition-colors"
+          >
+            <option value="">Todos os status</option>
+            {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
+          <select
+            value={filterEquipe}
+            onChange={(e) => setFilterEquipe(e.target.value)}
+            className="px-3 py-2 rounded-lg text-xs text-white outline-none bg-[#0F1B31] border border-[#1E3050] focus:border-sky-700/50 transition-colors"
+          >
+            <option value="">Todas as equipes</option>
+            {equipes.map(e => <option key={e} value={e}>{e}</option>)}
+          </select>
+          <select
+            value={filterCiclo}
+            onChange={(e) => setFilterCiclo(e.target.value)}
+            className="px-3 py-2 rounded-lg text-xs text-white outline-none bg-[#0F1B31] border border-[#1E3050] focus:border-sky-700/50 transition-colors"
+          >
+            <option value="">Todos os ciclos</option>
+            {ciclos.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
           {/* Sort selector */}
           <div className="flex items-center gap-1 px-3 py-2 rounded-lg bg-[#0F1B31] border border-[#1E3050]">
             <ArrowUpDown size={11} className="text-slate-500 flex-shrink-0" />
@@ -340,7 +382,6 @@ export default function FeedbackListPage() {
                       : <Square size={13} />}
                   </button>
                 </th>
-                {/* Sortable column headers */}
                 <th className="px-3 py-2.5 text-left font-medium text-[10px] uppercase tracking-widest text-slate-600">
                   <button onClick={() => handleSortClick('nome')} className="flex items-center hover:text-slate-300 transition-colors">
                     Analista <SortIcon field="nome" />
@@ -399,12 +440,27 @@ export default function FeedbackListPage() {
                       {fb.qa_score ?? '—'}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5 text-slate-400">{fb.iepc_score != null ? `${fb.iepc_score}%` : '—'}</td>
+                  <td className="px-3 py-2.5">
+                    <span className={`font-bold ${(fb.iepc_score || 0) >= 90 ? 'text-green-400' : (fb.iepc_score || 0) >= 70 ? 'text-amber-400' : 'text-slate-400'}`}>
+                      {fb.iepc_score != null ? `${fb.iepc_score}%` : '—'}
+                    </span>
+                  </td>
                   <td className="px-3 py-2.5 text-slate-500">{fb.aderencia_score ? `${fb.aderencia_score}%` : '—'}</td>
                   <td className="px-3 py-2.5">
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLORS[fb.status] || 'bg-gray-500/20 text-gray-400'}`}>
-                      {STATUS_LABELS[fb.status] || fb.status}
-                    </span>
+                    {/* Inline status changer */}
+                    <select
+                      value={fb.status}
+                      onChange={(e) => handleStatusChange(fb.id, e.target.value)}
+                      disabled={updatingStatus === fb.id}
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-medium outline-none cursor-pointer transition-all ${STATUS_COLORS[fb.status] || 'bg-gray-500/20 text-gray-400'}`}
+                      style={{ backgroundColor: 'transparent', border: 'none' }}
+                    >
+                      {STATUS_OPTIONS.map(s => (
+                        <option key={s.value} value={s.value} style={{ backgroundColor: '#0F1B31', color: '#fff' }}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-0.5">
