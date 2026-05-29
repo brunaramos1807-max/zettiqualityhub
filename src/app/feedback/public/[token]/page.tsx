@@ -152,15 +152,17 @@ export default function PublicFeedbackView() {
 
       const analistaNome = feedback.analistas?.nome || feedback.analistas?.nome_completo;
       if (analistaNome) {
-        const { data: elogiosRows } = await supabase
+        const ciclo = feedback.ciclo || snap?.analista?.ciclo;
+        let elogiosQuery = supabase
           .from('elogios')
           .select('elogio, protocolo, cliente, periodo')
           .ilike('colaborador', `%${analistaNome.split(' ')[0]}%`)
           .order('created_at', { ascending: false })
-          .limit(10);
+          .limit(20);
+        if (ciclo) elogiosQuery = elogiosQuery.eq('periodo', ciclo);
+        const { data: elogiosRows } = await elogiosQuery;
         setElogios(elogiosRows || []);
 
-        const ciclo = feedback.ciclo || snap?.analista?.ciclo;
         let ncQuery = supabase
           .from('nc_records')
           .select('*')
@@ -215,11 +217,12 @@ export default function PublicFeedbackView() {
   const fechamentoCiclo = extract(snapshot, 'feedback_blocks.fechamento_ciclo', 'fechamento') || rawFeedback?.resumo_ciclo || '';
   const mensagemEvolutiva = extract(snapshot, 'feedback_blocks.mensagem_evolutiva', 'mensagem_evolutiva') || rawFeedback?.mensagem_evolutiva || '';
 
-  const snapshotElogios = snapshot?.elogios || [];
-  const allElogios = [
-    ...elogios.map((e: any) => ({ descricao: e.elogio, protocolo: e.protocolo })),
-    ...snapshotElogios,
-  ];
+  // Elogios: merge snapshot elogios + real elogios from DB (deduplicated by protocolo)
+  const snapshotElogios: any[] = snapshot?.elogios || [];
+  const dbElogiosMapped = elogios.map((e: any) => ({ descricao: e.elogio, protocolo: e.protocolo, cliente: e.cliente }));
+  const dbProtocolos = new Set(dbElogiosMapped.map((e: any) => e.protocolo).filter(Boolean));
+  const extraSnapshotElogios = snapshotElogios.filter((e: any) => !e.protocolo || !dbProtocolos.has(e.protocolo));
+  const allElogios = [...dbElogiosMapped, ...extraSnapshotElogios];
 
   const dbNCsMapped = dbNCs.map((nc: any) => ({
     tipo: nc.tipo_nc, tipo_nc: nc.tipo_nc, descricao: nc.descricao,
@@ -243,10 +246,43 @@ export default function PublicFeedbackView() {
       <style jsx global>{`
         @media print {
           .print-hide { display: none !important; }
-          body { background: white !important; color: #111 !important; }
-          .print-card { background: white !important; border: 1px solid #e2e8f0 !important; color: #111 !important; break-inside: avoid; }
           @page { size: A4; margin: 14mm 16mm; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          body, html { background: #ffffff !important; color: #1a1a2e !important; }
+          .min-h-screen { background: #ffffff !important; }
+          .print-card {
+            background: #ffffff !important;
+            border: 1px solid #cbd5e1 !important;
+            color: #1e293b !important;
+            break-inside: avoid;
+            box-shadow: none !important;
+          }
+          .print-card * { color: #1e293b !important; }
+          .print-card .text-sky-300, .print-card .text-sky-400 { color: #0369a1 !important; }
+          .print-card .text-teal-300, .print-card .text-teal-400 { color: #0f766e !important; }
+          .print-card .text-green-400 { color: #15803d !important; }
+          .print-card .text-amber-400 { color: #b45309 !important; }
+          .print-card .text-red-400 { color: #b91c1c !important; }
+          .print-card .text-purple-400 { color: #7c3aed !important; }
+          .print-card .text-slate-400, .print-card .text-slate-500 { color: #475569 !important; }
+          .print-card [style*="background"] { background: #f8fafc !important; }
+          .print-card [style*="linear-gradient"] { background: #f1f5f9 !important; }
+          .print-card [style*="border: 2px solid"] { border-color: #94a3b8 !important; }
+          .recharts-wrapper text { fill: #334155 !important; }
+          .recharts-polar-grid-angle line, .recharts-polar-grid-concentric path { stroke: #cbd5e1 !important; }
+          h1, h2, h3, h4 { color: #0f172a !important; }
+          .print-card .bg-teal-900\\/30, .print-card [style*="0D2E2B"], .print-card [style*="0A2420"] {
+            background: #f0fdfa !important;
+            border-color: #99f6e4 !important;
+          }
+          .print-card .bg-red-900\\/30 { background: #fef2f2 !important; }
+          .print-card .bg-amber-900\\/30 { background: #fffbeb !important; }
+          .print-card .bg-sky-900\\/40 { background: #f0f9ff !important; }
+          .print-card .bg-amber-900\\/20 { background: #fffbeb !important; }
+          .print-card .bg-green-900\\/30 { background: #f0fdf4 !important; }
+          .print-card .bg-\\[\\#0F1B31\\] { background: #f8fafc !important; }
+          .print-card .bg-slate-800\\/50 { background: #f1f5f9 !important; }
+          .print-card .blur-\\[100px\\], .print-card .blur-\\[80px\\] { display: none !important; }
         }
       `}</style>
 

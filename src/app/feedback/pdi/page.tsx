@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
-import { BookOpen, Search, Target, Clock, CheckCircle, AlertCircle, TrendingUp, Users, Plus, Edit2, X, Save, Loader2, History, ChevronDown, ChevronUp, Trash2, Circle } from 'lucide-react';
+import { BookOpen, Search, Target, Clock, CheckCircle, AlertCircle, TrendingUp, Users, Plus, Edit2, X, Save, Loader2, History, ChevronDown, ChevronUp, Trash2, Circle, Download } from 'lucide-react';
 
 // ── Types ──
 interface ObjectiveBlock {
@@ -461,7 +461,7 @@ export default function FeedbackPdiPage() {
 
       const { data: pdiRecords } = await supabase
         .from('pdi_records')
-        .select('id, objetivo, prazo, status_pdi, acoes, analista, squad, coordenador, ciclo, created_at, updated_at, qa_score, iepc_score, enterprise_objectives, mensagem_evolutiva')
+        .select('id, feedback_id, objetivo, prazo, status_pdi, acoes, analista, squad, coordenador, ciclo, created_at, updated_at, qa_score, iepc_score, enterprise_objectives, mensagem_evolutiva')
         .order('created_at', { ascending: false });
 
       const combined: PdiItem[] = [];
@@ -506,6 +506,52 @@ export default function FeedbackPdiPage() {
           });
         }
       }
+
+      // ── Backfill: feedbacks with pdi_objetivos in snapshot but no pdi_records entry ──
+      const existingFeedbackIds = new Set([
+        ...(pdiRecords || []).map((p: any) => p.feedback_id).filter(Boolean),
+      ]);
+      const { data: feedbacksWithPdi } = await supabase
+        .from('feedbacks')
+        .select('id, ciclo, analista_id, analistas(nome, equipe), snapshot_json_completo, qa_score, iepc_score, mensagem_evolutiva')
+        .not('snapshot_json_completo', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      if (feedbacksWithPdi) {
+        for (const fb of feedbacksWithPdi) {
+          if (existingFeedbackIds.has(fb.id)) continue;
+          const snap = Array.isArray(fb.snapshot_json_completo) ? fb.snapshot_json_completo[0] : (fb.snapshot_json_completo || {});
+          const pdiObjs = snap?.feedback_blocks?.pdi_objetivos;
+          if (!Array.isArray(pdiObjs) || pdiObjs.length === 0) continue;
+          const hasObjective = pdiObjs.some((o: any) => o.objetivo?.trim());
+          if (!hasObjective) continue;
+          const analistaNome = (fb.analistas as any)?.nome || snap?.analista?.nome || '';
+          const equipe = (fb.analistas as any)?.equipe || snap?.analista?.equipe || '';
+          const ciclo = fb.ciclo || snap?.analista?.ciclo || '';
+          const progresso = calcProgressFromObjectives(pdiObjs);
+          const mensagem = snap?.feedback_blocks?.mensagem_evolutiva || fb.mensagem_evolutiva || '';
+          combined.push({
+            id: `fb-snap-${fb.id}`,
+            objetivo: pdiObjs[0]?.objetivo || 'PDI do feedback',
+            acao_desenvolvimento: pdiObjs[0]?.acao_esperada || null,
+            prazo: null,
+            progresso,
+            status: 'aguardando alinhamento',
+            responsavel: null,
+            ciclo_origem: ciclo,
+            created_at: fb.created_at || new Date().toISOString(),
+            analista_nome: analistaNome,
+            analista_id: fb.analista_id || null,
+            equipe,
+            ciclo,
+            source: 'pdi_records',
+            enterprise_objectives: pdiObjs,
+            mensagem_evolutiva: mensagem,
+          });
+        }
+      }
+
       setPdis(combined);
     } catch (err) { console.error('Error loading PDIs:', err); }
     setLoading(false);
@@ -597,6 +643,49 @@ export default function FeedbackPdiPage() {
     if (filterEquipe && p.equipe !== filterEquipe) return false;
     return true;
   });
+
+  const downloadPdiTxt = (pdi: PdiItem) => {
+    const objs = pdi.enterprise_objectives || [];
+    const lines: string[] = [
+      '═══════════════════════════════════════════════════════',
+      '  PLANO DE DESENVOLVIMENTO INDIVIDUAL (PDI)',
+      '═══════════════════════════════════════════════════════',
+      '',
+      `Analista:   ${pdi.analista_nome || '—'}`,
+      `Equipe:     ${pdi.equipe || '—'}`,
+      `Ciclo:      ${pdi.ciclo_origem || pdi.ciclo || '—'}`,
+      `Status:     ${pdi.status || '—'}`,
+      `Prazo:      ${pdi.prazo || '—'}`,
+      `Responsável:${pdi.responsavel || '—'}`,
+      '',
+    ];
+    if (pdi.mensagem_evolutiva) {
+      lines.push('── MENSAGEM EVOLUTIVA ──────────────────────────────────');
+      lines.push(pdi.mensagem_evolutiva);
+      lines.push('');
+    }
+    if (objs.length > 0) {
+      lines.push('── OBJETIVOS DO CICLO ──────────────────────────────────');
+      objs.forEach((obj: any, i: number) => {
+        lines.push('');
+        lines.push(`Objetivo ${i + 1}${obj.categoria ? ` [${obj.categoria}]` : ''}`);
+        lines.push(`  Descrição:         ${obj.objetivo || '—'}`);
+        lines.push(`  Ação Esperada:     ${obj.acao_esperada || '—'}`);
+        lines.push(`  Resultado Esperado:${obj.resultado_esperado || '—'}`);
+        lines.push(`  Status:            ${obj.status === 'cumprido' ? 'Cumprido' : obj.status === 'parcial' ? 'Parcial' : 'Não Cumprido'}`);
+        if (obj.observacao_coordenador) lines.push(`  Obs. Coordenador:  ${obj.observacao_coordenador}`);
+      });
+      lines.push('');
+    }
+    lines.push('═══════════════════════════════════════════════════════');
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `PDI_${(pdi.analista_nome || 'analista').replace(/\s+/g, '_')}_${pdi.ciclo_origem || 'ciclo'}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const kpis = {
     total: pdis.length,
@@ -732,6 +821,12 @@ export default function FeedbackPdiPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      <button onClick={() => downloadPdiTxt(pdi)}
+                        className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all"
+                        style={{ backgroundColor: 'rgba(45,212,191,0.1)', color: '#2DD4BF', border: '1px solid rgba(45,212,191,0.2)' }}
+                        title="Baixar PDI em TXT">
+                        <Download size={11} /> TXT
+                      </button>
                       <button onClick={() => { setEditingPdi(pdi); setModalOpen(true); }}
                         className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all"
                         style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}>
