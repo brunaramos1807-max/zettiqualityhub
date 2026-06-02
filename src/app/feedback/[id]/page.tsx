@@ -152,14 +152,28 @@ export default function FeedbackViewPage() {
     if (Array.isArray(savedObjetivos) && savedObjetivos.length > 0) {
       setPdiObjetivos(savedObjetivos);
     } else {
-      // Migrate legacy single-objective fields if present
-      const legacyObj = snap?.feedback_blocks?.objetivo_desenvolvimento || rawData.objetivo_desenvolvimento;
-      const legacyAcao = snap?.feedback_blocks?.acao_desenvolvimento || rawData.acao_desenvolvimento;
-      const legacyResult = snap?.feedback_blocks?.resultado_esperado || rawData.resultado_esperado;
-      if (legacyObj || legacyAcao || legacyResult) {
-        setPdiObjetivos([{ id: 'legacy-1', categoria: '', objetivo: legacyObj || '', acao_esperada: legacyAcao || '', resultado_esperado: legacyResult || '', status: 'nao_cumprido' }]);
+      // FIX: Check snapshot.pdi[] — Lovable sends pdi at root level with {objetivo, acao, resultadoEsperado}
+      const rootPdi = snap?.pdi;
+      if (Array.isArray(rootPdi) && rootPdi.length > 0) {
+        const mapped = rootPdi.map((p: any, idx: number) => ({
+          id: `pdi-${idx}-${Math.random().toString(36).slice(2)}`,
+          categoria: p.categoria || '',
+          objetivo: p.objetivo || p.acao || '',
+          acao_esperada: p.acao || p.acao_desenvolvimento || '',
+          resultado_esperado: p.resultadoEsperado || p.resultado_esperado || '',
+          status: (p.status === 'cumprido' || p.status === 'parcial' || p.status === 'nao_cumprido') ? p.status : 'nao_cumprido' as const,
+        }));
+        setPdiObjetivos(mapped);
       } else {
-        setPdiObjetivos([newPdiObjetivo()]);
+        // Migrate legacy single-objective fields if present
+        const legacyObj = snap?.feedback_blocks?.objetivo_desenvolvimento || rawData.objetivo_desenvolvimento;
+        const legacyAcao = snap?.feedback_blocks?.acao_desenvolvimento || rawData.acao_desenvolvimento;
+        const legacyResult = snap?.feedback_blocks?.resultado_esperado || rawData.resultado_esperado;
+        if (legacyObj || legacyAcao || legacyResult) {
+          setPdiObjetivos([{ id: 'legacy-1', categoria: '', objetivo: legacyObj || '', acao_esperada: legacyAcao || '', resultado_esperado: legacyResult || '', status: 'nao_cumprido' }]);
+        } else {
+          setPdiObjetivos([newPdiObjetivo()]);
+        }
       }
     }
 
