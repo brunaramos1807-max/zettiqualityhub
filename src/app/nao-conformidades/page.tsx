@@ -32,6 +32,36 @@ function resolveNCType(tipo: string): string {
   return NC_NAME_MAP[tipo] || tipo;
 }
 
+function formatPontosDeduzidos(pts?: number | null): string {
+  if (pts == null || pts === 0) return '—';
+  return `-${Math.abs(pts)}`;
+}
+
+function parseNcDescricaoMeta(descricao?: string): {
+  descricao: string;
+  severity?: string;
+  impacto?: string;
+} {
+  if (!descricao) return { descricao: '' };
+  let clean = descricao;
+  let severity: string | undefined;
+  let impacto: string | undefined;
+
+  const sevMatch = clean.match(/(?:^|\n\n)Severidade:\s*(.+?)(?:\n\n|$)/i);
+  if (sevMatch) {
+    severity = sevMatch[1].trim();
+    clean = clean.replace(/(?:^|\n\n)Severidade:\s*.+?(?:\n\n|$)/i, '\n').trim();
+  }
+
+  const impMatch = clean.match(/(?:^|\n\n)Impacto operacional:\s*([\s\S]+)$/i);
+  if (impMatch) {
+    impacto = impMatch[1].trim();
+    clean = clean.replace(/(?:^|\n\n)Impacto operacional:\s*[\s\S]+$/i, '').trim();
+  }
+
+  return { descricao: clean || descricao, severity, impacto };
+}
+
 interface NCRecord {
   id: string;
   analista: string;
@@ -64,6 +94,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 function NCDetailModal({ data, onClose }: { data: NCDetailModal; onClose: () => void }) {
   const { nc, typeInfo } = data;
+  const meta = parseNcDescricaoMeta(nc.descricao);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}>
       <div className="w-full max-w-lg rounded-2xl overflow-hidden" style={{ backgroundColor: '#0A1628', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 25px 80px rgba(0,0,0,0.6)' }}>
@@ -81,7 +112,8 @@ function NCDetailModal({ data, onClose }: { data: NCDetailModal; onClose: () => 
               { label: 'Coordenador', value: nc.coordenador || '—' },
               { label: 'Período', value: nc.periodo },
               { label: 'Criticidade', value: typeInfo?.criticidade || '—' },
-              { label: 'Pts Deduzidos', value: nc.pontos_deduzidos ? `-${nc.pontos_deduzidos}` : '—' },
+              { label: 'Pts Deduzidos', value: formatPontosDeduzidos(nc.pontos_deduzidos) },
+              { label: 'Severidade', value: meta.severity || '—' },
               { label: 'Protocolo', value: nc.protocolo_referencia || '—' },
             ].map((item) => (
               <div key={item.label} className="rounded-xl p-3" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
@@ -90,10 +122,16 @@ function NCDetailModal({ data, onClose }: { data: NCDetailModal; onClose: () => 
               </div>
             ))}
           </div>
-          {nc.descricao && (
+          {meta.descricao && (
             <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
               <p className="text-xs mb-2" style={{ color: '#64748B' }}>Descrição / Evidência</p>
-              <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.7)' }}>{nc.descricao}</p>
+              <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.7)' }}>{meta.descricao}</p>
+            </div>
+          )}
+          {meta.impacto && (
+            <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)' }}>
+              <p className="text-xs mb-2 font-semibold" style={{ color: '#F59E0B' }}>Impacto Operacional</p>
+              <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.7)' }}>{meta.impacto}</p>
             </div>
           )}
           <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.15)' }}>
@@ -554,6 +592,7 @@ function NCContent() {
               <tbody>
                 {filtered.slice(0, 100).map((nc) => {
                   const typeInfo = NC_TYPES.find((t) => t.key === nc.tipo_nc);
+                  const meta = parseNcDescricaoMeta(nc.descricao);
                   return (
                     <tr key={nc.id} className="hover:bg-white/[0.02]" style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                       <td className="px-4 py-2.5 font-medium text-white">
@@ -568,10 +607,15 @@ function NCContent() {
                           {typeInfo?.icon} {typeInfo?.fullName || nc.tipo_nc}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5 max-w-xs truncate" style={{ color: 'rgba(255,255,255,0.6)' }}>{nc.descricao || '—'}</td>
+                      <td className="px-4 py-2.5 max-w-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                        <p className="truncate">{meta.descricao || '—'}</p>
+                        {meta.severity && (
+                          <p className="text-[10px] mt-0.5 truncate" style={{ color: '#A78BFA' }}>Sev: {meta.severity}</p>
+                        )}
+                      </td>
                       <td className="px-4 py-2.5" style={{ color: '#94A3B8' }}>{nc.periodo}</td>
                       <td className="px-4 py-2.5 font-medium" style={{ color: nc.pontos_deduzidos ? '#EF4444' : '#94A3B8' }}>
-                        {nc.pontos_deduzidos ? `-${nc.pontos_deduzidos}` : '—'}
+                        {formatPontosDeduzidos(nc.pontos_deduzidos)}
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-1">
