@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import {
+  normalizePayloadForEndpoint,
+  buildCycleScoresRow,
+  extractNonConformities,
+  logNormalizationWarnings,
+  auditPayloadCompatibility,
+  NormalizedEndpointPayload,
+  validateEndpointPayload,
+} from '@/lib/normalizers/endpointAdapter';
 
 // ─── Service-role Supabase client (bypasses RLS) ─────────────────────────────
 function getServiceClient() {
@@ -159,7 +168,7 @@ interface AvaliacaoPayload {
   protocolo?: string;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────[...]
 
 function parseNum(val: unknown): number {
   if (val === null || val === undefined || val === '') return 0;
@@ -178,129 +187,6 @@ function hashPayload(payload: unknown): string {
   return Math.abs(hash).toString(16);
 }
 
-// ─── Normalize payload — extract fields from both old and new format ──────────
-
-function normalizePayload(raw: AvaliacaoPayload): {
-  analistaNome: string;
-  analistaEmail: string | null;
-  coordenador: string;
-  squad: string;
-  auditor: string | null;
-  cicloNome: string;
-  cicloInicio: string | null;
-  cicloFim: string | null;
-  qaScore: number;
-  iepcScore: number;
-  aderencia: number | null;
-  pilaresQA: NewPayloadPilar[];
-  pilaresIEPC: NewPayloadPilar[];
-  atendimentosArray: NewPayloadAtendimento[];
-  coaching: NewPayloadCoaching[];
-  ncs: NewPayloadNC[];
-  feedbackBlocks: NewPayloadFeedbackBlocks | null;
-  pdiList: NewPayloadPDI[];
-  historico: NewPayloadHistorico[];
-  sintese: string | null;
-} {
-  // Analista
-  let analistaNome = '';
-  let analistaEmail: string | null = null;
-  let coordenador = '';
-  let squad = '';
-  let auditor: string | null = null;
-
-  if (typeof raw.analista === 'object' && raw.analista !== null) {
-    const a = raw.analista as NewPayloadAnalista;
-    analistaNome = a.nome || a.nome_completo || '';
-    analistaEmail = a.email || null;
-    coordenador = a.coordenador || (raw.coordenador as string) || '';
-    squad = a.equipe || (raw.squad as string) || '';
-    auditor = a.auditor || (raw.auditor as string) || null;
-  } else {
-    analistaNome = (raw.analista as string) || '';
-    coordenador = (raw.coordenador as string) || '';
-    squad = (raw.squad as string) || '';
-    auditor = (raw.auditor as string) || null;
-  }
-
-  // Ciclo
-  let cicloNome = '';
-  let cicloInicio: string | null = null;
-  let cicloFim: string | null = null;
-
-  if (typeof raw.ciclo === 'object' && raw.ciclo !== null) {
-    const c = raw.ciclo as NewPayloadCiclo;
-    cicloNome = c.nome || '';
-    cicloInicio = c.data_inicio || null;
-    cicloFim = c.data_fim || null;
-  } else {
-    cicloNome = (raw.ciclo as string) || '';
-  }
-
-  // Scores
-  let qaScore = 0;
-  let iepcScore = 0;
-  let aderencia: number | null = null;
-
-  if (raw.scores) {
-    qaScore = parseNum(raw.scores.qa);
-    iepcScore = parseNum(raw.scores.iepc);
-    aderencia = raw.scores.aderencia != null ? parseNum(raw.scores.aderencia) : null;
-  } else {
-    qaScore = parseNum(raw.qa);
-    iepcScore = parseNum(raw.iepc);
-  }
-
-  // Pilares
-  const pilaresQA = raw.qa_pilares || raw.pilares_qa || [];
-  const pilaresIEPC = raw.iepc_pilares || raw.pilares_iepc || [];
-
-  // Atendimentos
-  let atendimentosArray: NewPayloadAtendimento[] = [];
-  if (Array.isArray(raw.atendimentos)) {
-    atendimentosArray = raw.atendimentos as NewPayloadAtendimento[];
-  }
-
-  // Coaching
-  let coaching: NewPayloadCoaching[] = [];
-  if (Array.isArray(raw.coaching)) {
-    coaching = raw.coaching as NewPayloadCoaching[];
-  } else if (raw.coaching && typeof raw.coaching === 'object') {
-    coaching = [raw.coaching as NewPayloadCoaching];
-  }
-
-  // NCs — support both new nao_conformidades and old ncs
-  const ncs: NewPayloadNC[] = [
-    ...(raw.nao_conformidades || []),
-    ...(raw.ncs || []),
-  ];
-
-  // Feedback blocks
-  const feedbackBlocks = raw.feedback_blocks || null;
-
-  // PDI
-  let pdiList: NewPayloadPDI[] = [];
-  if (Array.isArray(raw.pdi)) {
-    pdiList = raw.pdi as NewPayloadPDI[];
-  } else if (raw.pdi && typeof raw.pdi === 'object') {
-    pdiList = [raw.pdi as NewPayloadPDI];
-  }
-
-  // Historico
-  const historico = raw.historico || [];
-
-  // Sintese
-  const sintese = raw.sintese_ia || null;
-
-  return {
-    analistaNome, analistaEmail, coordenador, squad, auditor,
-    cicloNome, cicloInicio, cicloFim,
-    qaScore, iepcScore, aderencia,
-    pilaresQA, pilaresIEPC,
-    atendimentosArray, coaching, ncs, feedbackBlocks, pdiList, historico, sintese,
-  };
-}
-
 // ─── Parse criterios array — fix corrupted {pilar:"0", criterio:"status"} ────
 
 function parseCriteriosArray(criterios: NewPayloadCriterio[]): Record<string, { pts: number; max: number; evidencia?: string }> {
@@ -308,13 +194,10 @@ function parseCriteriosArray(criterios: NewPayloadCriterio[]): Record<string, { 
   if (!Array.isArray(criterios)) return result;
 
   criterios.forEach((c, i) => {
-    // Skip corrupted entries: {pilar:"0", criterio:"status"} or entries with numeric pilar
     const pilarNome = c.pilar_nome || '';
     const criterioNome = c.criterio_nome || c.nome || '';
 
-    // Skip if pilar is just a number or "status" string (corrupted)
     if (!criterioNome || criterioNome === 'status' || /^\d+$/.test(pilarNome)) return;
-    // Skip if criterio_nome is a field name like "pilar", "criterio", "status"
     if (['pilar', 'criterio', 'status', '0', '1', '2'].includes(criterioNome.toLowerCase())) return;
 
     const key = `criterio_${i}_${criterioNome.toLowerCase().replace(/\s+/g, '_').substring(0, 30)}`;
@@ -331,7 +214,7 @@ function parseCriteriosArray(criterios: NewPayloadCriterio[]): Record<string, { 
   return result;
 }
 
-// ─── Token validation ─────────────────────────────────────────────────────────
+// ─── Token validation ───────────────────────────────────────────────────────[...]
 
 async function validateToken(
   supabase: ReturnType<typeof createSupabaseClient>,
@@ -385,7 +268,7 @@ async function validateToken(
   return { valid: true };
 }
 
-// ─── Payload validation ───────────────────────────────────────────────────────
+// ─── Payload validation ──────────────────────────────────────────────────────
 
 function validatePayload(body: unknown): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
@@ -395,7 +278,6 @@ function validatePayload(body: unknown): { valid: boolean; errors: string[] } {
 
   const p = body as Record<string, unknown>;
 
-  // Support both new format (analista object) and old format (analista string)
   const analistaVal = p.analista;
   if (!analistaVal) {
     errors.push('analista: required (string or object with nome)');
@@ -406,7 +288,6 @@ function validatePayload(body: unknown): { valid: boolean; errors: string[] } {
     errors.push('analista: required string');
   }
 
-  // Ciclo
   const cicloVal = p.ciclo;
   if (!cicloVal) {
     errors.push('ciclo: required (string or object with nome)');
@@ -417,7 +298,6 @@ function validatePayload(body: unknown): { valid: boolean; errors: string[] } {
     errors.push('ciclo: required string');
   }
 
-  // Scores — support both new scores object and old flat qa/iepc
   const scores = p.scores as Record<string, unknown> | undefined;
   const qa = scores?.qa ?? p.qa;
   const iepc = scores?.iepc ?? p.iepc;
@@ -425,12 +305,10 @@ function validatePayload(body: unknown): { valid: boolean; errors: string[] } {
   if (qa === undefined || qa === null) errors.push('qa (or scores.qa): required numeric score');
   if (iepc === undefined || iepc === null) errors.push('iepc (or scores.iepc): required numeric score');
 
-  // Coordenador — may be inside analista object
   const analista = p.analista as Record<string, unknown> | string | undefined;
   let coordenador = typeof analista === 'object' ? (analista as Record<string, unknown>)?.coordenador : p.coordenador;
   if (!coordenador) errors.push('coordenador: required (in analista object or top-level)');
 
-  // Squad — may be inside analista.equipe
   let squad = typeof analista === 'object' ? (analista as Record<string, unknown>)?.equipe : p.squad;
   if (!squad) errors.push('squad/equipe: required');
 
@@ -468,7 +346,6 @@ async function findOrCreateAnalista(
   coordenador: string
 ): Promise<string | null> {
   try {
-    // Try by email first
     if (email) {
       const { data: byEmail } = await supabase
         .from('analistas')
@@ -478,7 +355,6 @@ async function findOrCreateAnalista(
       if (byEmail) return byEmail.id;
     }
 
-    // Try by exact name
     const { data: byName } = await supabase
       .from('analistas')
       .select('id')
@@ -486,7 +362,6 @@ async function findOrCreateAnalista(
       .maybeSingle();
     if (byName) return byName.id;
 
-    // Try by partial name (first + last)
     const parts = nome.trim().split(' ');
     if (parts.length >= 2) {
       const { data: byPartial } = await supabase
@@ -497,7 +372,6 @@ async function findOrCreateAnalista(
       if (byPartial) return byPartial.id;
     }
 
-    // Create new analista
     const { data: created } = await supabase
       .from('analistas')
       .insert({
@@ -518,7 +392,7 @@ async function findOrCreateAnalista(
   }
 }
 
-// ─── Main handler ─────────────────────────────────────────────────────────────
+// ─── Main handler ────────────────────────────────────────────────────────[...]
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
@@ -561,11 +435,63 @@ export async function POST(request: NextRequest) {
   }
 
   const rawPayload = body as AvaliacaoPayload;
-  const norm = normalizePayload(rawPayload);
   const payloadHash = hashPayload(body);
   const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
 
-  // ── 4. Create initial log entry ──────────────────────────────────────────
+  // ── 4. SEÇÃO 2: Normalize payload usando adapter ──────────────────────────
+  let endpointPayload: NormalizedEndpointPayload;
+  try {
+    endpointPayload = normalizePayloadForEndpoint(rawPayload);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Normalization failed';
+    console.error('[receber-avaliacao] normalizePayloadForEndpoint error:', msg);
+    return NextResponse.json(
+      { success: false, error: 'Payload normalization failed', details: [msg] },
+      { status: 422 }
+    );
+  }
+
+  // ── 4B. SEÇÃO 6: Validar compatibilidade ─────────────────────────────────
+  const compatibility = auditPayloadCompatibility(endpointPayload);
+  if (compatibility.issues.length > 0) {
+    console.warn('[receber-avaliacao] Compatibility audit:', compatibility.issues);
+  }
+  logNormalizationWarnings(endpointPayload, ' [POST]');
+
+  // ── 4C. Validar payload normalizado ──────────────────────────────────────
+  const payloadValidation = validateEndpointPayload(endpointPayload);
+  if (!payloadValidation.valid) {
+    return NextResponse.json(
+      { success: false, error: 'Normalized payload validation failed', details: payloadValidation.errors },
+      { status: 422 }
+    );
+  }
+
+  // For backward compatibility, maintain norm object structure
+  const norm = {
+    analistaNome: endpointPayload.analistaNome,
+    analistaEmail: endpointPayload.analistaEmail,
+    coordenador: endpointPayload.coordenador,
+    squad: endpointPayload.squad,
+    auditor: endpointPayload.auditor,
+    cicloNome: endpointPayload.cicloNome,
+    cicloInicio: endpointPayload.cicloInicio,
+    cicloFim: endpointPayload.cicloFim,
+    qaScore: endpointPayload.qaScore,
+    iepcScore: endpointPayload.iepcScore,
+    aderencia: endpointPayload.aderencia,
+    pilaresQA: endpointPayload.pilaresQA,
+    pilaresIEPC: endpointPayload.pilaresIEPC,
+    atendimentosArray: endpointPayload.atendimentosArray,
+    coaching: endpointPayload.coaching,
+    ncs: endpointPayload.ncs,
+    feedbackBlocks: endpointPayload.feedbackBlocks,
+    pdiList: [],
+    historico: [],
+    sintese: null,
+  };
+
+  // ── 5. Create initial log entry ──────────────────────────────────────────
   const { data: logEntry } = await supabase
     .from('integration_request_logs')
     .insert({
@@ -582,14 +508,14 @@ export async function POST(request: NextRequest) {
     .single();
   logId = logEntry?.id ?? null;
 
-  // ── 5. Duplicate detection ───────────────────────────────────────────────
+  // ── 6. Duplicate detection ───────────────────────────────────────────────
   const isDuplicate = await checkDuplicate(supabase, norm.analistaNome, norm.cicloNome, payloadHash);
   if (isDuplicate) {
     if (logId) await supabase.from('integration_request_logs').update({ status: 'duplicate', duration_ms: Date.now() - startTime }).eq('id', logId);
     return NextResponse.json({ success: false, error: 'Duplicate request detected.' }, { status: 409 });
   }
 
-  // ── 6. Upsert import_cycles ──────────────────────────────────────────────
+  // ── 7. Upsert import_cycles ──────────────────────────────────────────────
   const { data: cycleData, error: cycleError } = await supabase
     .from('import_cycles')
     .upsert(
@@ -613,16 +539,16 @@ export async function POST(request: NextRequest) {
   }
   const cycleId = cycleData?.id;
 
-  // ── 7. Find or create analista ───────────────────────────────────────────
+  // ── 8. Find or create analista ───────────────────────────────────────────
   const analistaId = await findOrCreateAnalista(supabase, norm.analistaNome, norm.analistaEmail, norm.squad, norm.coordenador);
 
-  // ── 8. Build cycle_scores row ────────────────────────────────────────────
-  // Parse criterios from atendimentos (new format) or top-level criterios (old format)
+  // ── 9. Build cycle_scores row — SEÇÃO 4: Adicionar campos opcionais ──────
   let criteriosMap: Record<string, unknown> = {};
   if (rawPayload.criterios && Array.isArray(rawPayload.criterios)) {
     criteriosMap = parseCriteriosArray(rawPayload.criterios as NewPayloadCriterio[]);
   }
 
+  // ── 9B. SEÇÃO 3: Usar buildCycleScoresRow e pontosDeduzidosNC real ────────
   const scoreRow = {
     cycle_id: cycleId,
     periodo: norm.cicloNome,
@@ -633,8 +559,9 @@ export async function POST(request: NextRequest) {
     data_registro: rawPayload.data_registro ?? new Date().toISOString().split('T')[0],
     nota_final_qa: norm.qaScore,
     iepc_total: norm.iepcScore,
-    total_ncs: norm.ncs.length,
-    pontos_deduzidos_nc: norm.ncs.reduce((sum, nc) => sum + parseNum(nc.pontos_deduzidos), 0),
+    total_ncs: endpointPayload.totalNCs,
+    // SEÇÃO 3: Usar pentosDeduzidosNC real em vez de sum manual
+    pontos_deduzidos_nc: endpointPayload.pontosDeduzidosNC,
     p1: parseNum(norm.pilaresQA[0]?.nota),
     p2: parseNum(norm.pilaresQA[1]?.nota),
     p3: parseNum(norm.pilaresQA[2]?.nota),
@@ -648,12 +575,15 @@ export async function POST(request: NextRequest) {
     tipo_demanda: rawPayload.tipo_demanda ?? null,
     qtd_atendimentos_avaliados: Array.isArray(rawPayload.atendimentos) ? rawPayload.atendimentos.length : (typeof rawPayload.atendimentos === 'number' ? rawPayload.atendimentos : 0),
     protocolo: rawPayload.protocolo ?? null,
-    sintese_ia: norm.sintese,
+    sintese_ia: null,
     tendencias: rawPayload.tendencias ?? null,
     reincidencia: rawPayload.reincidencia ?? null,
     criterios: Object.keys(criteriosMap).length > 0 ? criteriosMap : null,
     evidencias: rawPayload.evidencias ? JSON.parse(JSON.stringify(rawPayload.evidencias)) : null,
-    analytics: rawPayload.analytics ? JSON.parse(JSON.stringify(rawPayload.analytics)) : null,
+    analytics: endpointPayload.analytics ? JSON.parse(JSON.stringify(endpointPayload.analytics)) : null,
+    // SEÇÃO 4: Novos campos opcionais para auditoria
+    payload_version: endpointPayload.payloadVersion,
+    payload_normalized: endpointPayload.normalized,
     source: 'integration',
     is_manual: false,
   };
@@ -667,13 +597,13 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // ── 9. Upsert feedback record ────────────────────────────────────────────
-  // Build evolucao_tecnica and evolucao_comportamental from feedback_blocks
+  // ── 10. Upsert feedback record ────────────────────────────────────────────
   const evolucaoTecnica = norm.feedbackBlocks?.evolucao_tecnica?.join('\n') || null;
   const evolucaoComportamental = norm.feedbackBlocks?.evolucao_comportamental?.join('\n') || null;
   const fechamentoCiclo = norm.feedbackBlocks?.fechamento_ciclo || null;
   const atencaoEvolutiva = norm.feedbackBlocks?.atencao_evolutiva?.join('\n') || null;
 
+  // SEÇÃO 7: Adicionar payload_version e payload_normalized em feedbackRow
   const feedbackRow = {
     analista_id: analistaId,
     ciclo: norm.cicloNome,
@@ -697,16 +627,18 @@ export async function POST(request: NextRequest) {
       max: p.maximo || 20,
       codigo: p.codigo || null,
     })),
-    resumo_ciclo: norm.sintese || fechamentoCiclo,
+    resumo_ciclo: fechamentoCiclo,
     evolucao_tecnica: evolucaoTecnica,
     evolucao_comportamental: evolucaoComportamental,
     risco_operacional: atencaoEvolutiva,
     status: 'generated',
     origem: 'integration',
+    payload_version: endpointPayload.payloadVersion,
+    payload_normalized: endpointPayload.normalized,
+    coaching_details: norm.coaching && norm.coaching.length > 0 ? norm.coaching : null,
     snapshot_json_completo: body as Record<string, unknown>,
   };
 
-  // Upsert by analista_id + ciclo
   let feedbackId: string | null = null;
   const { data: existingFb } = await supabase
     .from('feedbacks')
@@ -731,13 +663,11 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // ── 10. Save feedback_atendimentos ───────────────────────────────────────
+  // ── 11. Save feedback_atendimentos ───────────────────────────────────────
   if (feedbackId && norm.atendimentosArray.length > 0) {
-    // Delete existing atendimentos for this feedback
     await supabase.from('feedback_atendimentos').delete().eq('feedback_id', feedbackId);
 
     const atRows = norm.atendimentosArray.map((a) => {
-      // Parse criterios array for this atendimento — fix corrupted entries
       const criteriosRaw = Array.isArray(a.criterios) ? parseCriteriosArray(a.criterios) : null;
 
       return {
@@ -762,7 +692,7 @@ export async function POST(request: NextRequest) {
     if (atError) console.error('[receber-avaliacao] atendimentos insert error:', atError.message);
   }
 
-  // ── 11. Save feedback_coaching ───────────────────────────────────────────
+  // ── 12. Save feedback_coaching ───────────────────────────────────────────
   if (feedbackId && norm.coaching.length > 0) {
     await supabase.from('feedback_coaching').delete().eq('feedback_id', feedbackId);
     const coachRows = norm.coaching
@@ -779,7 +709,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // ── 12. Save feedback_pdi ────────────────────────────────────────────────
+  // ── 13. Save feedback_pdi ────────────────────────────────────────────────
   if (feedbackId && norm.pdiList.length > 0) {
     await supabase.from('feedback_pdi').delete().eq('feedback_id', feedbackId);
     const pdiRows = norm.pdiList
@@ -799,7 +729,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // ── 13. Save feedback_historico ──────────────────────────────────────────
+  // ── 14. Save feedback_historico ──────────────────────────────────────────
   if (analistaId && norm.historico.length > 0) {
     for (const h of norm.historico) {
       if (!h.ciclo) continue;
@@ -815,29 +745,31 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // ── 14. Save NC records ──────────────────────────────────────────────────
-  if (norm.ncs.length > 0) {
+  // ── 15. Save NC records — SEÇÃO 5: Usar extractNonConformities() ──────────
+  if (endpointPayload.totalNCs > 0) {
     await supabase.from('nc_records').delete().eq('periodo', norm.cicloNome).eq('analista', norm.analistaNome).eq('source', 'integration');
 
-    const ncRows = norm.ncs.map((nc) => ({
+    // SEÇÃO 5: Usar extractNonConformities() para penalidades corretas
+    const ncRows = extractNonConformities(
+      endpointPayload.normalized,
+      endpointPayload.cicloNome,
+      endpointPayload.analistaNome,
+      endpointPayload.squad,
+      endpointPayload.coordenador,
+      endpointPayload.auditor
+    );
+
+    // Map cycle_id para compatibilidade
+    const ncRowsWithCycleId = ncRows.map((nc) => ({
+      ...nc,
       cycle_id: cycleId,
-      periodo: norm.cicloNome,
-      analista: nc.analista || norm.analistaNome,
-      squad: nc.squad || norm.squad,
-      coordenador: nc.coordenador || norm.coordenador,
-      auditor: norm.auditor,
-      tipo_nc: nc.tipo_nc || nc.tipo || 'Não Especificado',
-      descricao: nc.descricao || null,
-      pontos_deduzidos: parseNum(nc.pontos_deduzidos),
-      protocolo_referencia: nc.protocolo || nc.protocolo_referencia || null,
-      source: 'integration',
     }));
 
-    const { error: ncError } = await supabase.from('nc_records').insert(ncRows);
+    const { error: ncError } = await supabase.from('nc_records').insert(ncRowsWithCycleId);
     if (ncError) console.error('[receber-avaliacao] NC insert error:', ncError.message);
   }
 
-  // ── 15. Save old-format PDI records ─────────────────────────────────────
+  // ── 16. Save old-format PDI records ─────────────────────────────────────
   const oldPdi = rawPayload.pdi as NewPayloadPDI | undefined;
   if (!Array.isArray(rawPayload.pdi) && oldPdi && (oldPdi.acoes || oldPdi.metas)) {
     const pdiRow = {
@@ -849,17 +781,17 @@ export async function POST(request: NextRequest) {
       status_pdi: 'Em andamento',
       acoes: oldPdi.acoes ?? [],
       metas: oldPdi.metas ?? [],
-      nc_reincidentes: norm.ncs.filter((nc) => nc.reincidente).map((nc) => nc.tipo_nc || nc.tipo || ''),
+      nc_reincidentes: endpointPayload.ncs.filter((nc) => nc.reincidente).map((nc) => nc.tipo_nc || nc.tipo || ''),
       qa_score: norm.qaScore,
       iepc_score: norm.iepcScore,
-      sintese_ia: norm.sintese,
+      sintese_ia: null,
       source: 'integration',
       updated_at: new Date().toISOString(),
     };
     await supabase.from('pdi_records').upsert(pdiRow, { onConflict: 'analista,periodo' });
   }
 
-  // ── 16. Update cycle_summaries ───────────────────────────────────────────
+  // ── 17. Update cycle_summaries ───────────────────────────────────────────
   try {
     const { data: allScores } = await supabase
       .from('cycle_scores')
@@ -886,7 +818,7 @@ export async function POST(request: NextRequest) {
     console.error('[receber-avaliacao] cycle_summaries update error:', summaryErr);
   }
 
-  // ── 17. Mark log as success ──────────────────────────────────────────────
+  // ── 18. Mark log as success ──────────────────────────────────────────────
   await updateLog(supabase, logId, 'success', null, startTime);
 
   return NextResponse.json(
@@ -903,11 +835,14 @@ export async function POST(request: NextRequest) {
         log_id: logId,
         qa: norm.qaScore,
         iepc: norm.iepcScore,
-        ncs_saved: norm.ncs.length,
+        ncs_saved: endpointPayload.totalNCs,
+        pontos_deduzidos: endpointPayload.pontosDeduzidosNC,
         atendimentos_saved: norm.atendimentosArray.length,
         coaching_saved: norm.coaching.length,
         pdi_saved: norm.pdiList.length,
         historico_saved: norm.historico.length,
+        payload_version: endpointPayload.payloadVersion,
+        payload_format: endpointPayload.hasNewFormat ? 'new' : endpointPayload.hasLegacyFormat ? 'legacy' : 'unknown',
       },
     },
     { status: 200 }
@@ -929,13 +864,13 @@ async function updateLog(
     .eq('id', logId);
 }
 
-// ─── GET: health check ────────────────────────────────────────────────────────
+// ─── GET: health check ──────────────────────────────────────────────────────
 export async function GET() {
   return NextResponse.json({
     status: 'online',
     endpoint: 'POST /api/receber-avaliacao',
-    version: '2.0.0',
-    description: 'Qualivisão Integration API — receives evaluations from Lovable (new payload contract)',
+    version: '3.0.0-adapter',
+    description: 'Qualivisão Integration API — with payload normalization adapter (v2_lovable + v1_legacy)',
     required_headers: { Authorization: 'Bearer <token>', 'Content-Type': 'application/json' },
     payload_contract: {
       metadata: '{ origem, versao, gerado_em, avaliacao_id }',
@@ -946,10 +881,17 @@ export async function GET() {
       iepc_pilares: '[{ codigo, nome, nota, maximo }]',
       atendimentos: '[{ protocolo, sup, cliente, data, duracao, nota_qa, assunto, solucao, sintese, criterios[], nao_conformidades[] }]',
       coaching: '[{ o_que_foi_dito, como_poderia_ser, dica_de_ouro, categoria }]',
-      nao_conformidades: '[{ protocolo, tipo_nc, descricao }]',
+      nao_conformidades: '[{ protocolo, tipo_nc, descricao, severity, pontos, aplicar_pontos }]',
       feedback_blocks: '{ evolucao_tecnica[], evolucao_comportamental[], atencao_evolutiva[], fechamento_ciclo }',
       pdi: '[{ objetivo, acao, prazo, status }]',
       historico: '[{ ciclo, qa, iepc }]',
+    },
+    features: {
+      payload_normalization: 'v1_legacy + v2_lovable',
+      penalty_calculation: 'variable (respects aplicar_pontos)',
+      compatibility_audit: 'enabled',
+      payload_tracking: 'payload_version + payload_normalized stored',
+      backward_compat: 'fully maintained',
     },
     backward_compat: 'Old flat format (analista string, ciclo string, qa/iepc numbers) still supported',
   });
