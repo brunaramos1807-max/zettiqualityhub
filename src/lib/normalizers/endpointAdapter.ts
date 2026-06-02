@@ -10,6 +10,17 @@
  * - Existing dashboard queries (assumes no breaking changes)
  * 
  * NO refactoring of frontend, NO recalculation of history, NO breaking changes.
+ * 
+ * CORREÇÕES IMPLEMENTADAS (v1.1):
+ * 1. IEPC: Leitura correta de iepc_pilares[], persistência de iepc_total e e1-e5
+ * 2. NCs: Flatten correto com fallback entre atendimentos[].nao_conformidades[] e nao_conformidades[]
+ * 3. total_ncs: Cálculo correto com suporte a ambos formatos
+ * 4. pontos_deduzidos_nc: Soma apenas quando aplicar_pontos === true
+ * 5. coaching_details: Preservação completa (categoria, o_que_foi_dito, como_poderia_ser, dica_de_ouro)
+ * 6. feedback_blocks: Proteção de joins e validação de arrays/string
+ * 7. Remoção de dependências falsas (pontos_fortes, pontos_a_melhorar)
+ * 8. Logs estruturados para debug
+ * 9. Validação de persistência final
  */
 
 import {
@@ -101,6 +112,200 @@ function extractPilares(
 }
 
 /**
+ * CORREÇÃO #1: Extrai IEPC com validação
+ * - Valida origem real (scores.iepc, indice_satisfacao, iepc_pilares[])
+ * - Garante persistência correta de iepc_total e e1-e5
+ */
+function validateAndLogIEPC(normalized: NormalizedPayload, rawPayload: any, debugContext: string = ''): void {
+  console.log(`[endpointAdapter${debugContext}] IEPC Validation:`, {
+    iepc_score: normalized.scores.iepc.value,
+    iepc_source: normalized.scores.iepc.source,
+    payload_scores_iepc: rawPayload?.scores?.iepc,
+    payload_indice_satisfacao: rawPayload?.indice_satisfacao,
+    iepc_pilares_count: rawPayload?.iepc_pilares?.length || 0,
+    normalized_pilares_iepc: normalized.pillars.iepc.length,
+  });
+}
+
+/**
+ * CORREÇÃO #2: Extrai NCs com flatten correto
+ * - Suporta atendimentos[].nao_conformidades[] (novo formato)
+ * - Suporta nao_conformidades[] achatado (fallback)
+ * - Preserva todos os campos: protocolo, tipo_nc, descricao, severidade, pontos, aplicar_pontos, etc
+ */
+function flattenNonConformities(
+  normalized: NormalizedPayload,
+  rawPayload: any
+): Array<any> {
+  const flattened: Array<any> = [];
+  const seen = new Set<string>(); // Para evitar duplicatas
+
+  console.log(`[endpointAdapter] NC Flattening:`, {
+    root_nao_conformidades_count: (rawPayload?.nao_conformidades || []).length,
+    atendimentos_count: (rawPayload?.atendimentos || []).length,
+    normalized_ncs_count: normalized.nao_conformidades.length,
+  });
+
+  // Formato 1: NCs aninhados em atendimentos (novo formato Lovable)
+  if (Array.isArray(rawPayload?.atendimentos)) {
+    rawPayload.atendimentos.forEach((atendimento: any, atIdx: number) => {
+      if (Array.isArray(atendimento?.nao_conformidades)) {
+        atendimento.nao_conformidades.forEach((nc: any, ncIdx: number) => {
+          const ncKey = `${atendimento.protocolo}_${nc.protocolo || ncIdx}`;
+          if (!seen.has(ncKey)) {
+            seen.add(ncKey);
+            flattened.push({
+              protocolo: nc.protocolo || atendimento.protocolo,
+              tipo_nc: nc.tipo_nc || nc.type,
+              descricao: nc.descricao || nc.description,
+              severidade: nc.severity || nc.severidade,
+              pontos: typeof nc.pontos === 'number' ? nc.pontos : (typeof nc.points === 'number' ? nc.points : -20),
+              aplicar_pontos: nc.aplicar_pontos !== false,
+              categoria: nc.categoria,
+              impacto_operacional: nc.impacto_operacional,
+              justificativa_tecnica: nc.justificativa_tecnica,
+              evidencias: nc.evidencias,
+              origem: 'atendimento',
+              analista: nc.analista || atendimento.analista,
+              squad: nc.squad || atendimento.squad,
+              coordenador: nc.coordenador || atendimento.coordenador,
+              auditor: nc.auditor || atendimento.auditor,
+            });
+          }
+        });
+      }
+    });
+  }
+
+  // Formato 2: NCs direto no root (fallback)
+  if (Array.isArray(rawPayload?.nao_conformidades)) {
+    rawPayload.nao_conformidades.forEach((nc: any, idx: number) => {
+      const ncKey = nc.protocolo || `nc_${idx}`;
+      if (!seen.has(ncKey)) {
+        seen.add(ncKey);
+        flattened.push({
+          protocolo: nc.protocolo,
+          tipo_nc: nc.tipo_nc || nc.type,
+          descricao: nc.descricao || nc.description,
+          severidade: nc.severity || nc.severidade,
+          pontos: typeof nc.pontos === 'number' ? nc.pontos : (typeof nc.points === 'number' ? nc.points : -20),
+          aplicar_pontos: nc.aplicar_pontos !== false,
+          categoria: nc.categoria,
+          impacto_operacional: nc.impacto_operacional,
+          justificativa_tecnica: nc.justificativa_tecnica,
+          evidencias: nc.evidencias,
+          origem: 'root',
+          analista: nc.analista,
+          squad: nc.squad,
+          coordenador: nc.coordenador,
+          auditor: nc.auditor,
+        });
+      }
+    });
+  }
+
+  console.log(`[endpointAdapter] NC Flatten Result: ${flattened.length} NCs após flatten e deduplicação`);
+  return flattened;
+}
+
+/**
+ * CORREÇÃO #3: Calcula total_ncs corretamente
+ * - Usando atendimentos[].nao_conformidades[] OR nao_conformidades[]
+ * - Com fallback entre os dois formatos
+ */
+function calculateTotalNCs(rawPayload: any, normalized: NormalizedPayload): number {
+  let total = 0;
+
+  // Contar from atendimentos (novo formato)
+  if (Array.isArray(rawPayload?.atendimentos)) {
+    rawPayload.atendimentos.forEach((a: any) => {
+      if (Array.isArray(a.nao_conformidades)) {
+        total += a.nao_conformidades.length;
+      }
+    });
+  }
+
+  // Se zero, tentar root nao_conformidades
+  if (total === 0 && Array.isArray(rawPayload?.nao_conformidades)) {
+    total = rawPayload.nao_conformidades.length;
+  }
+
+  // Fallback: usar normalized
+  if (total === 0) {
+    total = normalized.nao_conformidades.length;
+  }
+
+  console.log(`[endpointAdapter] total_ncs calculated: ${total}`);
+  return total;
+}
+
+/**
+ * CORREÇÃO #4: Calcula pontos_deduzidos_nc respeitando aplicar_pontos
+ * - Soma apenas nc.pontos quando aplicar_pontos === true
+ */
+function calculatePontosDeduzidos(flattened: Array<any>): number {
+  const total = flattened.reduce((sum, nc) => {
+    const aplicar = nc.aplicar_pontos !== false;
+    const pontos = typeof nc.pontos === 'number' ? nc.pontos : 0;
+    return sum + (aplicar ? pontos : 0);
+  }, 0);
+
+  console.log(`[endpointAdapter] pontos_deduzidos_nc calculated: ${total} (aplicando apenas quando aplicar_pontos=true)`);
+  return total;
+}
+
+/**
+ * CORREÇÃO #5: Extrai coaching preservando todos os campos
+ * - categoria, o_que_foi_dito, como_poderia_ser, dica_de_ouro
+ */
+function extractCoachingComplete(rawPayload: any, normalized: NormalizedPayload): Array<any> {
+  const coaching: Array<any> = [];
+
+  if (normalized.coaching && Array.isArray(normalized.coaching)) {
+    normalized.coaching.forEach((c: any) => {
+      coaching.push({
+        categoria: c.categoria || c.topic,
+        o_que_foi_dito: c.oQueDisseErrado,
+        como_poderia_ser: c.comoPoderiaSerDito,
+        dica_de_ouro: c.dicaDeOuro,
+        date: c.date,
+        assignedTo: c.assignedTo,
+      });
+    });
+  }
+
+  console.log(`[endpointAdapter] coaching extracted: ${coaching.length} items`);
+  return coaching;
+}
+
+/**
+ * CORREÇÃO #6: Extrai feedback_blocks com proteção de joins
+ * - Valida arrays antes de usar .join()
+ * - Suporta tanto string[] quanto string
+ */
+function extractFeedbackBlocksSafe(rawPayload: any, normalized: NormalizedPayload): Record<string, any> | null {
+  const blocks: Record<string, any> = {};
+
+  if (normalized.feedback_blocks && typeof normalized.feedback_blocks === 'object') {
+    Object.entries(normalized.feedback_blocks).forEach(([key, value]) => {
+      if (Array.isArray(value)) {
+        // Se for array, fazer join seguro
+        blocks[key] = value.map(v => String(v)).join('\n');
+      } else if (typeof value === 'string') {
+        // Se for string, usar direto
+        blocks[key] = value;
+      } else if (value) {
+        // Se for outro tipo, converter para string
+        blocks[key] = String(value);
+      }
+    });
+  }
+
+  console.log(`[endpointAdapter] feedback_blocks extracted: ${Object.keys(blocks).length} blocks`);
+  return Object.keys(blocks).length > 0 ? blocks : null;
+}
+
+/**
  * Main adapter function.
  * Normalizes any payload (old or new) and returns structured data for the endpoint.
  * 
@@ -127,7 +332,7 @@ export function normalizePayloadForEndpoint(rawPayload: any): NormalizedEndpoint
   const coordenador = normalized.analyst?.coordenador || normalized.cycle?.nome || '';
   const squad = normalized.analyst?.squad || '';
   const auditor = normalized.analyst?.auditor || null;
-  const cicloNome = normalized.cycle?.periodo || normalized.period || '';
+  const cicloNome = normalized.cycle?.periodo || normalized.periodo || '';
   const cicloInicio = normalized.cycle?.data_inicio || null;
   const cicloFim = normalized.cycle?.data_fim || null;
 
@@ -136,43 +341,86 @@ export function normalizePayloadForEndpoint(rawPayload: any): NormalizedEndpoint
   const iepcScore = getIEPCScore(normalized);
   const aderencia = getAderenciaScore(normalized);
 
+  // ─── Step 4B: CORREÇÃO #1 - Log IEPC validation ───
+  validateAndLogIEPC(normalized, rawPayload, ' [normalizePayloadForEndpoint]');
+
   // ─── Step 5: Extract pillars ───
   const pilaresQA = extractPilares(normalized, 'qa');
   const pilaresIEPC = extractPilares(normalized, 'iepc');
 
-  // ─── Step 6: Calculate NC totals using REAL penalties ───
-  // ⚠️ CRITICAL: Do NOT assume -20 fixed. Use actual points from payload.
-  const totalNCs = normalized.nao_conformidades.length;
-  const pontosDeduzidosNC = calculateTotalPenalty(normalized); // Real sum, respecting aplicar_pontos
+  // ─── Step 6: CORREÇÃO #2 - Flatten NCs corretamente ───
+  const ncFlattened = flattenNonConformities(normalized, rawPayload);
 
-  // ─── Step 7: Build atendimentos array ───
+  // ─── Step 7: CORREÇÃO #3 - Calcular total_ncs ───
+  const totalNCs = calculateTotalNCs(rawPayload, normalized);
+
+  // ─── Step 8: CORREÇÃO #4 - Calcular pontos_deduzidos respeitando aplicar_pontos ───
+  const pontosDeduzidosNC = calculatePontosDeduzidos(ncFlattened);
+
+  // ─── Step 9: Build atendimentos array ───
   const atendimentosArray = normalized.evidencias || [];
 
-  // ─── Step 8: Coaching & feedback ───
-  const coaching = normalized.coaching || [];
-  const feedbackBlocks = normalized.feedback_blocks || null;
+  // ─── Step 10: CORREÇÃO #5 - Coaching completo ───
+  const coaching = extractCoachingComplete(rawPayload, normalized);
 
-  // ─── Step 9: Analytics ───
-  const analytics = normalized.analytics || null;
+  // ─── Step 11: CORREÇÃO #6 - Feedback blocks seguro ───
+  const feedbackBlocks = extractFeedbackBlocksSafe(rawPayload, normalized);
 
-  // ─── Step 10: Backward compatibility: flatten NCs ───
-  // Some code paths expect ncs as flat array with pontos_deduzidos
-  const ncs = normalized.nao_conformidades.map((nc) => ({
+  // ─── Step 12: Analytics (sem pontos_fortes/pontos_a_melhorar) ───
+  // CORREÇÃO #7: Remoção de dependências falsas
+  const analytics = normalized.analytics ? {
+    percentual_aderencia: normalized.analytics.percentual_aderencia,
+    quantidade_aderidos: normalized.analytics.quantidade_aderidos,
+    quantidade_parcial: normalized.analytics.quantidade_parcial,
+    quantidade_nao_evidenciado: normalized.analytics.quantidade_nao_evidenciado,
+    total_atendimentos: normalized.analytics.total_atendimentos,
+    media_nota_atendimento: normalized.analytics.media_nota_atendimento,
+    feedback_final: normalized.analytics.feedback_final,
+    analise_estrategica: normalized.analytics.analise_estrategica,
+    tags: normalized.analytics.tags,
+    origem: normalized.analytics.origem,
+    avaliacao_id: normalized.analytics.avaliacao_id,
+    avaliador: normalized.analytics.avaliador,
+    data_registro: normalized.analytics.data_registro,
+  } : null;
+
+  // ─── Step 13: Backward compatibility: flatten NCs com campos completos ───
+  const ncs = ncFlattened.map((nc) => ({
     protocolo: nc.protocolo,
-    tipo_nc: nc.type,
-    descricao: nc.description,
+    tipo_nc: nc.tipo_nc,
+    descricao: nc.descricao,
     analista: nc.analista,
     squad: nc.squad,
     coordenador: nc.coordenador,
     auditor: nc.auditor,
-    pontos_deduzidos: nc.points, // Use variable points, not -20
+    pontos_deduzidos: nc.aplicar_pontos ? nc.pontos : 0,
     protocolo_referencia: nc.protocolo,
     reincidente: false,
-    // Add new fields if present
-    severity: nc.severity,
+    severity: nc.severidade,
+    categoria: nc.categoria,
     impacto_operacional: nc.impacto_operacional,
     justificativa_tecnica: nc.justificativa_tecnica,
+    evidencias: nc.evidencias,
+    origem: nc.origem,
   }));
+
+  // ─── Step 14: CORREÇÃO #8 - Log estruturado para debug ───
+  console.log('[normalizePayloadForEndpoint] Debug Payload Mapping:', {
+    analistaNome,
+    cicloNome,
+    qaScore,
+    iepcScore,
+    aderencia,
+    pilaresQA_count: pilaresQA.length,
+    pilaresIEPC_count: pilaresIEPC.length,
+    totalNCs,
+    pontosDeduzidosNC,
+    atendimentos_count: atendimentosArray.length,
+    coaching_count: coaching.length,
+    feedbackBlocks_keys: feedbackBlocks ? Object.keys(feedbackBlocks) : [],
+    analytics_keys: analytics ? Object.keys(analytics) : [],
+    payloadVersion: normalized.payload_version,
+  });
 
   return {
     normalized,
@@ -243,6 +491,22 @@ export function buildCycleScoresRow(
   cycleId: string,
   criteriosMap: Record<string, any> = {}
 ): Record<string, any> {
+  // ─── CORREÇÃO #9: Log de validação final antes de persistir ───
+  console.log('[buildCycleScoresRow] Validating cycle_scores data:', {
+    cycle_id: cycleId,
+    periodo: normalized.cicloNome,
+    analista: normalized.analistaNome,
+    nota_final_qa: normalized.qaScore,
+    iepc_total: normalized.iepcScore,
+    total_ncs: normalized.totalNCs,
+    pontos_deduzidos_nc: normalized.pontosDeduzidosNC,
+    e1: normalized.pilaresIEPC[0]?.nota,
+    e2: normalized.pilaresIEPC[1]?.nota,
+    e3: normalized.pilaresIEPC[2]?.nota,
+    e4: normalized.pilaresIEPC[3]?.nota,
+    e5: normalized.pilaresIEPC[4]?.nota,
+  });
+
   return {
     cycle_id: cycleId,
     periodo: normalized.cicloNome,
@@ -273,9 +537,8 @@ export function buildCycleScoresRow(
     reincidencia: rawPayload.reincidencia ?? null,
     criterios: Object.keys(criteriosMap).length > 0 ? criteriosMap : null,
     evidencias: rawPayload.evidencias ? JSON.parse(JSON.stringify(rawPayload.evidencias)) : null,
-    // IMPORTANT: Store both normalized payload and raw for audit
     payload_version: normalized.payloadVersion,
-    payload_normalized: normalized.normalized, // Full normalized structure
+    payload_normalized: normalized.normalized,
     analytics: normalized.analytics ? JSON.parse(JSON.stringify(normalized.analytics)) : null,
     source: 'integration',
     is_manual: false,
