@@ -10,7 +10,9 @@ import {
   buildAnalystsFromScores,
   fetchManualCycles,
   listenDataChanged,
+  sortPeriodosDesc,
 } from '@/lib/services/dataService';
+import { getActiveCycle } from '@/lib/services/supabaseDataService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,  } from 'recharts';
 import {
   TrendingUp, TrendingDown, AlertTriangle, Star, Users, BarChart2, Activity,
@@ -973,6 +975,7 @@ export default function HomeExecutiveView() {
   const [drilldownCiclo, setDrilldownCiclo] = useState<string | null>(null);
   const [pilarModal, setPilarModal] = useState<'QA' | 'IEPC' | 'NC' | null>(null);
 
+  const [preferredPeriodo, setPreferredPeriodo] = useState('');
   const [filterCiclo, setFilterCiclo] = useState<string>('todos');
   const [filterSquad, setFilterSquad] = useState<string>('todos');
   const [filterGestor, setFilterGestor] = useState<string>('todos');
@@ -1008,19 +1011,26 @@ export default function HomeExecutiveView() {
     setLoading(true);
     try {
       // fetchCycleScores/fetchNCRecords/fetchElogios/fetchAllPeriodos now use Supabase as primary source
-      const [scores, periodos, ncs, elogios] = await Promise.all([
+      const [scores, periodos, ncs, elogios, activeCycle] = await Promise.all([
         fetchCycleScores(),
         fetchAllPeriodos(),
         fetchNCRecords(),
         fetchElogios(),
+        getActiveCycle(),
       ]);
 
       const manualCycles = fetchManualCycles();
       const manualPeriodos = manualCycles.map((mc) => mc.periodo).filter(Boolean);
       const allPeriodosSet = new Set([...periodos, ...manualPeriodos]);
-      const mergedPeriodos = Array.from(allPeriodosSet).sort();
+      if (activeCycle) allPeriodosSet.add(activeCycle);
+      const mergedPeriodos = sortPeriodosDesc(Array.from(allPeriodosSet));
 
       setAllPeriodos(mergedPeriodos);
+      setPreferredPeriodo(
+        (activeCycle && mergedPeriodos.includes(activeCycle) ? activeCycle : '') ||
+          mergedPeriodos[0] ||
+          ''
+      );
 
       if (scores.length === 0 && manualCycles.length === 0) {
         setHistory([]);
@@ -1220,25 +1230,31 @@ export default function HomeExecutiveView() {
     return { ...period, squads, coordenadores, qa, iepc, analistas };
   };
 
-  const rawLastPeriod = filteredHistory[filteredHistory.length - 1];
+  const rawLastPeriod = (() => {
+    if (filterCiclo !== 'todos') {
+      return (
+        filteredHistory.find((h) => h.periodo === filterCiclo) ??
+        history.find((h) => h.periodo === filterCiclo)
+      );
+    }
+    const target = preferredPeriodo || allPeriodos[0];
+    return history.find((h) => h.periodo === target) ?? history[0];
+  })();
   const lastPeriod = getFilteredPeriod(rawLastPeriod);
 
-  // Auto-compare: when a specific cycle is selected, find the previous cycle in the FULL history
-  // Also considers manually registered cycles that may not have imported scores
   const prevPeriod = (() => {
     if (filterCiclo === 'todos') {
-      return filteredHistory[filteredHistory.length - 2];
+      const idx = history.findIndex((h) => h.periodo === rawLastPeriod?.periodo);
+      if (idx >= 0 && idx < history.length - 1) return history[idx + 1];
+      return undefined;
     }
-    // Find the selected cycle's index in the full (unfiltered) history
     const selectedIdx = history.findIndex((h) => h.periodo === filterCiclo);
-    if (selectedIdx > 0) return history[selectedIdx - 1];
+    if (selectedIdx >= 0 && selectedIdx < history.length - 1) return history[selectedIdx + 1];
 
-    // Fallback: look in allPeriodos (sorted) to find the period immediately before filterCiclo
-    // This handles cases where the previous cycle exists in allPeriodos but was filtered from history
-    const sortedPeriodos = [...allPeriodos].sort();
+    const sortedPeriodos = sortPeriodosDesc(allPeriodos);
     const periodIdx = sortedPeriodos.indexOf(filterCiclo);
-    if (periodIdx > 0) {
-      const prevPeriodoKey = sortedPeriodos[periodIdx - 1];
+    if (periodIdx >= 0 && periodIdx < sortedPeriodos.length - 1) {
+      const prevPeriodoKey = sortedPeriodos[periodIdx + 1];
       // Try to find it in history (may have been filtered out)
       const found = history.find((h) => h.periodo === prevPeriodoKey);
       if (found) return found;

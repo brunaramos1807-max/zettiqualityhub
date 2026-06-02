@@ -10,6 +10,18 @@ const LS_CLOSED_CYCLES = 'zetti_closed_cycles';
 const LS_ANALYST_PROFILES = 'zetti_analyst_profiles';
 const LS_MANUAL_CYCLES = 'zetti_manual_cycles';
 
+/** Parse MM/YYYY or M/YYYY into sortable YYYYMM number. */
+export function parsePeriodoMMYYYY(periodo: string): number {
+  const m = String(periodo || '').trim().match(/^(\d{1,2})\/(\d{4})$/);
+  if (!m) return 0;
+  return parseInt(m[2], 10) * 100 + parseInt(m[1], 10);
+}
+
+/** Newest cycle first (06/2026 before 05/2026). */
+export function sortPeriodosDesc(periodos: string[]): string[] {
+  return [...periodos].sort((a, b) => parsePeriodoMMYYYY(b) - parsePeriodoMMYYYY(a));
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface CycleScoreRow {
@@ -628,6 +640,7 @@ export interface RealAnalyst {
   iepcScore: number;
   ncs: number;
   pontosDeduzidos: number;
+  ncPoints?: number;
   p1: number;
   p2: number;
   p3: number;
@@ -653,7 +666,8 @@ export function buildAnalystsFromScores(scores: any[]): RealAnalyst[] {
     qaScore: s.nota_final_qa || 0,
     iepcScore: s.iepc_total || 0,
     ncs: s.total_ncs || 0,
-    pontosDeduzidos: s.pontos_deduzidos_nc || 0,
+    pontosDeduzidos: Math.abs(Number(s.pontos_deduzidos_nc) || 0),
+    ncPoints: Math.abs(Number(s.pontos_deduzidos_nc) || 0),
     p1: s.p1 || 0,
     p2: s.p2 || 0,
     p3: s.p3 || 0,
@@ -832,8 +846,7 @@ export async function fetchAllPeriodos(): Promise<string[]> {
         ...(cyclesRes.data || []).map((r: any) => r.periodo),
         ...(scoresRes.data || []).map((r: any) => r.periodo),
       ].filter(Boolean);
-      const unique = [...new Set(all)] as string[];
-      unique.sort((a, b) => b.localeCompare(a));
+      const unique = sortPeriodosDesc([...new Set(all)] as string[]);
       console.log('[fetchAllPeriodos] Períodos do Supabase:', unique.join(', ') || 'nenhum');
       return unique;
     }
@@ -854,10 +867,10 @@ export async function fetchAllPeriodos(): Promise<string[]> {
       ...ncs.map((n: any) => n.periodo),
       ...elogios.map((e: any) => e.periodo),
     ].filter(Boolean);
-    periodos = [...new Set(allPeriodos)] as string[];
+    periodos = sortPeriodosDesc([...new Set(allPeriodos)] as string[]);
   }
 
-  return periodos;
+  return sortPeriodosDesc(periodos);
 }
 
 export async function toggleElogioDestaque(id: string, destaque: boolean) {

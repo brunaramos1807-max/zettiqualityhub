@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import ImportModal from '@/components/ImportModal';
 import { fetchNCRecords, fetchAllPeriodos } from '@/lib/services/dataService';
+import { formatPontosDeduzidos, resolveNcPontosDeduzidos } from '@/lib/utils/ncDisplay';
 import { AlertTriangle, Search, BarChart2, RefreshCw, TrendingUp, Filter, ChevronRight, Shield, Activity, Layers, X, Eye, Trash2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend, PieChart, Pie, Cell, AreaChart, Area,  } from 'recharts';
 
@@ -30,11 +31,6 @@ const NC_NAME_MAP: Record<string, string> = {
 function resolveNCType(tipo: string): string {
   if (NC_TYPES.find((t) => t.key === tipo)) return tipo;
   return NC_NAME_MAP[tipo] || tipo;
-}
-
-function formatPontosDeduzidos(pts?: number | null): string {
-  if (pts == null || pts === 0) return '—';
-  return `-${Math.abs(pts)}`;
 }
 
 function parseNcDescricaoMeta(descricao?: string): {
@@ -112,7 +108,7 @@ function NCDetailModal({ data, onClose }: { data: NCDetailModal; onClose: () => 
               { label: 'Coordenador', value: nc.coordenador || '—' },
               { label: 'Período', value: nc.periodo },
               { label: 'Criticidade', value: typeInfo?.criticidade || '—' },
-              { label: 'Pts Deduzidos', value: formatPontosDeduzidos(nc.pontos_deduzidos) },
+              { label: 'Pts Deduzidos', value: formatPontosDeduzidos(resolveNcPontosDeduzidos(nc)) },
               { label: 'Severidade', value: meta.severity || '—' },
               { label: 'Protocolo', value: nc.protocolo_referencia || '—' },
             ].map((item) => (
@@ -614,8 +610,8 @@ function NCContent() {
                         )}
                       </td>
                       <td className="px-4 py-2.5" style={{ color: '#94A3B8' }}>{nc.periodo}</td>
-                      <td className="px-4 py-2.5 font-medium" style={{ color: nc.pontos_deduzidos ? '#EF4444' : '#94A3B8' }}>
-                        {formatPontosDeduzidos(nc.pontos_deduzidos)}
+                      <td className="px-4 py-2.5 font-medium" style={{ color: resolveNcPontosDeduzidos(nc) ? '#EF4444' : '#94A3B8' }}>
+                        {formatPontosDeduzidos(resolveNcPontosDeduzidos(nc))}
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-1">

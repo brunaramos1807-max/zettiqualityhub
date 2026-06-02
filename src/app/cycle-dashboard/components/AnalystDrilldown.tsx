@@ -5,6 +5,7 @@ import { X, AlertTriangle, ThumbsUp, Target, Zap } from 'lucide-react';
 import type { Analyst } from '@/lib/mockData';
 import { getScoreColor, getScoreBadgeClass, getScoreLabel } from '@/lib/mockData';
 import { fetchNCRecords, fetchElogios } from '@/lib/services/dataService';
+import { formatPontosDeduzidos, resolveAnalystPontosDeduzidos, resolveNcPontosDeduzidos } from '@/lib/utils/ncDisplay';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
@@ -140,11 +141,22 @@ export default function AnalystDrilldown({ analyst, onClose }: Props) {
         fetchElogios(),
       ]);
       const firstName = analyst.name.split(' ')[0].toLowerCase();
-      setAnalystNCs(ncs.filter((nc: any) => nc.analista?.toLowerCase().includes(firstName) || nc.analista === analyst.name));
+      setAnalystNCs(
+        ncs.filter((nc: any) => {
+          const nameMatch =
+            nc.analista?.toLowerCase().includes(firstName) || nc.analista === analyst.name;
+          const periodMatch = !analyst.periodo || nc.periodo === analyst.periodo;
+          return nameMatch && periodMatch;
+        })
+      );
       setAnalystElogios(elogios.filter((e: any) => e.colaborador?.toLowerCase().includes(firstName) || e.colaborador === analyst.name));
     };
     loadData();
-  }, [analyst.name]);
+  }, [analyst.name, analyst.periodo]);
+
+  const ptsDeduzidosTotal = resolveAnalystPontosDeduzidos(analyst, analystNCs);
+  const ptsDeduzidosLabel =
+    ptsDeduzidosTotal > 0 ? formatPontosDeduzidos(ptsDeduzidosTotal) : '0';
 
   // QA Radar data — percentage of each pillar (raw/max * 100)
   const qaRadarData = [
@@ -238,7 +250,12 @@ export default function AnalystDrilldown({ analyst, onClose }: Props) {
             { label: 'Nota QA Final', value: (analyst.qaScore ?? 0).toFixed(2), color: qaColor, suffix: '/100' },
             { label: 'IEPC Total', value: (analyst.iepcScore ?? 0).toFixed(2), color: iepcColor, suffix: '/100' },
             { label: 'NCs no Ciclo', value: (analyst.ncs ?? 0).toString(), color: (analyst.ncs ?? 0) === 0 ? '#22C55E' : '#EF4444', suffix: (analyst.ncs ?? 0) === 1 ? ' NC' : ' NCs' },
-            { label: 'Pts Deduzidos', value: (analyst.ncPoints ?? 0).toString(), color: (analyst.ncPoints ?? 0) === 0 ? '#22C55E' : '#EF4444', suffix: ' pts' },
+            {
+              label: 'Pts Deduzidos',
+              value: ptsDeduzidosLabel,
+              color: ptsDeduzidosTotal === 0 ? '#22C55E' : '#EF4444',
+              suffix: ptsDeduzidosLabel === '—' ? '' : ' pts',
+            },
           ].map((stat) => (
             <div key={`analyst-stat-${stat.label}`}
               className="p-4 rounded-xl text-center"
@@ -320,7 +337,12 @@ export default function AnalystDrilldown({ analyst, onClose }: Props) {
                   >
                     <div className="flex items-center justify-between mb-0.5">
                       <span className="text-xs font-mono text-white">{nc.protocolo}</span>
-                      <span className="text-xs font-bold" style={{ color: '#EF4444' }}>{nc.pontosDescontados} pts</span>
+                      <span className="text-xs font-bold" style={{ color: '#EF4444' }}>
+                        {(() => {
+                          const lbl = formatPontosDeduzidos(resolveNcPontosDeduzidos(nc));
+                          return lbl === '—' ? lbl : `${lbl} pts`;
+                        })()}
+                      </span>
                     </div>
                     <p className="text-xs line-clamp-1" style={{ color: '#8B949E' }}>{nc.descricao}</p>
                     <p className="text-xs mt-0.5" style={{ color: '#EF4444' }}>{nc.tipo}</p>

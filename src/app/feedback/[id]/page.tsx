@@ -75,11 +75,103 @@ function resolveIepcScore(scores: any, snapshot: any, rawFeedback: any): number 
   return isNaN(n) ? 0 : n;
 }
 
-function mapSnapshotPdiToObjetivos(snap: any, rawData: any): PdiObjetivo[] | null {
-  const savedObjetivos = snap?.feedback_blocks?.pdi_objetivos || rawData?.pdi_objetivos;
-  if (Array.isArray(savedObjetivos) && savedObjetivos.length > 0) {
-    return savedObjetivos;
+const IEPC_PILAR_DEFAULT_NAMES = [
+  'Resolução Percebida',
+  'Clareza e Confiança',
+  'CES',
+  'Tempo e Fluidez',
+  'Experiência Relacional',
+];
+
+function readPilarNota(p: any): number {
+  const raw = p?.nota ?? p?.pontuacao ?? p?.score ?? p?.points ?? p?.pts ?? p?.valor;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function readPilarMaximo(p: any): number {
+  const raw = p?.maximo ?? p?.max ?? p?.maxPoints ?? p?.max_pts ?? 20;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 20;
+}
+
+function normalizePilarList(raw: any[] | null | undefined): any[] {
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  return raw.map((p, i) => {
+    const pctField = p.percentual ?? p.percentage ?? p.pct;
+    let nota = readPilarNota(p);
+    let maximo = readPilarMaximo(p);
+    if (pctField != null && pctField !== '') {
+      nota = Number(pctField) || 0;
+      maximo = 100;
+    } else if (nota > maximo && nota <= 100) {
+      maximo = 100;
+    }
+    return {
+      nome: p.nome || p.name || p.label || IEPC_PILAR_DEFAULT_NAMES[i] || '',
+      nota,
+      maximo,
+      codigo: p.codigo || p.code,
+    };
+  });
+}
+
+function resolveIepcPilares(snapshot: any, rawFeedback: any): any[] {
+  const sources = [
+    snapshot?.iepc_pilares,
+    rawFeedback?.pilares_iepc,
+    snapshot?.pillars?.iepc,
+    snapshot?.pilares?.iepc,
+  ];
+  for (const src of sources) {
+    const norm = normalizePilarList(src);
+    if (norm.length > 0) return norm;
   }
+  const eKeys = ['e1', 'e2', 'e3', 'e4', 'e5'] as const;
+  const scoreBag = { ...(snapshot?.scores || {}), ...(rawFeedback || {}) };
+  const fromE = eKeys
+    .map((k, i) => {
+      const val = scoreBag[k] ?? rawFeedback?.[k];
+      if (val == null || val === '') return null;
+      const nota = Number(val);
+      if (!Number.isFinite(nota)) return null;
+      return {
+        nome: IEPC_PILAR_DEFAULT_NAMES[i],
+        nota,
+        maximo: IEPC_PILAR_DEFAULT_NAMES[i] === 'CES' ? 20 : 20,
+        codigo: k.toUpperCase(),
+      };
+    })
+    .filter(Boolean);
+  if (fromE.length > 0) return fromE;
+  return [];
+}
+
+function mapFeedbackPdiRows(rows: any[], snap: any): PdiObjetivo[] {
+  const snapPdi = Array.isArray(snap?.pdi) ? snap.pdi : [];
+  return rows.map((row, i) => {
+    const snapItem = snapPdi[i] || {};
+    return {
+      id: row.id,
+      categoria: row.categoria || snapItem.categoria || '',
+      objetivo: row.objetivo || '',
+      acao_esperada:
+        row.acao_desenvolvimento ||
+        snapItem.acao ||
+        snapItem.acao_desenvolvimento ||
+        snapItem.acao_esperada ||
+        '',
+      resultado_esperado:
+        row.resultado_esperado ||
+        snapItem.resultado_esperado ||
+        snapItem.resultadoEsperado ||
+        '',
+      status: 'nao_cumprido' as const,
+    };
+  });
+}
+
+function mapSnapshotPdiToObjetivos(snap: any, rawData: any): PdiObjetivo[] | null {
   if (Array.isArray(snap?.pdi) && snap.pdi.length > 0) {
     return snap.pdi.map((p: any, i: number) => ({
       id: `pdi-snap-${i}`,
@@ -89,6 +181,10 @@ function mapSnapshotPdiToObjetivos(snap: any, rawData: any): PdiObjetivo[] | nul
       resultado_esperado: p.resultado_esperado || p.resultadoEsperado || '',
       status: 'nao_cumprido' as const,
     }));
+  }
+  const savedObjetivos = snap?.feedback_blocks?.pdi_objetivos || rawData?.pdi_objetivos;
+  if (Array.isArray(savedObjetivos) && savedObjetivos.length > 0) {
+    return savedObjetivos;
   }
   const legacyObj = snap?.feedback_blocks?.objetivo_desenvolvimento || rawData?.objetivo_desenvolvimento;
   const legacyAcao = snap?.feedback_blocks?.acao_desenvolvimento || rawData?.acao_desenvolvimento;
@@ -187,8 +283,17 @@ export default function FeedbackViewPage() {
     setSnapshot(snap);
     setAnalistaInfo(rawData.analistas);
 
-    const mappedPdi = mapSnapshotPdiToObjetivos(snap, rawData);
-    setPdiObjetivos(mappedPdi && mappedPdi.length > 0 ? mappedPdi : [newPdiObjetivo()]);
+    const { data: feedbackPdiRows } = await supabase
+      .from('feedback_pdi')
+      .select('id, objetivo, acao_desenvolvimento, status')
+      .eq('feedback_id', id);
+
+    if (feedbackPdiRows && feedbackPdiRows.length > 0) {
+      setPdiObjetivos(mapFeedbackPdiRows(feedbackPdiRows, snap));
+    } else {
+      const mappedPdi = mapSnapshotPdiToObjetivos(snap, rawData);
+      setPdiObjetivos(mappedPdi && mappedPdi.length > 0 ? mappedPdi : [newPdiObjetivo()]);
+    }
 
     setEditFields({
       fechamento_ciclo: extract(snap, 'feedback_blocks.fechamento_ciclo', 'fechamento') || rawData.resumo_ciclo || '',
@@ -539,8 +644,9 @@ export default function FeedbackViewPage() {
   // ── Normalize all data fields from snapshot (Lovable payload structure) ──
   const analista = snapshot?.analista || {};
   const scores = snapshot?.scores || {};
-  const qa_pilares: any[] = snapshot?.qa_pilares || [];
-  const iepc_pilares: any[] = snapshot?.iepc_pilares || [];
+  const qaFromSnap = normalizePilarList(snapshot?.qa_pilares);
+  const qa_pilares: any[] = qaFromSnap.length > 0 ? qaFromSnap : snapshot?.qa_pilares || [];
+  const iepc_pilares: any[] = resolveIepcPilares(snapshot, rawFeedback);
   const coaching: any[] = snapshot?.coaching || [];
   const atendimentos: any[] = snapshot?.atendimentos || [];
   const nao_conformidades: any[] = snapshot?.nao_conformidades || [];
@@ -1562,11 +1668,19 @@ function CustomRadarLabel(props: any) {
   );
 }
 
+function pilarNotaValue(p: any): number {
+  return readPilarNota(p);
+}
+
+function pilarMaximoValue(p: any): number {
+  return readPilarMaximo(p);
+}
+
 function RadarChartCard({ title, subtitle, pilares, color, totalScore }: any) {
   const list = pilares || [];
   const chartData = list.map((p: any) => {
-    const nota = Number(p.nota ?? p.pontuacao ?? p.score) || 0;
-    const maximo = Number(p.maximo ?? p.max ?? 100) || 100;
+    const nota = pilarNotaValue(p);
+    const maximo = pilarMaximoValue(p);
     const pct = Math.round((nota / maximo) * 100);
     return {
       subject: (p.nome || p.name || '').length > 12 ? (p.nome || p.name || '').slice(0, 12) + '…' : (p.nome || p.name || ''),
@@ -1579,8 +1693,8 @@ function RadarChartCard({ title, subtitle, pilares, color, totalScore }: any) {
   });
 
   const best = list.reduce((a: any, b: any) => {
-    const bScore = Number(b.nota ?? b.pontuacao ?? b.score) || 0;
-    const aScore = Number(a?.nota ?? a?.pontuacao ?? a?.score) || 0;
+    const bScore = pilarNotaValue(b);
+    const aScore = a ? pilarNotaValue(a) : 0;
     return bScore > aScore ? b : a;
   }, null);
 
@@ -1610,8 +1724,8 @@ function RadarChartCard({ title, subtitle, pilares, color, totalScore }: any) {
         {/* Pillar list */}
         <div className="flex-1 space-y-2 min-w-0">
           {list.length > 0 ? list.map((p: any, i: number) => {
-            const nota = Number(p.nota ?? p.pontuacao ?? p.score) || 0;
-            const maximo = Number(p.maximo ?? p.max ?? 100) || 100;
+            const nota = pilarNotaValue(p);
+            const maximo = pilarMaximoValue(p);
             const pct = Math.round((nota / maximo) * 100);
             const barColor = pillarBarColor(pct);
             return (
