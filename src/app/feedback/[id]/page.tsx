@@ -62,6 +62,50 @@ function extract(snapshot: any, ...paths: string[]): any {
   return null;
 }
 
+function resolveIepcScore(scores: any, snapshot: any, rawFeedback: any): number | null {
+  const fromScores = scores?.iepc;
+  const candidate =
+    (fromScores != null && fromScores !== 0 ? fromScores : null) ??
+    snapshot?.indice_satisfacao ??
+    rawFeedback?.iepc_score ??
+    rawFeedback?.iepc_total ??
+    fromScores ??
+    0;
+  const n = Number(candidate);
+  return isNaN(n) ? 0 : n;
+}
+
+function mapSnapshotPdiToObjetivos(snap: any, rawData: any): PdiObjetivo[] | null {
+  const savedObjetivos = snap?.feedback_blocks?.pdi_objetivos || rawData?.pdi_objetivos;
+  if (Array.isArray(savedObjetivos) && savedObjetivos.length > 0) {
+    return savedObjetivos;
+  }
+  if (Array.isArray(snap?.pdi) && snap.pdi.length > 0) {
+    return snap.pdi.map((p: any, i: number) => ({
+      id: `pdi-snap-${i}`,
+      categoria: p.categoria || '',
+      objetivo: p.objetivo || '',
+      acao_esperada: p.acao || p.acao_desenvolvimento || p.acao_esperada || '',
+      resultado_esperado: p.resultado_esperado || p.resultadoEsperado || '',
+      status: 'nao_cumprido' as const,
+    }));
+  }
+  const legacyObj = snap?.feedback_blocks?.objetivo_desenvolvimento || rawData?.objetivo_desenvolvimento;
+  const legacyAcao = snap?.feedback_blocks?.acao_desenvolvimento || rawData?.acao_desenvolvimento;
+  const legacyResult = snap?.feedback_blocks?.resultado_esperado || rawData?.resultado_esperado;
+  if (legacyObj || legacyAcao || legacyResult) {
+    return [{
+      id: 'legacy-1',
+      categoria: '',
+      objetivo: legacyObj || '',
+      acao_esperada: legacyAcao || '',
+      resultado_esperado: legacyResult || '',
+      status: 'nao_cumprido',
+    }];
+  }
+  return null;
+}
+
 // Sort ciclos like "01/2026", "02/2026" etc
 function sortByCiclo(a: any, b: any): number {
   const parseC = (c: string) => {
@@ -147,35 +191,8 @@ export default function FeedbackViewPage() {
     setSnapshot(snap);
     setAnalistaInfo(rawData.analistas);
 
-    // Load pdi_objetivos from snapshot or DB
-    const savedObjetivos = snap?.feedback_blocks?.pdi_objetivos || rawData.pdi_objetivos;
-    if (Array.isArray(savedObjetivos) && savedObjetivos.length > 0) {
-      setPdiObjetivos(savedObjetivos);
-    } else {
-      // FIX: Check snapshot.pdi[] — Lovable sends pdi at root level with {objetivo, acao, resultadoEsperado}
-      const rootPdi = snap?.pdi;
-      if (Array.isArray(rootPdi) && rootPdi.length > 0) {
-        const mapped = rootPdi.map((p: any, idx: number) => ({
-          id: `pdi-${idx}-${Math.random().toString(36).slice(2)}`,
-          categoria: p.categoria || '',
-          objetivo: p.objetivo || p.acao || '',
-          acao_esperada: p.acao || p.acao_desenvolvimento || '',
-          resultado_esperado: p.resultadoEsperado || p.resultado_esperado || '',
-          status: (p.status === 'cumprido' || p.status === 'parcial' || p.status === 'nao_cumprido') ? p.status : 'nao_cumprido' as const,
-        }));
-        setPdiObjetivos(mapped);
-      } else {
-        // Migrate legacy single-objective fields if present
-        const legacyObj = snap?.feedback_blocks?.objetivo_desenvolvimento || rawData.objetivo_desenvolvimento;
-        const legacyAcao = snap?.feedback_blocks?.acao_desenvolvimento || rawData.acao_desenvolvimento;
-        const legacyResult = snap?.feedback_blocks?.resultado_esperado || rawData.resultado_esperado;
-        if (legacyObj || legacyAcao || legacyResult) {
-          setPdiObjetivos([{ id: 'legacy-1', categoria: '', objetivo: legacyObj || '', acao_esperada: legacyAcao || '', resultado_esperado: legacyResult || '', status: 'nao_cumprido' }]);
-        } else {
-          setPdiObjetivos([newPdiObjetivo()]);
-        }
-      }
-    }
+    const mappedPdi = mapSnapshotPdiToObjetivos(snap, rawData);
+    setPdiObjetivos(mappedPdi && mappedPdi.length > 0 ? mappedPdi : [newPdiObjetivo()]);
 
     setEditFields({
       fechamento_ciclo: extract(snap, 'feedback_blocks.fechamento_ciclo', 'fechamento') || rawData.resumo_ciclo || '',
@@ -539,7 +556,7 @@ export default function FeedbackViewPage() {
 
   // Scores: prefer snapshot.scores, fallback to rawFeedback columns
   const qaScore = scores?.qa ?? rawFeedback?.qa_score ?? null;
-  const iepcScore = scores?.iepc ?? rawFeedback?.iepc_score ?? null;
+  const iepcScore = resolveIepcScore(scores, snapshot, rawFeedback);
   const aderenciaScore = scores?.aderencia ?? rawFeedback?.aderencia_score ?? null;
 
   // Analista name: prefer snapshot.analista.nome, fallback to analistas table
@@ -975,10 +992,10 @@ export default function FeedbackViewPage() {
                     <p className="text-xs text-slate-300 leading-relaxed">{nc.descricao}</p>
                   )}
                   {/* Points deducted if available */}
-                  {nc.pontos_deduzidos != null && (
+                  {nc.pontos_deduzidos != null && nc.pontos_deduzidos !== 0 && (
                     <div className="mt-2 flex items-center gap-1.5">
                       <span className="text-[10px] text-amber-500/70">Dedução:</span>
-                      <span className="text-[10px] font-bold text-amber-400">{nc.pontos_deduzidos} pts</span>
+                      <span className="text-[10px] font-bold text-amber-400">-{Math.abs(Number(nc.pontos_deduzidos))} pts</span>
                     </div>
                   )}
                 </div>

@@ -22,7 +22,9 @@
  */
 export interface NormalizedScore {
   value: number;
-  source: 'scores.qa' | 'scores.iepc' | 'scores.aderencia' | 'qa_score'| 'iepc_score' | 'analytics.percentual_aderencia' | 'qa_atual' | 'iepc_atual'; // Legacy export format
+  source: 'scores.qa' | 'scores.iepc' | 'scores.aderencia' | 
+          'qa_score' | 'iepc_score' | 'analytics.percentual_aderencia' |
+          'qa_atual' | 'iepc_atual' | 'indice_satisfacao' | 'atendimentos.media_nota_iepc' | 'atendimentos.media_iepc_avaliado'; // Legacy export format
 }
 
 /**
@@ -277,6 +279,38 @@ export interface NormalizedPayload {
   };
 }
 
+function parseScoreValue(val: unknown): number | null {
+  if (val === null || val === undefined || val === '') return null;
+  const n = parseFloat(String(val).replace(',', '.'));
+  return isNaN(n) ? null : n;
+}
+
+/** Média defensiva de nota_iepc / iepc_avaliado nos atendimentos */
+function averageIepcFromAtendimentos(atendimentos: unknown): number | null {
+  if (!Array.isArray(atendimentos) || atendimentos.length === 0) return null;
+
+  const values: number[] = [];
+  for (const a of atendimentos) {
+    const direct = parseScoreValue(a?.nota_iepc ?? a?.notaIEPC);
+    if (direct != null) {
+      values.push(direct);
+      continue;
+    }
+    const iepcAv = a?.iepc_avaliado;
+    if (iepcAv != null) {
+      const fromEval = parseScoreValue(
+        typeof iepcAv === 'object'
+          ? (iepcAv.notaIEPC ?? iepcAv.nota_iepc ?? iepcAv.nota)
+          : iepcAv
+      );
+      if (fromEval != null) values.push(fromEval);
+    }
+  }
+
+  if (values.length === 0) return null;
+  return values.reduce((sum, v) => sum + v, 0) / values.length;
+}
+
 /**
  * Normalizes score from either legacy or new format
  */
@@ -311,44 +345,40 @@ function normalizeScore(
       }
       break;
 
-    case 'iepc':
-      // Try new nested format first (scores.iepc)
-      if (payload?.scores?.iepc !== undefined) {
-        value = payload.scores.iepc;
-        source = 'scores.iepc';
-      }
-      // Try old nested from feedbacks (scores.iepc)
-      else if (payload?.iepc !== undefined && !payload?.scores) {
-        value = payload.iepc;
-        source = 'scores.iepc';
-      }
-      // Fallback to legacy flat format (iepc_score)
-      else if (payload?.iepc_score !== undefined) {
-        value = payload.iepc_score;
-        source = 'iepc_score';
-      }
-      // Fallback to export format (iepc_atual)
-      else if (payload?.iepc_atual !== undefined) {
-        value = payload.iepc_atual;
-        source = 'iepc_atual';
-      }
-      // FIX: Fallback — derive IEPC from iepc_pilares average if scores.iepc missing
-      else if (Array.isArray(payload?.iepc_pilares) && payload.iepc_pilares.length > 0) {
-        const total = payload.iepc_pilares.reduce((s: number, p: any) => s + (p.nota || p.pontuacao || 0), 0);
-        const max = payload.iepc_pilares.reduce((s: number, p: any) => s + (p.maximo || p.max || 100), 0);
-        value = max > 0 ? Math.round((total / max) * 100) : 0;
-        source = 'scores.iepc';
-      }
-      // FIX: Fallback — derive IEPC from atendimentos[].nota_iepc average
-      else if (Array.isArray(payload?.atendimentos) && payload.atendimentos.length > 0) {
-        const withIEPC = payload.atendimentos.filter((a: any) => a.nota_iepc != null || a.iepc_avaliado?.notaIEPC != null);
-        if (withIEPC.length > 0) {
-          const avg = withIEPC.reduce((s: number, a: any) => s + (a.nota_iepc || a.iepc_avaliado?.notaIEPC || 0), 0) / withIEPC.length;
-          value = Math.round(avg);
-          source = 'scores.iepc';
+    case 'iepc': {
+      const tryIepc = (raw: unknown, src: NormalizedScore['source']): boolean => {
+        const n = parseScoreValue(raw);
+        if (n == null) return false;
+        value = n;
+        source = src;
+        return n > 0;
+      };
+
+      let resolved =
+        tryIepc(payload?.scores?.iepc, 'scores.iepc') ||
+        (payload?.scores == null && tryIepc(payload?.iepc, 'scores.iepc')) ||
+        tryIepc(payload?.iepc_score, 'iepc_score') ||
+        tryIepc(payload?.iepc_atual, 'iepc_atual') ||
+        tryIepc(payload?.indice_satisfacao, 'indice_satisfacao');
+
+      if (!resolved) {
+        const avgAtendimentos = averageIepcFromAtendimentos(payload?.atendimentos);
+        if (avgAtendimentos != null && avgAtendimentos > 0) {
+          value = avgAtendimentos;
+          source = 'atendimentos.media_nota_iepc';
+          resolved = true;
         }
       }
+
+      if (!resolved && payload?.scores?.iepc !== undefined && payload?.scores?.iepc !== null) {
+        value = Number(payload.scores.iepc);
+        source = 'scores.iepc';
+      } else if (!resolved && payload?.iepc !== undefined && payload?.scores == null) {
+        value = Number(payload.iepc);
+        source = 'scores.iepc';
+      }
       break;
+    }
 
     case 'aderencia':
       // Try new format first (scores.aderencia)

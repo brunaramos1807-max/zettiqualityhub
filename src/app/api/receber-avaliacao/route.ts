@@ -2,13 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import {
   normalizePayloadForEndpoint,
-  buildCycleScoresRow,
-  extractNonConformities,
   logNormalizationWarnings,
   auditPayloadCompatibility,
   NormalizedEndpointPayload,
   validateEndpointPayload,
 } from '@/lib/normalizers/endpointAdapter';
+import type { NormalizedPayload } from '@/lib/normalizers/normalizePayload';
 
 // ─── Service-role Supabase client (bypasses RLS) ─────────────────────────────
 function getServiceClient() {
@@ -174,6 +173,107 @@ function parseNum(val: unknown): number {
   if (val === null || val === undefined || val === '') return 0;
   const n = parseFloat(String(val).replace(',', '.'));
   return isNaN(n) ? 0 : n;
+}
+
+/** Aceita feedback_blocks já normalizados (string) ou arrays do payload bruto */
+function feedbackBlockText(block: string | string[] | undefined | null): string | null {
+  if (block == null || block === '') return null;
+  if (Array.isArray(block)) return block.map((v) => String(v)).join('\n');
+  return String(block);
+}
+
+interface ParsedPdiItem {
+  objetivo?: string;
+  acao?: string;
+  acao_desenvolvimento?: string;
+  resultado_esperado?: string;
+  prazo?: string;
+  status?: string;
+  acoes?: string[];
+  metas?: string[];
+}
+
+function parsePdiList(rawPayload: AvaliacaoPayload, normalized?: NormalizedPayload): ParsedPdiItem[] {
+  const rawPdi =
+    rawPayload.pdi ??
+    (normalized?.raw_payload as AvaliacaoPayload | undefined)?.pdi;
+
+  if (Array.isArray(rawPdi)) {
+    return rawPdi
+      .map((p) => {
+        const item = p as Record<string, unknown>;
+        return {
+          objetivo: String(item.objetivo || item.objetivo_desenvolvimento || '').trim(),
+          acao: String(item.acao || item.acao_desenvolvimento || item.acao_esperada || '').trim(),
+          acao_desenvolvimento: String(
+            item.acao_desenvolvimento || item.acao || item.acao_esperada || ''
+          ).trim(),
+          resultado_esperado: String(item.resultado_esperado || item.resultadoEsperado || '').trim(),
+          prazo: (item.prazo as string) || undefined,
+          status: (item.status as string) || 'pendente',
+        };
+      })
+      .filter((p) => p.objetivo || p.acao || p.acao_desenvolvimento || p.resultado_esperado);
+  }
+
+  if (rawPdi && typeof rawPdi === 'object') {
+    const leg = rawPdi as NewPayloadPDI;
+    const items: ParsedPdiItem[] = [];
+    if (leg.acoes?.length) {
+      leg.acoes.forEach((a, i) => {
+        const acaoStr = typeof a === 'string' ? a : String(a);
+        const meta = leg.metas?.[i];
+        items.push({
+          objetivo: acaoStr,
+          acao: meta != null ? String(meta) : undefined,
+          acao_desenvolvimento: meta != null ? String(meta) : undefined,
+          acoes: leg.acoes,
+          metas: leg.metas,
+          status: leg.status || 'pendente',
+        });
+      });
+    } else if (leg.metas?.length) {
+      leg.metas.forEach((m) => items.push({ objetivo: String(m), status: leg.status || 'pendente' }));
+    } else if (leg.objetivo || leg.acao) {
+      items.push({
+        objetivo: leg.objetivo,
+        acao: leg.acao,
+        acao_desenvolvimento: leg.acao,
+        prazo: leg.prazo,
+        status: leg.status || 'pendente',
+        acoes: leg.acoes,
+        metas: leg.metas,
+      });
+    }
+    return items;
+  }
+
+  return [];
+}
+
+function parseHistoricoList(
+  rawPayload: AvaliacaoPayload,
+  normalized?: NormalizedPayload
+): NewPayloadHistorico[] {
+  const h = rawPayload.historico ?? normalized?.historico;
+  return Array.isArray(h) ? h : [];
+}
+
+function formatNcDescricao(nc: {
+  descricao?: string | null;
+  severity?: string | null;
+  severidade?: string | null;
+  impacto_operacional?: string | null;
+}): string | null {
+  const base = nc.descricao?.trim() || '';
+  const severity = nc.severity || nc.severidade;
+  const impacto = nc.impacto_operacional?.trim();
+  const extras: string[] = [];
+  if (severity) extras.push(`Severidade: ${severity}`);
+  if (impacto) extras.push(`Impacto operacional: ${impacto}`);
+  if (!base && extras.length === 0) return null;
+  if (extras.length === 0) return base;
+  return base ? `${base}\n\n${extras.join('\n')}` : extras.join('\n');
 }
 
 function hashPayload(payload: unknown): string {
@@ -486,9 +586,8 @@ export async function POST(request: NextRequest) {
     coaching: endpointPayload.coaching,
     ncs: endpointPayload.ncs,
     feedbackBlocks: endpointPayload.feedbackBlocks,
-    // FIX: Extract PDI list from rawPayload.pdi (array format from Lovable)
-    pdiList: Array.isArray(rawPayload.pdi) ? rawPayload.pdi as NewPayloadPDI[] : [],
-    historico: Array.isArray(rawPayload.historico) ? rawPayload.historico as NewPayloadHistorico[] : [],
+    pdiList: parsePdiList(rawPayload, endpointPayload.normalized),
+    historico: parseHistoricoList(rawPayload, endpointPayload.normalized),
     sintese: null,
   };
 
@@ -612,10 +711,10 @@ export async function POST(request: NextRequest) {
   }
 
   // ── 10. Upsert feedback record ────────────────────────────────────────────
-  const evolucaoTecnica = norm.feedbackBlocks?.evolucao_tecnica?.join('\n') || null;
-  const evolucaoComportamental = norm.feedbackBlocks?.evolucao_comportamental?.join('\n') || null;
-  const fechamentoCiclo = norm.feedbackBlocks?.fechamento_ciclo || null;
-  const atencaoEvolutiva = norm.feedbackBlocks?.atencao_evolutiva?.join('\n') || null;
+  const evolucaoTecnica = feedbackBlockText(norm.feedbackBlocks?.evolucao_tecnica);
+  const evolucaoComportamental = feedbackBlockText(norm.feedbackBlocks?.evolucao_comportamental);
+  const fechamentoCiclo = feedbackBlockText(norm.feedbackBlocks?.fechamento_ciclo);
+  const atencaoEvolutiva = feedbackBlockText(norm.feedbackBlocks?.atencao_evolutiva);
 
   // SEÇÃO 7: Adicionar payload_version e payload_normalized em feedbackRow
   const feedbackRow = {
@@ -727,13 +826,13 @@ export async function POST(request: NextRequest) {
   if (feedbackId && norm.pdiList.length > 0) {
     await supabase.from('feedback_pdi').delete().eq('feedback_id', feedbackId);
     const pdiRows = norm.pdiList
-      .filter((p) => p.objetivo || p.acao || (p.acoes && p.acoes.length > 0))
+      .filter((p) => p.objetivo || p.acao || p.acao_desenvolvimento || (p.acoes && p.acoes.length > 0))
       .map((p) => ({
         feedback_id: feedbackId,
         analista_id: analistaId,
         // FIX: Support Lovable format {objetivo, acao, resultadoEsperado} and legacy {acoes[], metas[]}
         objetivo: p.objetivo || (p.acoes ? p.acoes[0] : '') || '',
-        acao_desenvolvimento: p.acao || p.resultadoEsperado || (p.metas ? p.metas[0] : '') || null,
+        acao_desenvolvimento: p.acao_desenvolvimento || p.acao || (p.metas ? p.metas[0] : '') || null,
         prazo: p.prazo || null,
         progresso: 0,
         status: p.status || 'pendente',
@@ -761,44 +860,23 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // ── 15. Save NC records — SEÇÃO 5: Usar extractNonConformities() ──────────
-  // FIX: Use ncs from endpointPayload (already flattened from both root and atendimentos)
-  // Also support direct root nao_conformidades from Lovable payload
-  const rawNCs = Array.isArray(rawPayload.nao_conformidades) ? rawPayload.nao_conformidades : [];
-  const ncCountToSave = rawNCs.length > 0 ? rawNCs.length : endpointPayload.totalNCs;
-
-  if (ncCountToSave > 0) {
+  // ── 15. Save NC records — mesma lista flattenada usada em cycle_scores ─────
+  if (endpointPayload.totalNCs > 0) {
     await supabase.from('nc_records').delete().eq('periodo', norm.cicloNome).eq('analista', norm.analistaNome).eq('source', 'integration');
 
-    let ncRowsToInsert: Record<string, unknown>[];
-
-    if (rawNCs.length > 0) {
-      // Lovable sends nao_conformidades at root with: protocolo, tipo_nc, descricao, analista, squad, coordenador
-      ncRowsToInsert = rawNCs.map((nc: NewPayloadNC) => ({
-        cycle_id: cycleId,
-        periodo: norm.cicloNome,
-        analista: nc.analista || norm.analistaNome,
-        squad: nc.squad || norm.squad,
-        coordenador: nc.coordenador || norm.coordenador,
-        auditor: norm.auditor,
-        tipo_nc: nc.tipo_nc || nc.tipo || 'Não Especificado',
-        descricao: nc.descricao || null,
-        pontos_deduzidos: typeof nc.pontos_deduzidos === 'number' ? nc.pontos_deduzidos : 0,
-        protocolo_referencia: nc.protocolo || null,
-        source: 'integration',
-      }));
-    } else {
-      // Fallback: use extractNonConformities from normalized payload
-      const ncRows = extractNonConformities(
-        endpointPayload.normalized,
-        endpointPayload.cicloNome,
-        endpointPayload.analistaNome,
-        endpointPayload.squad,
-        endpointPayload.coordenador,
-        endpointPayload.auditor
-      );
-      ncRowsToInsert = ncRows.map((nc) => ({ ...nc, cycle_id: cycleId }));
-    }
+    const ncRowsWithCycleId = endpointPayload.ncs.map((nc) => ({
+      cycle_id: cycleId,
+      periodo: norm.cicloNome,
+      analista: nc.analista || norm.analistaNome,
+      squad: nc.squad || norm.squad,
+      coordenador: nc.coordenador || norm.coordenador,
+      auditor: norm.auditor,
+      tipo_nc: nc.tipo_nc || nc.tipo || 'Não Especificado',
+      descricao: formatNcDescricao(nc),
+      pontos_deduzidos: parseNum(nc.pontos_deduzidos),
+      protocolo_referencia: nc.protocolo_referencia || nc.protocolo || null,
+      source: 'integration',
+    }));
 
     if (ncRowsToInsert.length > 0) {
       const { error: ncError } = await supabase.from('nc_records').insert(ncRowsToInsert);
