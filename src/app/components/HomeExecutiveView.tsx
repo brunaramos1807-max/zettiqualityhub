@@ -10,7 +10,9 @@ import {
   buildAnalystsFromScores,
   fetchManualCycles,
   listenDataChanged,
+  sortPeriodosDesc,
 } from '@/lib/services/dataService';
+import { getActiveCycle } from '@/lib/services/supabaseDataService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,  } from 'recharts';
 import {
   TrendingUp, TrendingDown, AlertTriangle, Star, Users, BarChart2, Activity,
@@ -973,6 +975,7 @@ export default function HomeExecutiveView() {
   const [drilldownCiclo, setDrilldownCiclo] = useState<string | null>(null);
   const [pilarModal, setPilarModal] = useState<'QA' | 'IEPC' | 'NC' | null>(null);
 
+  const [preferredPeriodo, setPreferredPeriodo] = useState('');
   const [filterCiclo, setFilterCiclo] = useState<string>('todos');
   const [filterSquad, setFilterSquad] = useState<string>('todos');
   const [filterGestor, setFilterGestor] = useState<string>('todos');
@@ -1008,19 +1011,26 @@ export default function HomeExecutiveView() {
     setLoading(true);
     try {
       // fetchCycleScores/fetchNCRecords/fetchElogios/fetchAllPeriodos now use Supabase as primary source
-      const [scores, periodos, ncs, elogios] = await Promise.all([
+      const [scores, periodos, ncs, elogios, activeCycle] = await Promise.all([
         fetchCycleScores(),
         fetchAllPeriodos(),
         fetchNCRecords(),
         fetchElogios(),
+        getActiveCycle(),
       ]);
 
       const manualCycles = fetchManualCycles();
       const manualPeriodos = manualCycles.map((mc) => mc.periodo).filter(Boolean);
       const allPeriodosSet = new Set([...periodos, ...manualPeriodos]);
-      const mergedPeriodos = Array.from(allPeriodosSet).sort();
+      if (activeCycle) allPeriodosSet.add(activeCycle);
+      const mergedPeriodos = sortPeriodosDesc(Array.from(allPeriodosSet));
 
       setAllPeriodos(mergedPeriodos);
+      setPreferredPeriodo(
+        (activeCycle && mergedPeriodos.includes(activeCycle) ? activeCycle : '') ||
+          mergedPeriodos[0] ||
+          ''
+      );
 
       if (scores.length === 0 && manualCycles.length === 0) {
         setHistory([]);
@@ -1220,104 +1230,31 @@ export default function HomeExecutiveView() {
     return { ...period, squads, coordenadores, qa, iepc, analistas };
   };
 
-  // FIX: When filterCiclo === 'todos', consolidate ALL cycles into one summary
-  // instead of just showing the last cycle
   const rawLastPeriod = (() => {
-    if (filterCiclo === 'todos' && filteredHistory.length > 1) {
-      // Consolidate all cycles: average QA/IEPC, sum NCs/elogios/analistas
-      const allSquads: Record<string, { qa: number; iepc: number; count: number }> = {};
-      const allCoords: Record<string, { qa: number; count: number }> = {};
-      let totalNcs = 0;
-      let totalElogios = 0;
-      let totalAnalistas = 0;
-      const ncByTypeAgg: Record<string, number> = {};
-
-      filteredHistory.forEach((h) => {
-        totalNcs += h.ncs;
-        totalElogios += h.elogios;
-        totalAnalistas += h.analistas;
-        // Merge squads
-        Object.entries(h.squads).forEach(([sq, d]) => {
-          if (!allSquads[sq]) allSquads[sq] = { qa: 0, iepc: 0, count: 0 };
-          allSquads[sq].qa += d.qa * d.count;
-          allSquads[sq].iepc += d.iepc * d.count;
-          allSquads[sq].count += d.count;
-        });
-        // Merge coordenadores
-        Object.entries(h.coordenadores || {}).forEach(([c, d]) => {
-          if (!allCoords[c]) allCoords[c] = { qa: 0, count: 0 };
-          allCoords[c].qa += d.qa * d.count;
-          allCoords[c].count += d.count;
-        });
-        // Merge ncByType
-        (h.ncByType || []).forEach((nc) => {
-          ncByTypeAgg[nc.name] = (ncByTypeAgg[nc.name] || 0) + nc.value;
-        });
-      });
-
-      // Normalize squad averages
-      Object.keys(allSquads).forEach((sq) => {
-        const d = allSquads[sq];
-        if (d.count > 0) {
-          d.qa = parseFloat((d.qa / d.count).toFixed(2));
-          d.iepc = parseFloat((d.iepc / d.count).toFixed(2));
-        }
-      });
-      Object.keys(allCoords).forEach((c) => {
-        const d = allCoords[c];
-        if (d.count > 0) {
-          d.qa = parseFloat((d.qa / d.count).toFixed(2));
-        }
-      });
-
-      const squadEntries = Object.values(allSquads);
-      const consolidatedQA = squadEntries.length > 0
-        ? parseFloat((squadEntries.reduce((s, d) => s + d.qa, 0) / squadEntries.length).toFixed(2))
-        : (filteredHistory.reduce((s, h) => s + h.qa, 0) / filteredHistory.length);
-      const consolidatedIEPC = squadEntries.length > 0
-        ? parseFloat((squadEntries.reduce((s, d) => s + d.iepc, 0) / squadEntries.length).toFixed(2))
-        : (filteredHistory.reduce((s, h) => s + h.iepc, 0) / filteredHistory.length);
-
-      const ncByTypeTotal = Object.entries(ncByTypeAgg).map(([name, value]) => ({
-        name,
-        value,
-        color: NC_CATEGORY_MAP[name]?.color || '#94A3B8',
-        pct: totalNcs > 0 ? Math.round((value / totalNcs) * 100) : 0,
-      }));
-
-      return {
-        periodo: 'Todos os ciclos',
-        qa: parseFloat(consolidatedQA.toFixed(2)),
-        iepc: parseFloat(consolidatedIEPC.toFixed(2)),
-        ncs: totalNcs,
-        elogios: totalElogios,
-        analistas: totalAnalistas,
-        squads: allSquads,
-        coordenadores: allCoords,
-        ncByType: ncByTypeTotal,
-      } as PeriodSummary;
+    if (filterCiclo !== 'todos') {
+      return (
+        filteredHistory.find((h) => h.periodo === filterCiclo) ??
+        history.find((h) => h.periodo === filterCiclo)
+      );
     }
-    return filteredHistory[filteredHistory.length - 1];
+    const target = preferredPeriodo || allPeriodos[0];
+    return history.find((h) => h.periodo === target) ?? history[0];
   })();
-
   const lastPeriod = getFilteredPeriod(rawLastPeriod);
 
-  // Auto-compare: when a specific cycle is selected, find the previous cycle in the FULL history
-  // Also considers manually registered cycles that may not have imported scores
   const prevPeriod = (() => {
     if (filterCiclo === 'todos') {
-      return filteredHistory[filteredHistory.length - 2];
+      const idx = history.findIndex((h) => h.periodo === rawLastPeriod?.periodo);
+      if (idx >= 0 && idx < history.length - 1) return history[idx + 1];
+      return undefined;
     }
-    // Find the selected cycle's index in the full (unfiltered) history
     const selectedIdx = history.findIndex((h) => h.periodo === filterCiclo);
-    if (selectedIdx > 0) return history[selectedIdx - 1];
+    if (selectedIdx >= 0 && selectedIdx < history.length - 1) return history[selectedIdx + 1];
 
-    // Fallback: look in allPeriodos (sorted) to find the period immediately before filterCiclo
-    // This handles cases where the previous cycle exists in allPeriodos but was filtered from history
-    const sortedPeriodos = [...allPeriodos].sort();
+    const sortedPeriodos = sortPeriodosDesc(allPeriodos);
     const periodIdx = sortedPeriodos.indexOf(filterCiclo);
-    if (periodIdx > 0) {
-      const prevPeriodoKey = sortedPeriodos[periodIdx - 1];
+    if (periodIdx >= 0 && periodIdx < sortedPeriodos.length - 1) {
+      const prevPeriodoKey = sortedPeriodos[periodIdx + 1];
       // Try to find it in history (may have been filtered out)
       const found = history.find((h) => h.periodo === prevPeriodoKey);
       if (found) return found;

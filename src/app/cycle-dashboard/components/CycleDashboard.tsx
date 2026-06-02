@@ -14,6 +14,7 @@ import ExecutiveInsights from './ExecutiveInsights';
 import CompareAnalystsModal from './CompareAnalystsModal';
 import NonConformitiesGuide from './NonConformitiesGuide';
 import { PILLAR_DESCRIPTIONS } from '@/lib/mockData';
+import { getActiveCycle } from '@/lib/services/supabaseDataService';
 import {
   fetchCycleScores,
   fetchAllPeriodos,
@@ -71,16 +72,23 @@ export default function CycleDashboard() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [scores, allPeriodos] = await Promise.all([
+    const [scores, allPeriodos, activeCycle] = await Promise.all([
       fetchCycleScores(),
       fetchAllPeriodos(),
+      getActiveCycle(),
     ]);
 
-    setPeriodos(allPeriodos);
+    const orderedPeriodos =
+      activeCycle && !allPeriodos.includes(activeCycle)
+        ? [activeCycle, ...allPeriodos]
+        : allPeriodos;
+    setPeriodos(orderedPeriodos);
 
-    // Determine which period to show: URL param > latest
     const paramPeriodo = searchParams?.get('periodo');
-    let targetPeriodo = paramPeriodo || (allPeriodos.length > 0 ? allPeriodos[allPeriodos.length - 1] : '');
+    const defaultPeriodo =
+      (activeCycle && orderedPeriodos.includes(activeCycle) ? activeCycle : null) ||
+      (orderedPeriodos.length > 0 ? orderedPeriodos[0] : '');
+    const targetPeriodo = paramPeriodo || defaultPeriodo;
     setActivePeriodo(targetPeriodo);
 
     let periodScores = targetPeriodo

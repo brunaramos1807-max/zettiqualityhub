@@ -35,7 +35,7 @@ export default function HeroCycleStatus() {
 
     setHasData(true);
     // Use the most recent period
-    const latestPeriodo = periodos[periodos.length - 1];
+    const latestPeriodo = periodos[0];
     setPeriodo(latestPeriodo);
 
     const periodScores = scores.filter((s: any) => s.periodo === latestPeriodo);

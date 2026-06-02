@@ -17,7 +17,7 @@ export default function HomeKPICards() {
   const loadKPIs = async () => {
     // Get the most recent period to filter correctly
     const periodos = await fetchAllPeriodos();
-    const activePeriodo = periodos.length > 0 ? periodos[periodos.length - 1] : undefined;
+    const activePeriodo = periodos.length > 0 ? periodos[0] : undefined;
 
     const [scores, ncs, elogios] = await Promise.all([
       fetchCycleScores(activePeriodo),

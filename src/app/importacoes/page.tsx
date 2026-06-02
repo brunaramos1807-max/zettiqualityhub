@@ -233,7 +233,7 @@ function ImportacoesContent() {
     ]);
     setPeriodos(allPeriodos);
     if (allPeriodos.length > 0 && !selectedPeriodo) {
-      setSelectedPeriodo(allPeriodos[allPeriodos.length - 1]);
+      setSelectedPeriodo(allPeriodos[0]);
     }
 
     await loadImports();
