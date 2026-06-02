@@ -486,10 +486,24 @@ export async function POST(request: NextRequest) {
     coaching: endpointPayload.coaching,
     ncs: endpointPayload.ncs,
     feedbackBlocks: endpointPayload.feedbackBlocks,
-    pdiList: [],
-    historico: [],
+    // FIX: Extract PDI list from rawPayload.pdi (array format from Lovable)
+    pdiList: Array.isArray(rawPayload.pdi) ? rawPayload.pdi as NewPayloadPDI[] : [],
+    historico: Array.isArray(rawPayload.historico) ? rawPayload.historico as NewPayloadHistorico[] : [],
     sintese: null,
   };
+
+  // TEMPORARY DEBUG LOG — validate incoming payload fields
+  console.log('[receber-avaliacao] payload recebido', JSON.stringify({
+    analista: rawPayload.analista,
+    ciclo: rawPayload.ciclo,
+    scores: rawPayload.scores,
+    pdi_count: Array.isArray(rawPayload.pdi) ? rawPayload.pdi.length : (rawPayload.pdi ? 1 : 0),
+    feedback_blocks_keys: rawPayload.feedback_blocks ? Object.keys(rawPayload.feedback_blocks) : [],
+    coaching_count: Array.isArray(rawPayload.coaching) ? rawPayload.coaching.length : 0,
+    nao_conformidades_count: Array.isArray(rawPayload.nao_conformidades) ? rawPayload.nao_conformidades.length : 0,
+    qa_pilares_count: Array.isArray(rawPayload.qa_pilares) ? rawPayload.qa_pilares.length : 0,
+    iepc_pilares_count: Array.isArray(rawPayload.iepc_pilares) ? rawPayload.iepc_pilares.length : 0,
+  }, null, 2));
 
   // ── 5. Create initial log entry ──────────────────────────────────────────
   const { data: logEntry } = await supabase
@@ -717,8 +731,9 @@ export async function POST(request: NextRequest) {
       .map((p) => ({
         feedback_id: feedbackId,
         analista_id: analistaId,
+        // FIX: Support Lovable format {objetivo, acao, resultadoEsperado} and legacy {acoes[], metas[]}
         objetivo: p.objetivo || (p.acoes ? p.acoes[0] : '') || '',
-        acao_desenvolvimento: p.acao || (p.metas ? p.metas[0] : '') || null,
+        acao_desenvolvimento: p.acao || p.resultadoEsperado || (p.metas ? p.metas[0] : '') || null,
         prazo: p.prazo || null,
         progresso: 0,
         status: p.status || 'pendente',
@@ -726,6 +741,7 @@ export async function POST(request: NextRequest) {
     if (pdiRows.length > 0) {
       const { error: pdiError } = await supabase.from('feedback_pdi').insert(pdiRows);
       if (pdiError) console.error('[receber-avaliacao] pdi insert error:', pdiError.message);
+      else console.log(`[receber-avaliacao] Saved ${pdiRows.length} PDI records`);
     }
   }
 
@@ -746,32 +762,56 @@ export async function POST(request: NextRequest) {
   }
 
   // ── 15. Save NC records — SEÇÃO 5: Usar extractNonConformities() ──────────
-  if (endpointPayload.totalNCs > 0) {
+  // FIX: Use ncs from endpointPayload (already flattened from both root and atendimentos)
+  // Also support direct root nao_conformidades from Lovable payload
+  const rawNCs = Array.isArray(rawPayload.nao_conformidades) ? rawPayload.nao_conformidades : [];
+  const ncCountToSave = rawNCs.length > 0 ? rawNCs.length : endpointPayload.totalNCs;
+
+  if (ncCountToSave > 0) {
     await supabase.from('nc_records').delete().eq('periodo', norm.cicloNome).eq('analista', norm.analistaNome).eq('source', 'integration');
 
-    // SEÇÃO 5: Usar extractNonConformities() para penalidades corretas
-    const ncRows = extractNonConformities(
-      endpointPayload.normalized,
-      endpointPayload.cicloNome,
-      endpointPayload.analistaNome,
-      endpointPayload.squad,
-      endpointPayload.coordenador,
-      endpointPayload.auditor
-    );
+    let ncRowsToInsert: Record<string, unknown>[];
 
-    // Map cycle_id para compatibilidade
-    const ncRowsWithCycleId = ncRows.map((nc) => ({
-      ...nc,
-      cycle_id: cycleId,
-    }));
+    if (rawNCs.length > 0) {
+      // Lovable sends nao_conformidades at root with: protocolo, tipo_nc, descricao, analista, squad, coordenador
+      ncRowsToInsert = rawNCs.map((nc: NewPayloadNC) => ({
+        cycle_id: cycleId,
+        periodo: norm.cicloNome,
+        analista: nc.analista || norm.analistaNome,
+        squad: nc.squad || norm.squad,
+        coordenador: nc.coordenador || norm.coordenador,
+        auditor: norm.auditor,
+        tipo_nc: nc.tipo_nc || nc.tipo || 'Não Especificado',
+        descricao: nc.descricao || null,
+        pontos_deduzidos: typeof nc.pontos_deduzidos === 'number' ? nc.pontos_deduzidos : 0,
+        protocolo_referencia: nc.protocolo || null,
+        source: 'integration',
+      }));
+    } else {
+      // Fallback: use extractNonConformities from normalized payload
+      const ncRows = extractNonConformities(
+        endpointPayload.normalized,
+        endpointPayload.cicloNome,
+        endpointPayload.analistaNome,
+        endpointPayload.squad,
+        endpointPayload.coordenador,
+        endpointPayload.auditor
+      );
+      ncRowsToInsert = ncRows.map((nc) => ({ ...nc, cycle_id: cycleId }));
+    }
 
-    const { error: ncError } = await supabase.from('nc_records').insert(ncRowsWithCycleId);
-    if (ncError) console.error('[receber-avaliacao] NC insert error:', ncError.message);
+    if (ncRowsToInsert.length > 0) {
+      const { error: ncError } = await supabase.from('nc_records').insert(ncRowsToInsert);
+      if (ncError) console.error('[receber-avaliacao] NC insert error:', ncError.message);
+      else console.log(`[receber-avaliacao] Saved ${ncRowsToInsert.length} NC records`);
+    }
   }
 
   // ── 16. Save old-format PDI records ─────────────────────────────────────
-  const oldPdi = rawPayload.pdi as NewPayloadPDI | undefined;
-  if (!Array.isArray(rawPayload.pdi) && oldPdi && (oldPdi.acoes || oldPdi.metas)) {
+  // FIX: Handle both array format (new Lovable) and object format (legacy)
+  if (Array.isArray(rawPayload.pdi) && rawPayload.pdi.length > 0) {
+    // New Lovable format: array of {objetivo, acao, resultadoEsperado}
+    const pdiArray = rawPayload.pdi as NewPayloadPDI[];
     const pdiRow = {
       cycle_id: cycleId,
       periodo: norm.cicloNome,
@@ -779,8 +819,8 @@ export async function POST(request: NextRequest) {
       squad: norm.squad,
       coordenador: norm.coordenador,
       status_pdi: 'Em andamento',
-      acoes: oldPdi.acoes ?? [],
-      metas: oldPdi.metas ?? [],
+      acoes: pdiArray.map((p) => p.acao || p.objetivo || '').filter(Boolean),
+      metas: pdiArray.map((p) => p.resultadoEsperado || p.objetivo || '').filter(Boolean),
       nc_reincidentes: endpointPayload.ncs.filter((nc) => nc.reincidente).map((nc) => nc.tipo_nc || nc.tipo || ''),
       qa_score: norm.qaScore,
       iepc_score: norm.iepcScore,
@@ -789,6 +829,28 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
     };
     await supabase.from('pdi_records').upsert(pdiRow, { onConflict: 'analista,periodo' });
+  } else {
+    // Legacy format: single object with acoes/metas
+    const oldPdi = rawPayload.pdi as NewPayloadPDI | undefined;
+    if (!Array.isArray(rawPayload.pdi) && oldPdi && (oldPdi.acoes || oldPdi.metas)) {
+      const pdiRow = {
+        cycle_id: cycleId,
+        periodo: norm.cicloNome,
+        analista: norm.analistaNome,
+        squad: norm.squad,
+        coordenador: norm.coordenador,
+        status_pdi: 'Em andamento',
+        acoes: oldPdi.acoes ?? [],
+        metas: oldPdi.metas ?? [],
+        nc_reincidentes: endpointPayload.ncs.filter((nc) => nc.reincidente).map((nc) => nc.tipo_nc || nc.tipo || ''),
+        qa_score: norm.qaScore,
+        iepc_score: norm.iepcScore,
+        sintese_ia: null,
+        source: 'integration',
+        updated_at: new Date().toISOString(),
+      };
+      await supabase.from('pdi_records').upsert(pdiRow, { onConflict: 'analista,periodo' });
+    }
   }
 
   // ── 17. Update cycle_summaries ───────────────────────────────────────────

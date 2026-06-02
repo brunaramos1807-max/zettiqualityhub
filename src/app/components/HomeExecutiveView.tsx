@@ -1220,7 +1220,86 @@ export default function HomeExecutiveView() {
     return { ...period, squads, coordenadores, qa, iepc, analistas };
   };
 
-  const rawLastPeriod = filteredHistory[filteredHistory.length - 1];
+  // FIX: When filterCiclo === 'todos', consolidate ALL cycles into one summary
+  // instead of just showing the last cycle
+  const rawLastPeriod = (() => {
+    if (filterCiclo === 'todos' && filteredHistory.length > 1) {
+      // Consolidate all cycles: average QA/IEPC, sum NCs/elogios/analistas
+      const allSquads: Record<string, { qa: number; iepc: number; count: number }> = {};
+      const allCoords: Record<string, { qa: number; count: number }> = {};
+      let totalNcs = 0;
+      let totalElogios = 0;
+      let totalAnalistas = 0;
+      const ncByTypeAgg: Record<string, number> = {};
+
+      filteredHistory.forEach((h) => {
+        totalNcs += h.ncs;
+        totalElogios += h.elogios;
+        totalAnalistas += h.analistas;
+        // Merge squads
+        Object.entries(h.squads).forEach(([sq, d]) => {
+          if (!allSquads[sq]) allSquads[sq] = { qa: 0, iepc: 0, count: 0 };
+          allSquads[sq].qa += d.qa * d.count;
+          allSquads[sq].iepc += d.iepc * d.count;
+          allSquads[sq].count += d.count;
+        });
+        // Merge coordenadores
+        Object.entries(h.coordenadores || {}).forEach(([c, d]) => {
+          if (!allCoords[c]) allCoords[c] = { qa: 0, count: 0 };
+          allCoords[c].qa += d.qa * d.count;
+          allCoords[c].count += d.count;
+        });
+        // Merge ncByType
+        (h.ncByType || []).forEach((nc) => {
+          ncByTypeAgg[nc.name] = (ncByTypeAgg[nc.name] || 0) + nc.value;
+        });
+      });
+
+      // Normalize squad averages
+      Object.keys(allSquads).forEach((sq) => {
+        const d = allSquads[sq];
+        if (d.count > 0) {
+          d.qa = parseFloat((d.qa / d.count).toFixed(2));
+          d.iepc = parseFloat((d.iepc / d.count).toFixed(2));
+        }
+      });
+      Object.keys(allCoords).forEach((c) => {
+        const d = allCoords[c];
+        if (d.count > 0) {
+          d.qa = parseFloat((d.qa / d.count).toFixed(2));
+        }
+      });
+
+      const squadEntries = Object.values(allSquads);
+      const consolidatedQA = squadEntries.length > 0
+        ? parseFloat((squadEntries.reduce((s, d) => s + d.qa, 0) / squadEntries.length).toFixed(2))
+        : (filteredHistory.reduce((s, h) => s + h.qa, 0) / filteredHistory.length);
+      const consolidatedIEPC = squadEntries.length > 0
+        ? parseFloat((squadEntries.reduce((s, d) => s + d.iepc, 0) / squadEntries.length).toFixed(2))
+        : (filteredHistory.reduce((s, h) => s + h.iepc, 0) / filteredHistory.length);
+
+      const ncByTypeTotal = Object.entries(ncByTypeAgg).map(([name, value]) => ({
+        name,
+        value,
+        color: NC_CATEGORY_MAP[name]?.color || '#94A3B8',
+        pct: totalNcs > 0 ? Math.round((value / totalNcs) * 100) : 0,
+      }));
+
+      return {
+        periodo: 'Todos os ciclos',
+        qa: parseFloat(consolidatedQA.toFixed(2)),
+        iepc: parseFloat(consolidatedIEPC.toFixed(2)),
+        ncs: totalNcs,
+        elogios: totalElogios,
+        analistas: totalAnalistas,
+        squads: allSquads,
+        coordenadores: allCoords,
+        ncByType: ncByTypeTotal,
+      } as PeriodSummary;
+    }
+    return filteredHistory[filteredHistory.length - 1];
+  })();
+
   const lastPeriod = getFilteredPeriod(rawLastPeriod);
 
   // Auto-compare: when a specific cycle is selected, find the previous cycle in the FULL history
@@ -1282,8 +1361,8 @@ export default function HomeExecutiveView() {
     : [];
 
   const totalNCs = lastPeriod?.ncs ?? 0;
-  const totalElogios = lastPeriod?.elogios ?? 0;
-  const totalAnalistas = lastPeriod?.analistas ?? 0;
+  let totalElogios = lastPeriod?.elogios ?? 0;
+  let totalAnalistas = lastPeriod?.analistas ?? 0;
   const qaMedia = lastPeriod?.qa ?? 0;
   const iepcMedia = lastPeriod?.iepc ?? 0;
   const totalAvaliacoes = totalAnalistas;
