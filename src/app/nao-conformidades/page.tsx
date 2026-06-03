@@ -4,7 +4,7 @@ import EnterpriseLayout from '@/components/EnterpriseLayout';
 import ImportModal from '@/components/ImportModal';
 import { fetchNCRecords, fetchAllPeriodos } from '@/lib/services/dataService';
 import { formatPontosDeduzidos, resolveNcPontosDeduzidos } from '@/lib/utils/ncDisplay';
-import { AlertTriangle, Search, BarChart2, RefreshCw, TrendingUp, Filter, ChevronRight, Shield, Activity, Layers, X, Eye, Trash2 } from 'lucide-react';
+import { AlertTriangle, Search, BarChart2, RefreshCw, TrendingDown, Filter, ChevronRight, Shield, Activity, Layers, X, Eye, Trash2, Zap, Users, Target, Award } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend, PieChart, Pie, Cell, AreaChart, Area,  } from 'recharts';
 
 const NC_TYPES = [
