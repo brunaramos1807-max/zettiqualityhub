@@ -337,10 +337,11 @@ export default function FeedbackViewPage() {
 
       const analistaNome = rawData.analistas?.nome || rawData.analistas?.nome_completo;
       if (analistaNome) {
+        const normalizedAnalystName = analistaNome.toLowerCase().trim().replace(/\s+/g, ' ');
         const { data: elogiosRows } = await supabase
           .from('elogios')
           .select('elogio, protocolo, cliente, periodo')
-          .ilike('colaborador', `%${analistaNome.split(' ')[0]}%`)
+          .ilike('colaborador', normalizedAnalystName)
           .order('created_at', { ascending: false })
           .limit(10);
         setElogios(elogiosRows || []);
@@ -350,7 +351,7 @@ export default function FeedbackViewPage() {
         let ncQuery = supabase
           .from('nc_records')
           .select('*')
-          .ilike('analista', `%${analistaNome.split(' ')[0]}%`);
+          .ilike('analista', normalizedAnalystName);
         if (ciclo) ncQuery = ncQuery.eq('periodo', ciclo);
         const { data: ncRows } = await ncQuery;
         setDbNCs(ncRows || []);
