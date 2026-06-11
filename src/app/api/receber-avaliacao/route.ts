@@ -701,7 +701,7 @@ export async function POST(request: NextRequest) {
     is_manual: false,
   };
 
-  const { error: scoreError } = await supabase.from('cycle_scores').upsert(scoreRow, { onConflict: 'id' });
+  const { error: scoreError } = await supabase.from('cycle_scores').upsert(scoreRow, { onConflict: 'periodo,analista,squad' });
   if (scoreError) {
     const { error: insertError } = await supabase.from('cycle_scores').insert(scoreRow);
     if (insertError) {
@@ -792,6 +792,7 @@ export async function POST(request: NextRequest) {
         solucao: a.solucao || null,
         sintese: a.sintese || null,
         nota_qa: a.nota_qa != null ? parseNum(a.nota_qa) : null,
+        nota_iepc: a.nota_iepc != null ? parseNum(a.nota_iepc) : null,
         duracao: a.duracao || null,
         ncs: Array.isArray(a.nao_conformidades) ? a.nao_conformidades : [],
         criterios_raw: criteriosRaw,
@@ -878,10 +879,10 @@ export async function POST(request: NextRequest) {
       source: 'integration',
     }));
 
-    if (ncRowsToInsert.length > 0) {
-      const { error: ncError } = await supabase.from('nc_records').insert(ncRowsToInsert);
+    if (ncRowsWithCycleId.length > 0) {
+      const { error: ncError } = await supabase.from('nc_records').insert(ncRowsWithCycleId);
       if (ncError) console.error('[receber-avaliacao] NC insert error:', ncError.message);
-      else console.log(`[receber-avaliacao] Saved ${ncRowsToInsert.length} NC records`);
+      else console.log(`[receber-avaliacao] Saved ${ncRowsWithCycleId.length} NC records`);
     }
   }
 

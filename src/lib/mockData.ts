@@ -58,11 +58,7 @@ export const MOCK_USERS: User[] = [
   { id: 'user-005', name: 'Diretoria Zetti', email: 'diretoria@zetti.com.br', role: 'Diretoria', avatar: 'DZ' },
 ];
 
-export const DEMO_CREDENTIALS = [
-  { role: 'Admin', email: 'admin@zetti.com.br', password: 'ZettiAdmin@2026', description: 'Controle total — todas as squads' },
-  { role: 'Coordenador', email: 'ayron.silva@zetti.com.br', password: 'Coord@PDV2026', description: 'Squad PDV + PDV N1 apenas' },
-  { role: 'Diretoria', email: 'diretoria@zetti.com.br', password: 'Diretoria@2026', description: 'Leitura total — todas as squads' },
-];
+// DEMO_CREDENTIALS removed — credentials must not be stored in source code
 
 export const ANALYSTS: Analyst[] = [
   { id: 'analyst-001', name: 'Fabiano Feliz', squad: 'Financeiro Fiscal', coordenador: 'Amanda Cristina', qaScore: 94.00, iepcScore: 95.00, ncs: 0, ncPoints: 0, p1: 22, p2: 34, p3: 18, p4: 14, p5: 12, e1: 29, e2: 19, e3: 19, e4: 14, e5: 14 },

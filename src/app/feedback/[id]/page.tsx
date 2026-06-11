@@ -131,9 +131,9 @@ function resolveIepcPilares(snapshot: any, rawFeedback: any): any[] {
   const scoreBag = { ...(snapshot?.scores || {}), ...(rawFeedback || {}) };
   const fromE = eKeys
     .map((k, i) => {
-      const val = scoreBag[k] ?? rawFeedback?.[k];
+      let val = scoreBag[k] ?? rawFeedback?.[k];
       if (val == null || val === '') return null;
-      const nota = Number(val);
+      let nota = Number(val);
       if (!Number.isFinite(nota)) return null;
       return {
         nome: IEPC_PILAR_DEFAULT_NAMES[i],
@@ -342,24 +342,43 @@ export default function FeedbackViewPage() {
       const analistaNome = rawData.analistas?.nome || rawData.analistas?.nome_completo;
       if (analistaNome) {
         const ciclo = rawData.ciclo || snap?.analista?.ciclo;
+        const analistaNomeLower = analistaNome.toLowerCase();
+        const analistaParts = analistaNomeLower.split(' ');
+        const analistaFirstName = analistaParts[0];
+        const analistaLastName = analistaParts[analistaParts.length - 1];
+
         let elogiosQuery = supabase
           .from('elogios')
           .select('elogio, protocolo, cliente, periodo')
-          .ilike('colaborador', `%${analistaNome.split(' ')[0]}%`)
+          .ilike('colaborador', `${analistaNome.split(' ')[0]}%`)
           .order('created_at', { ascending: false })
           .limit(20);
         if (ciclo) elogiosQuery = elogiosQuery.eq('periodo', ciclo);
         const { data: elogiosRows } = await elogiosQuery;
-        setElogios(elogiosRows || []);
+        // Post-filter: require first+last name match to avoid false positives
+        const filteredElogios = (elogiosRows || []).filter((e: any) => {
+          const colLower = (e.colaborador || '').toLowerCase();
+          const colParts = colLower.split(' ');
+          return colLower === analistaNomeLower ||
+            (colParts[0] === analistaFirstName && colParts[colParts.length - 1] === analistaLastName);
+        });
+        setElogios(filteredElogios);
 
         // Fetch NCs from nc_records table by analista name + ciclo
         let ncQuery = supabase
           .from('nc_records')
           .select('*')
-          .ilike('analista', `%${analistaNome.split(' ')[0]}%`);
+          .ilike('analista', `${analistaNome.split(' ')[0]}%`);
         if (ciclo) ncQuery = ncQuery.eq('periodo', ciclo);
         const { data: ncRows } = await ncQuery;
-        setDbNCs(ncRows || []);
+        // Post-filter: require first+last name match
+        const filteredNCs = (ncRows || []).filter((nc: any) => {
+          const ncLower = (nc.analista || '').toLowerCase();
+          const ncParts = ncLower.split(' ');
+          return ncLower === analistaNomeLower ||
+            (ncParts[0] === analistaFirstName && ncParts[ncParts.length - 1] === analistaLastName);
+        });
+        setDbNCs(filteredNCs);
       }
     }
 
@@ -1699,8 +1718,8 @@ function CustomRadarTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null;
   const d = payload[0]?.payload;
   if (!d) return null;
-  const nota = d.nota ?? 0;
-  const maximo = d.maximo ?? 100;
+  let nota = d.nota ?? 0;
+  let maximo = d.maximo ?? 100;
   const pct = Math.round((nota / maximo) * 100);
   return (
     <div className="bg-[#0F1B31] border border-[#1E3050] rounded-lg px-3 py-2 text-xs shadow-xl">
@@ -1722,8 +1741,8 @@ function pillarBarColor(pct: number) {
 function CustomRadarLabel(props: any) {
   const { x, y, payload } = props;
   if (!payload) return null;
-  const nota = payload.nota ?? 0;
-  const maximo = payload.maximo ?? 100;
+  let nota = payload.nota ?? 0;
+  let maximo = payload.maximo ?? 100;
   const pct = Math.round((nota / maximo) * 100);
   const color = pillarBarColor(pct);
   return (
@@ -1749,8 +1768,8 @@ function pilarMaximoValue(p: any): number {
 function RadarChartCard({ title, subtitle, pilares, color, totalScore }: any) {
   const list = pilares || [];
   const chartData = list.map((p: any) => {
-    const nota = pilarNotaValue(p);
-    const maximo = pilarMaximoValue(p);
+    let nota = pilarNotaValue(p);
+    let maximo = pilarMaximoValue(p);
     const pct = Math.round((nota / maximo) * 100);
     return {
       subject: (p.nome || p.name || '').length > 12 ? (p.nome || p.name || '').slice(0, 12) + '…' : (p.nome || p.name || ''),
@@ -1794,8 +1813,8 @@ function RadarChartCard({ title, subtitle, pilares, color, totalScore }: any) {
         {/* Pillar list */}
         <div className="flex-1 space-y-2 min-w-0">
           {list.length > 0 ? list.map((p: any, i: number) => {
-            const nota = pilarNotaValue(p);
-            const maximo = pilarMaximoValue(p);
+            let nota = pilarNotaValue(p);
+            let maximo = pilarMaximoValue(p);
             const pct = Math.round((nota / maximo) * 100);
             const barColor = pillarBarColor(pct);
             return (

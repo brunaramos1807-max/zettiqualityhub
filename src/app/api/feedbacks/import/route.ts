@@ -321,5 +321,43 @@ export async function POST(req: NextRequest) {
     feedback_id: feedback.id,
   });
 
+  // ── Upsert cycle_scores so dashboard reflects this feedback ──────────────
+  const { data: cycleRowForScore } = await supabaseAdmin
+    .from('import_cycles')
+    .select('id')
+    .eq('periodo', n.ciclo)
+    .maybeSingle();
+
+  const cycleScoreRow = {
+    cycle_id: cycleRowForScore?.id || null,
+    periodo: n.ciclo,
+    analista: analista.nome,
+    squad: n.equipe || analista.equipe || null,
+    coordenador: n.coordenador || analista.coordenador || null,
+    nota_final_qa: n.qa,
+    iepc_total: n.iepc,
+    p1: n.pilares_qa[0] ? Number(n.pilares_qa[0].pontuacao) : null,
+    p2: n.pilares_qa[1] ? Number(n.pilares_qa[1].pontuacao) : null,
+    p3: n.pilares_qa[2] ? Number(n.pilares_qa[2].pontuacao) : null,
+    p4: n.pilares_qa[3] ? Number(n.pilares_qa[3].pontuacao) : null,
+    p5: n.pilares_qa[4] ? Number(n.pilares_qa[4].pontuacao) : null,
+    e1: n.pilares_iepc[0] ? Number(n.pilares_iepc[0].pontuacao) : null,
+    e2: n.pilares_iepc[1] ? Number(n.pilares_iepc[1].pontuacao) : null,
+    e3: n.pilares_iepc[2] ? Number(n.pilares_iepc[2].pontuacao) : null,
+    e4: n.pilares_iepc[3] ? Number(n.pilares_iepc[3].pontuacao) : null,
+    e5: n.pilares_iepc[4] ? Number(n.pilares_iepc[4].pontuacao) : null,
+    source: 'integration',
+    is_manual: false,
+  };
+
+  const { error: cycleScoreError } = await supabaseAdmin
+    .from('cycle_scores')
+    .upsert(cycleScoreRow, { onConflict: 'periodo,analista,squad' });
+  if (cycleScoreError) {
+    console.error('[feedbacks/import] cycle_scores upsert error:', cycleScoreError.message);
+  } else {
+    console.log(`[feedbacks/import] cycle_scores upserted for ${analista.nome} / ${n.ciclo}`);
+  }
+
   return NextResponse.json({ success: true, feedback_id: feedback.id }, { status: 201 });
 }
