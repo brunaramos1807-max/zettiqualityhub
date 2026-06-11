@@ -140,32 +140,38 @@ export default function AnalystDrilldown({ analyst, onClose }: Props) {
         fetchNCRecords(),
         fetchElogios(),
       ]);
-      const analystNameLower = analyst.name.toLowerCase();
-      const firstName = analyst.name.split(' ')[0].toLowerCase();
-      setAnalystNCs(
-        ncs.filter((nc: any) => {
-          const ncNameLower = (nc.analista || '').toLowerCase();
-          // Prefer exact match; fall back to first-name only if names are long enough to be unambiguous
-          const nameMatch =
-            ncNameLower === analystNameLower ||
-            ncNameLower.startsWith(firstName + ' ') ||
-            analystNameLower.startsWith((nc.analista || '').split(' ')[0].toLowerCase() + ' ') && ncNameLower === analystNameLower;
-          const periodMatch = !analyst.periodo || nc.periodo === analyst.periodo;
-          return nameMatch && periodMatch;
-        })
-      );
-      setAnalystElogios(
-        elogios.filter((e: any) => {
-          const eNameLower = (e.colaborador || '').toLowerCase();
-          const nameMatch =
-            eNameLower === analystNameLower ||
-            eNameLower.startsWith(firstName + ' ') ||
-            analystNameLower.startsWith(eNameLower.split(' ')[0] + ' ') && eNameLower === analystNameLower;
-          // Filter by period when available
-          const periodMatch = !analyst.periodo || !e.periodo || e.periodo === analyst.periodo;
-          return nameMatch && periodMatch;
-        })
-      );
+const analystNameLower = analyst.name.toLowerCase();
+const firstName = analyst.name.split(' ')[0].toLowerCase();
+
+setAnalystNCs(
+  ncs.filter((nc: any) => {
+    const ncNameLower = (nc.analista || '').toLowerCase();
+
+    const nameMatch =
+      ncNameLower === analystNameLower ||
+      ncNameLower.startsWith(firstName + ' ');
+
+    const periodMatch =
+      !analyst.periodo || nc.periodo === analyst.periodo;
+
+    return nameMatch && periodMatch;
+  })
+);
+
+setAnalystElogios(
+  elogios.filter((e: any) => {
+    const eNameLower = (e.colaborador || '').toLowerCase();
+
+    const nameMatch =
+      eNameLower === analystNameLower ||
+      eNameLower.startsWith(firstName + ' ');
+
+    const periodMatch =
+      !analyst.periodo || !e.periodo || e.periodo === analyst.periodo;
+
+    return nameMatch && periodMatch;
+  })
+);
     };
     loadData();
   }, [analyst.name, analyst.periodo]);
