@@ -591,6 +591,19 @@ export async function POST(request: NextRequest) {
     sintese: null,
   };
 
+  // TEMPORARY DEBUG LOG — validate incoming payload fields
+  console.log('[receber-avaliacao] payload recebido', JSON.stringify({
+    analista: rawPayload.analista,
+    ciclo: rawPayload.ciclo,
+    scores: rawPayload.scores,
+    pdi_count: Array.isArray(rawPayload.pdi) ? rawPayload.pdi.length : (rawPayload.pdi ? 1 : 0),
+    feedback_blocks_keys: rawPayload.feedback_blocks ? Object.keys(rawPayload.feedback_blocks) : [],
+    coaching_count: Array.isArray(rawPayload.coaching) ? rawPayload.coaching.length : 0,
+    nao_conformidades_count: Array.isArray(rawPayload.nao_conformidades) ? rawPayload.nao_conformidades.length : 0,
+    qa_pilares_count: Array.isArray(rawPayload.qa_pilares) ? rawPayload.qa_pilares.length : 0,
+    iepc_pilares_count: Array.isArray(rawPayload.iepc_pilares) ? rawPayload.iepc_pilares.length : 0,
+  }, null, 2));
+
   // ── 5. Create initial log entry ──────────────────────────────────────────
   const { data: logEntry } = await supabase
     .from('integration_request_logs')
@@ -688,7 +701,7 @@ export async function POST(request: NextRequest) {
     is_manual: false,
   };
 
-  const { error: scoreError } = await supabase.from('cycle_scores').upsert(scoreRow, { onConflict: 'id' });
+  const { error: scoreError } = await supabase.from('cycle_scores').upsert(scoreRow, { onConflict: 'periodo,analista,squad' });
   if (scoreError) {
     const { error: insertError } = await supabase.from('cycle_scores').insert(scoreRow);
     if (insertError) {
@@ -779,6 +792,7 @@ export async function POST(request: NextRequest) {
         solucao: a.solucao || null,
         sintese: a.sintese || null,
         nota_qa: a.nota_qa != null ? parseNum(a.nota_qa) : null,
+        nota_iepc: a.nota_iepc != null ? parseNum(a.nota_iepc) : null,
         duracao: a.duracao || null,
         ncs: Array.isArray(a.nao_conformidades) ? a.nao_conformidades : [],
         criterios_raw: criteriosRaw,
@@ -817,6 +831,7 @@ export async function POST(request: NextRequest) {
       .map((p) => ({
         feedback_id: feedbackId,
         analista_id: analistaId,
+        // FIX: Support Lovable format {objetivo, acao, resultadoEsperado} and legacy {acoes[], metas[]}
         objetivo: p.objetivo || (p.acoes ? p.acoes[0] : '') || '',
         acao_desenvolvimento: p.acao_desenvolvimento || p.acao || (p.metas ? p.metas[0] : '') || null,
         prazo: p.prazo || null,
@@ -826,6 +841,7 @@ export async function POST(request: NextRequest) {
     if (pdiRows.length > 0) {
       const { error: pdiError } = await supabase.from('feedback_pdi').insert(pdiRows);
       if (pdiError) console.error('[receber-avaliacao] pdi insert error:', pdiError.message);
+      else console.log(`[receber-avaliacao] Saved ${pdiRows.length} PDI records`);
     }
   }
 
@@ -863,13 +879,18 @@ export async function POST(request: NextRequest) {
       source: 'integration',
     }));
 
-    const { error: ncError } = await supabase.from('nc_records').insert(ncRowsWithCycleId);
-    if (ncError) console.error('[receber-avaliacao] NC insert error:', ncError.message);
+    if (ncRowsWithCycleId.length > 0) {
+      const { error: ncError } = await supabase.from('nc_records').insert(ncRowsWithCycleId);
+      if (ncError) console.error('[receber-avaliacao] NC insert error:', ncError.message);
+      else console.log(`[receber-avaliacao] Saved ${ncRowsWithCycleId.length} NC records`);
+    }
   }
 
   // ── 16. Save old-format PDI records ─────────────────────────────────────
-  const oldPdi = rawPayload.pdi as NewPayloadPDI | undefined;
-  if (!Array.isArray(rawPayload.pdi) && oldPdi && (oldPdi.acoes || oldPdi.metas)) {
+  // FIX: Handle both array format (new Lovable) and object format (legacy)
+  if (Array.isArray(rawPayload.pdi) && rawPayload.pdi.length > 0) {
+    // New Lovable format: array of {objetivo, acao, resultadoEsperado}
+    const pdiArray = rawPayload.pdi as NewPayloadPDI[];
     const pdiRow = {
       cycle_id: cycleId,
       periodo: norm.cicloNome,
@@ -877,8 +898,8 @@ export async function POST(request: NextRequest) {
       squad: norm.squad,
       coordenador: norm.coordenador,
       status_pdi: 'Em andamento',
-      acoes: oldPdi.acoes ?? [],
-      metas: oldPdi.metas ?? [],
+      acoes: pdiArray.map((p) => p.acao || p.objetivo || '').filter(Boolean),
+      metas: pdiArray.map((p) => p.resultadoEsperado || p.objetivo || '').filter(Boolean),
       nc_reincidentes: endpointPayload.ncs.filter((nc) => nc.reincidente).map((nc) => nc.tipo_nc || nc.tipo || ''),
       qa_score: norm.qaScore,
       iepc_score: norm.iepcScore,
@@ -887,6 +908,28 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
     };
     await supabase.from('pdi_records').upsert(pdiRow, { onConflict: 'analista,periodo' });
+  } else {
+    // Legacy format: single object with acoes/metas
+    const oldPdi = rawPayload.pdi as NewPayloadPDI | undefined;
+    if (!Array.isArray(rawPayload.pdi) && oldPdi && (oldPdi.acoes || oldPdi.metas)) {
+      const pdiRow = {
+        cycle_id: cycleId,
+        periodo: norm.cicloNome,
+        analista: norm.analistaNome,
+        squad: norm.squad,
+        coordenador: norm.coordenador,
+        status_pdi: 'Em andamento',
+        acoes: oldPdi.acoes ?? [],
+        metas: oldPdi.metas ?? [],
+        nc_reincidentes: endpointPayload.ncs.filter((nc) => nc.reincidente).map((nc) => nc.tipo_nc || nc.tipo || ''),
+        qa_score: norm.qaScore,
+        iepc_score: norm.iepcScore,
+        sintese_ia: null,
+        source: 'integration',
+        updated_at: new Date().toISOString(),
+      };
+      await supabase.from('pdi_records').upsert(pdiRow, { onConflict: 'analista,periodo' });
+    }
   }
 
   // ── 17. Update cycle_summaries ───────────────────────────────────────────

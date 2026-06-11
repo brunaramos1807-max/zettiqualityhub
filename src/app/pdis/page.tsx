@@ -683,7 +683,65 @@ function PDIsContent() {
       fetchCycleScores(),
       fetchAllPeriodos(),
     ]);
-    setPdis(pdiList);
+
+    // Backfill: also load feedbacks with pdi_objetivos in snapshot that don't have pdi_records entries
+    let allPdis = [...pdiList];
+    try {
+      const { createClient } = await import('@/lib/supabase/client');
+      const supabase = createClient();
+      if (supabase) {
+        const existingFeedbackIds = new Set(pdiList.map((p: any) => p.feedback_id).filter(Boolean));
+        const { data: feedbacksWithPdi } = await supabase
+          .from('feedbacks')
+          .select('id, ciclo, analista_id, analistas(nome, equipe, coordenador), snapshot_json_completo, qa_score, iepc_score, mensagem_evolutiva')
+          .not('snapshot_json_completo', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(300);
+
+        if (feedbacksWithPdi) {
+          for (const fb of feedbacksWithPdi) {
+            if (existingFeedbackIds.has(fb.id)) continue;
+            const snap = Array.isArray(fb.snapshot_json_completo) ? fb.snapshot_json_completo[0] : (fb.snapshot_json_completo || {});
+            const pdiObjs = snap?.feedback_blocks?.pdi_objetivos;
+            if (!Array.isArray(pdiObjs) || pdiObjs.length === 0) continue;
+            const hasObjective = pdiObjs.some((o: any) => o.objetivo?.trim());
+            if (!hasObjective) continue;
+            const analistaNome = (fb.analistas as any)?.nome || snap?.analista?.nome || '';
+            const equipe = (fb.analistas as any)?.equipe || snap?.analista?.equipe || '';
+            const coordenador = (fb.analistas as any)?.coordenador || snap?.analista?.coordenador || '';
+            const ciclo = fb.ciclo || snap?.analista?.ciclo || '';
+            const mensagem = snap?.feedback_blocks?.mensagem_evolutiva || fb.mensagem_evolutiva || '';
+            // Synthesize a PDIRecord-compatible object
+            const syntheticPdi: any = {
+              id: `fb-snap-${fb.id}`,
+              feedback_id: fb.id,
+              analista: analistaNome,
+              squad: equipe,
+              coordenador,
+              periodo: ciclo,
+              objetivo: pdiObjs[0]?.objetivo || 'PDI do feedback',
+              status_pdi: 'aguardando alinhamento',
+              mensagem_evolutiva: mensagem,
+              enterprise_objectives: pdiObjs,
+              acoes: [],
+              metas: [],
+              evidencias: [],
+              nc_reincidentes: [],
+              qa_score: fb.qa_score,
+              iepc_score: fb.iepc_score,
+              created_at: fb.created_at || new Date().toISOString(),
+              updated_at: fb.updated_at || fb.created_at || new Date().toISOString(),
+              source: 'feedback_snapshot',
+            };
+            allPdis.push(syntheticPdi);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('PDI backfill error:', err);
+    }
+
+    setPdis(allPdis);
     const map: Record<string, { name: string; squad: string; coordenador: string; qa: number; iepc: number; count: number }> = {};
     scores.forEach((s: any) => {
       if (!map[s.analista]) {

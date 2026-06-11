@@ -438,11 +438,20 @@ function GestaoContent() {
       const activePdis = new Set((pdisData as any[]).map((p: any) => (p.analista || '').toLowerCase().trim()));
 
       const computed: AnalistaGestao[] = analistasData.map((a: any) => {
-        const nomeLower = (a.nome_completo || a.nome || '').toLowerCase().trim();
+        const nomeCompleto = (a.nome_completo || a.nome || '').toLowerCase().trim();
         const nomeShort = (a.nome || '').toLowerCase().trim();
+        const firstName = nomeShort.split(' ')[0];
         const matchName = (n: string) => {
           const nl = (n || '').toLowerCase().trim();
-          return nl === nomeLower || nl === nomeShort || nomeLower.includes(nl) || (nl.length > 3 && nl.includes(nomeShort));
+          // Exact match first (most reliable)
+          if (nl === nomeCompleto || nl === nomeShort) return true;
+          // Prefix match: cycle_scores.analista starts with same first name AND last name token matches
+          const nlParts = nl.split(' ');
+          const nomeParts = nomeCompleto.split(' ');
+          if (nlParts[0] === firstName && nlParts.length > 1 && nomeParts.length > 1) {
+            return nlParts[nlParts.length - 1] === nomeParts[nomeParts.length - 1];
+          }
+          return false;
         };
 
         const analistaScores = (scoresData as any[])
@@ -470,7 +479,7 @@ function GestaoContent() {
         else if (avgQA > 0 && avgQA < 75) risco = 'medio';
         else if (totalNCs > 5) risco = 'medio';
 
-        const pdiAtivo = activePdis.has(nomeLower) || activePdis.has(nomeShort);
+        const pdiAtivo = activePdis.has(nomeCompleto) || activePdis.has(nomeShort);
         const { label: tempoLabel, meses: mesesEmpresa } = calcTempoEmpresa(a.data_admissao);
 
         return {

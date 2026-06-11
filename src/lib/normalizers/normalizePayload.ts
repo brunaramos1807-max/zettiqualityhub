@@ -722,22 +722,30 @@ export function normalizePayload(payload: any): NormalizedPayload {
   }
 
   // Normalize analyst and cycle metadata
+  // FIX: Handle Lovable format where analista is an object {nome, email, equipe, coordenador, auditor}
+  const analistaObj = typeof payload.analista === 'object' && payload.analista !== null ? payload.analista as Record<string, unknown> : null;
+  const analistaStr = typeof payload.analista === 'string' ? payload.analista : null;
+
   const analyst: NormalizedAnalystMetadata = {
-    nome: payload.analyst?.nome || payload.analista,
-    nome_completo: payload.analyst?.nome_completo || payload.analista_nome_completo,
-    email: payload.analyst?.email || payload.analista_email,
-    equipe: payload.analyst?.equipe || payload.equipe,
-    squad: payload.analyst?.squad || payload.squad,
-    coordenador: payload.analyst?.coordenador || payload.coordenador,
-    auditor: payload.analyst?.auditor || payload.auditor,
+    nome: analistaObj?.nome as string || analistaObj?.nome_completo as string || analistaStr || payload.analyst?.nome,
+    nome_completo: analistaObj?.nome_completo as string || analistaStr || payload.analyst?.nome_completo || payload.analista_nome_completo,
+    email: analistaObj?.email as string || payload.analyst?.email || payload.analista_email,
+    equipe: analistaObj?.equipe as string || payload.analyst?.equipe || payload.equipe,
+    squad: analistaObj?.equipe as string || analistaObj?.squad as string || payload.analyst?.squad || payload.squad,
+    coordenador: analistaObj?.coordenador as string || payload.analyst?.coordenador || payload.coordenador,
+    auditor: analistaObj?.auditor as string || payload.analyst?.auditor || payload.auditor,
   };
 
+  // FIX: Handle Lovable format where ciclo is an object {nome, data_inicio, data_fim, status}
+  const cicloObj = typeof payload.ciclo === 'object' && payload.ciclo !== null ? payload.ciclo as Record<string, unknown> : null;
+  const cicloStr = typeof payload.ciclo === 'string' ? payload.ciclo : null;
+
   const cycle: NormalizedCycleMetadata = {
-    nome: payload.ciclo?.nome || payload.periodo || payload.cycle?.nome,
-    periodo: payload.periodo || payload.ciclo?.nome || payload.cycle?.nome,
-    data_inicio: payload.ciclo?.data_inicio || payload.cycle?.data_inicio,
-    data_fim: payload.ciclo?.data_fim || payload.cycle?.data_fim,
-    status: payload.ciclo?.status || payload.cycle?.status,
+    nome: cicloObj?.nome as string || cicloStr || payload.periodo || payload.cycle?.nome,
+    periodo: cicloObj?.nome as string || cicloStr || payload.periodo || payload.cycle?.nome,
+    data_inicio: cicloObj?.data_inicio as string || payload.ciclo?.data_inicio || payload.cycle?.data_inicio,
+    data_fim: cicloObj?.data_fim as string || payload.ciclo?.data_fim || payload.cycle?.data_fim,
+    status: cicloObj?.status as 'em_andamento' | 'concluido' || payload.ciclo?.status || payload.cycle?.status,
   };
 
   // Normalize scores

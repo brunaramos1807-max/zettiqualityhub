@@ -140,30 +140,38 @@ export default function AnalystDrilldown({ analyst, onClose }: Props) {
         fetchNCRecords(),
         fetchElogios(),
       ]);
-<<<<<<< HEAD
-      const normalizedAnalystName = analyst.name.toLowerCase().trim().replace(/\s+/g, ' ');
-      setAnalystNCs(ncs.filter((nc: any) => {
-        const normalizedNC = nc.analista?.toLowerCase().trim().replace(/\s+/g, ' ') || '';
-        const nameMatch = normalizedNC === normalizedAnalystName || nc.analista === analyst.name;
-        const periodMatch = !analyst.periodo || nc.periodo === analyst.periodo;
-        return nameMatch && periodMatch;
-      }));
-      setAnalystElogios(elogios.filter((e: any) => {
-        const normalizedElogio = e.colaborador?.toLowerCase().trim().replace(/\s+/g, ' ') || '';
-        const periodMatch = !analyst.periodo || e.periodo === analyst.periodo;
-        return (normalizedElogio === normalizedAnalystName || e.colaborador === analyst.name) && periodMatch;
-      }));
-=======
-      const normalizedAnalystName = analyst.name.toLowerCase().trim().replace(/\s+/g, ' ');
-      setAnalystNCs(ncs.filter((nc: any) => {
-        const normalizedNC = nc.analista?.toLowerCase().trim().replace(/\s+/g, ' ') || '';
-        return normalizedNC === normalizedAnalystName || nc.analista === analyst.name;
-      }));
-      setAnalystElogios(elogios.filter((e: any) => {
-        const normalizedElogio = e.colaborador?.toLowerCase().trim().replace(/\s+/g, ' ') || '';
-        return normalizedElogio === normalizedAnalystName || e.colaborador === analyst.name;
-      }));
->>>>>>> 59029d9 (chore: reduzir colisões de analistas — matching por nome completo normalizado)
+const analystNameLower = analyst.name.toLowerCase();
+const firstName = analyst.name.split(' ')[0].toLowerCase();
+
+setAnalystNCs(
+  ncs.filter((nc: any) => {
+    const ncNameLower = (nc.analista || '').toLowerCase();
+
+    const nameMatch =
+      ncNameLower === analystNameLower ||
+      ncNameLower.startsWith(firstName + ' ');
+
+    const periodMatch =
+      !analyst.periodo || nc.periodo === analyst.periodo;
+
+    return nameMatch && periodMatch;
+  })
+);
+
+setAnalystElogios(
+  elogios.filter((e: any) => {
+    const eNameLower = (e.colaborador || '').toLowerCase();
+
+    const nameMatch =
+      eNameLower === analystNameLower ||
+      eNameLower.startsWith(firstName + ' ');
+
+    const periodMatch =
+      !analyst.periodo || !e.periodo || e.periodo === analyst.periodo;
+
+    return nameMatch && periodMatch;
+  })
+);
     };
     loadData();
   }, [analyst.name, analyst.periodo]);

@@ -112,7 +112,9 @@ export default function CycleDashboard() {
   }, [loadData]);
 
   const filteredAnalysts = allAnalysts.filter((a) => {
+    // When 'all' is selected for squad, show ALL analysts regardless
     if (selectedSquad !== 'all' && a.squad !== selectedSquad) return false;
+    // Only filter by specific analyst if one is explicitly selected
     if (selectedAnalyst !== 'all' && a.id !== selectedAnalyst) return false;
     return true;
   });

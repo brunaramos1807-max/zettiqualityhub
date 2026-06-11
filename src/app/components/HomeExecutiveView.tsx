@@ -1298,8 +1298,8 @@ export default function HomeExecutiveView() {
     : [];
 
   const totalNCs = lastPeriod?.ncs ?? 0;
-  const totalElogios = lastPeriod?.elogios ?? 0;
-  const totalAnalistas = lastPeriod?.analistas ?? 0;
+  let totalElogios = lastPeriod?.elogios ?? 0;
+  let totalAnalistas = lastPeriod?.analistas ?? 0;
   const qaMedia = lastPeriod?.qa ?? 0;
   const iepcMedia = lastPeriod?.iepc ?? 0;
   const totalAvaliacoes = totalAnalistas;

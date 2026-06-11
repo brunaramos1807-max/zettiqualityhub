@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
-import { useParams } from 'next/navigation';
-import { AlertTriangle, Printer, Star, ChevronDown, ChevronUp, Quote, Maximize2, Minimize2, Edit3, Share2, CheckCircle, X, Save, Award, Users, Zap, TrendingUp, Heart, Target, Download, BookOpen, Plus, Trash2, Circle } from 'lucide-react';
+import { useParams, useRouter } from 'next/navigation';
+import { AlertTriangle, Printer, Star, ChevronDown, ChevronUp, Quote, Maximize2, Minimize2, Edit3, Share2, CheckCircle, X, Save, Award, Users, Zap, TrendingUp, Heart, Target, Download, BookOpen, Plus, Trash2, Circle, ArrowLeft, RefreshCw } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis
@@ -131,9 +131,9 @@ function resolveIepcPilares(snapshot: any, rawFeedback: any): any[] {
   const scoreBag = { ...(snapshot?.scores || {}), ...(rawFeedback || {}) };
   const fromE = eKeys
     .map((k, i) => {
-      const val = scoreBag[k] ?? rawFeedback?.[k];
+      let val = scoreBag[k] ?? rawFeedback?.[k];
       if (val == null || val === '') return null;
-      const nota = Number(val);
+      let nota = Number(val);
       if (!Number.isFinite(nota)) return null;
       return {
         nome: IEPC_PILAR_DEFAULT_NAMES[i],
@@ -241,6 +241,7 @@ function getMotivationalMessage(qa: number | null, iepc: number | null, ncs: num
 
 export default function FeedbackViewPage() {
   const params = useParams();
+  const router = useRouter();
   const supabase = createClient();
   const [snapshot, setSnapshot] = useState<any>(null);
   const [rawFeedback, setRawFeedback] = useState<any>(null);
@@ -248,6 +249,7 @@ export default function FeedbackViewPage() {
   const [historico, setHistorico] = useState<any[]>([]);
   const [elogios, setElogios] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [presentationMode, setPresentationMode] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editFields, setEditFields] = useState<any>({});
@@ -260,9 +262,11 @@ export default function FeedbackViewPage() {
   const [pdiObjetivos, setPdiObjetivos] = useState<PdiObjetivo[]>([newPdiObjetivo()]);
   const [dbNCs, setDbNCs] = useState<any[]>([]);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (isRefresh = false) => {
     const id = params?.id as string;
     if (!id) return;
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
 
     const { data: rawData } = await supabase
       .from('feedbacks')
@@ -270,7 +274,7 @@ export default function FeedbackViewPage() {
       .eq('id', id)
       .maybeSingle();
 
-    if (!rawData) { setLoading(false); return; }
+        if (!rawData) { if (isRefresh) setRefreshing(false); else setLoading(false); return; }
 
     setRawFeedback(rawData);
     setPublicToken(rawData.public_token || null);
@@ -337,28 +341,68 @@ export default function FeedbackViewPage() {
 
       const analistaNome = rawData.analistas?.nome || rawData.analistas?.nome_completo;
       if (analistaNome) {
-        const normalizedAnalystName = analistaNome.toLowerCase().trim().replace(/\s+/g, ' ');
-        const { data: elogiosRows } = await supabase
-          .from('elogios')
-          .select('elogio, protocolo, cliente, periodo')
-          .ilike('colaborador', normalizedAnalystName)
+if (analistaNome) {
+  const ciclo = rawData.ciclo || snap?.analista?.ciclo;
+  const analistaNomeLower = analistaNome.toLowerCase();
+  const analistaParts = analistaNomeLower.split(' ');
+  const analistaFirstName = analistaParts[0];
+  const analistaLastName = analistaParts[analistaParts.length - 1];
+
+  let elogiosQuery = supabase
+    .from('elogios')
+    .select('elogio, protocolo, cliente, periodo')
+    .ilike('colaborador', `${analistaNome.split(' ')[0]}%`)
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  if (ciclo) elogiosQuery = elogiosQuery.eq('periodo', ciclo);
+
+  const { data: elogiosRows } = await elogiosQuery;
+
+  const filteredElogios = (elogiosRows || []).filter((e: any) => {
           .order('created_at', { ascending: false })
-          .limit(10);
-        setElogios(elogiosRows || []);
+          .limit(20);
+        if (ciclo) elogiosQuery = elogiosQuery.eq('periodo', ciclo);
+        const { data: elogiosRows } = await elogiosQuery;
+        // Post-filter: require first+last name match to avoid false positives
+        const filteredElogios = (elogiosRows || []).filter((e: any) => {
+          const colLower = (e.colaborador || '').toLowerCase();
+          const colParts = colLower.split(' ');
+          return colLower === analistaNomeLower ||
+            (colParts[0] === analistaFirstName && colParts[colParts.length - 1] === analistaLastName);
+        });
+        setElogios(filteredElogios);
 
         // Fetch NCs from nc_records table by analista name + ciclo
-        const ciclo = rawData.ciclo || snap?.analista?.ciclo;
         let ncQuery = supabase
           .from('nc_records')
           .select('*')
-          .ilike('analista', normalizedAnalystName);
+.select('*')
+.ilike('analista', `${analistaNome.split(' ')[0]}%`);
+
+if (ciclo) ncQuery = ncQuery.eq('periodo', ciclo);
+
+const { data: ncRows } = await ncQuery;
+
+// Post-filter: require first+last name match
+const filteredNCs = (ncRows || []).filter((nc: any) => {
+  const ncLower = (nc.analista || '').toLowerCase();
+  const ncParts = ncLower.split(' ');
         if (ciclo) ncQuery = ncQuery.eq('periodo', ciclo);
         const { data: ncRows } = await ncQuery;
-        setDbNCs(ncRows || []);
+        // Post-filter: require first+last name match
+        const filteredNCs = (ncRows || []).filter((nc: any) => {
+          const ncLower = (nc.analista || '').toLowerCase();
+          const ncParts = ncLower.split(' ');
+          return ncLower === analistaNomeLower ||
+            (ncParts[0] === analistaFirstName && ncParts[ncParts.length - 1] === analistaLastName);
+        });
+        setDbNCs(filteredNCs);
       }
     }
 
     setLoading(false);
+    setRefreshing(false);
   }, [params?.id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -681,12 +725,12 @@ export default function FeedbackViewPage() {
   const resultadoEsperado = extract(snapshot, 'feedback_blocks.resultado_esperado', 'resultado_esperado') || rawFeedback?.resultado_esperado || '';
   const mensagemEvolutiva = extract(snapshot, 'feedback_blocks.mensagem_evolutiva', 'mensagem_evolutiva') || rawFeedback?.mensagem_evolutiva || '';
 
-  // Elogios: merge snapshot elogios + real elogios from DB
-  const snapshotElogios = snapshot?.elogios || [];
-  const allElogios = [
-    ...elogios.map((e: any) => ({ descricao: e.elogio, protocolo: e.protocolo })),
-    ...snapshotElogios,
-  ];
+  // Elogios: merge snapshot elogios + real elogios from DB (deduplicated by protocolo)
+  const snapshotElogios: any[] = snapshot?.elogios || [];
+  const dbElogiosMapped = elogios.map((e: any) => ({ descricao: e.elogio, protocolo: e.protocolo, cliente: e.cliente }));
+  const dbProtocolos = new Set(dbElogiosMapped.map((e: any) => e.protocolo).filter(Boolean));
+  const extraSnapshotElogios = snapshotElogios.filter((e: any) => !e.protocolo || !dbProtocolos.has(e.protocolo));
+  const allElogios = [...dbElogiosMapped, ...extraSnapshotElogios];
 
   // NCs: merge snapshot NCs with NCs fetched from nc_records table
   const dbNCsMapped = dbNCs.map((nc: any) => ({
@@ -719,10 +763,58 @@ export default function FeedbackViewPage() {
       <style>{`
         @media print {
           .print-hide { display: none !important; }
-          body { background: white !important; color: #111 !important; }
-          .print-card { background: white !important; border: 1px solid #e2e8f0 !important; color: #111 !important; break-inside: avoid; }
           @page { size: A4; margin: 14mm 16mm; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          body, html { background: #ffffff !important; color: #1a1a2e !important; }
+          .min-h-screen { background: #ffffff !important; }
+          .print-card {
+            background: #ffffff !important;
+            border: 1px solid #cbd5e1 !important;
+            color: #1e293b !important;
+            break-inside: avoid;
+            box-shadow: none !important;
+          }
+          /* Force all text to dark for readability */
+          .print-card * { color: #1e293b !important; }
+          /* Keep accent colors readable */
+          .print-card .text-sky-300, .print-card .text-sky-400 { color: #0369a1 !important; }
+          .print-card .text-teal-300, .print-card .text-teal-400 { color: #0f766e !important; }
+          .print-card .text-green-400 { color: #15803d !important; }
+          .print-card .text-amber-400 { color: #b45309 !important; }
+          .print-card .text-red-400 { color: #b91c1c !important; }
+          .print-card .text-purple-400 { color: #7c3aed !important; }
+          .print-card .text-slate-400, .print-card .text-slate-500 { color: #475569 !important; }
+          /* Remove dark backgrounds from cards */
+          .print-card [style*="background"] { background: #f8fafc !important; }
+          .print-card [style*="linear-gradient"] { background: #f1f5f9 !important; }
+          /* Score boxes */
+          .print-card [style*="border: 2px solid"] { border-color: #94a3b8 !important; }
+          /* Radar/chart containers */
+          .recharts-wrapper text { fill: #334155 !important; }
+          .recharts-polar-grid-angle line, .recharts-polar-grid-concentric path { stroke: #cbd5e1 !important; }
+          /* Progress bars keep color */
+          /* Headings */
+          h1, h2, h3, h4 { color: #0f172a !important; }
+          /* Mural de elogios */
+          .print-card .bg-teal-900\\/30, .print-card [style*="0D2E2B"], .print-card [style*="0A2420"] {
+            background: #f0fdfa !important;
+            border-color: #99f6e4 !important;
+          }
+          /* NC cards */
+          .print-card .bg-red-900\\/30 { background: #fef2f2 !important; }
+          .print-card .bg-amber-900\\/30 { background: #fffbeb !important; }
+          /* PDI block */
+          .print-card .bg-sky-900\\/40 { background: #f0f9ff !important; }
+          /* Coaching cards */
+          .print-card .bg-amber-900\\/20 { background: #fffbeb !important; }
+          /* Motivational block */
+          .print-card .bg-green-900\\/30 { background: #f0fdf4 !important; }
+          /* Panorama block */
+          .print-card .bg-\\[\\#0F1B31\\] { background: #f8fafc !important; }
+          /* Atendimentos */
+          .print-card .bg-slate-800\\/50 { background: #f1f5f9 !important; }
+          /* Remove blur/glow effects */
+          .print-card .blur-\\[100px\\], .print-card .blur-\\[80px\\] { display: none !important; }
         }
       `}</style>
 
@@ -732,6 +824,12 @@ export default function FeedbackViewPage() {
         {/* ── TOP ACTION BAR ── */}
         <div className="print-hide flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => router.back()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#0F1B31] text-slate-400 border border-[#1E3050] hover:text-slate-200 hover:bg-[#1E3050]/60 transition-all"
+            >
+              <ArrowLeft size={12} /> Voltar
+            </button>
             <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-sky-900/40 text-sky-300 border border-sky-700/30">
               {analistaCiclo}
             </span>
@@ -766,6 +864,15 @@ export default function FeedbackViewPage() {
             </button>
             <button onClick={handleDownloadTxt} className="print-hide flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-teal-900/30 text-teal-300 border border-teal-700/30 hover:bg-teal-800/40 transition-all">
               <Download size={12} /> Baixar TXT
+            </button>
+            <button
+              onClick={() => fetchData(true)}
+              disabled={refreshing}
+              className="print-hide flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700/50 hover:bg-slate-700 transition-all disabled:opacity-50"
+              title="Atualizar dados"
+            >
+              <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+              {refreshing ? 'Atualizando...' : 'Atualizar'}
             </button>
             <button onClick={() => window.print()} className="print-hide flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-900/40 text-sky-300 border border-sky-700/30 hover:bg-sky-800/50 transition-all">
               <Printer size={12} /> Baixar PDF
@@ -1630,8 +1737,8 @@ function CustomRadarTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null;
   const d = payload[0]?.payload;
   if (!d) return null;
-  const nota = d.nota ?? 0;
-  const maximo = d.maximo ?? 100;
+  let nota = d.nota ?? 0;
+  let maximo = d.maximo ?? 100;
   const pct = Math.round((nota / maximo) * 100);
   return (
     <div className="bg-[#0F1B31] border border-[#1E3050] rounded-lg px-3 py-2 text-xs shadow-xl">
@@ -1653,8 +1760,8 @@ function pillarBarColor(pct: number) {
 function CustomRadarLabel(props: any) {
   const { x, y, payload } = props;
   if (!payload) return null;
-  const nota = payload.nota ?? 0;
-  const maximo = payload.maximo ?? 100;
+  let nota = payload.nota ?? 0;
+  let maximo = payload.maximo ?? 100;
   const pct = Math.round((nota / maximo) * 100);
   const color = pillarBarColor(pct);
   return (
@@ -1680,8 +1787,8 @@ function pilarMaximoValue(p: any): number {
 function RadarChartCard({ title, subtitle, pilares, color, totalScore }: any) {
   const list = pilares || [];
   const chartData = list.map((p: any) => {
-    const nota = pilarNotaValue(p);
-    const maximo = pilarMaximoValue(p);
+    let nota = pilarNotaValue(p);
+    let maximo = pilarMaximoValue(p);
     const pct = Math.round((nota / maximo) * 100);
     return {
       subject: (p.nome || p.name || '').length > 12 ? (p.nome || p.name || '').slice(0, 12) + '…' : (p.nome || p.name || ''),
@@ -1725,8 +1832,8 @@ function RadarChartCard({ title, subtitle, pilares, color, totalScore }: any) {
         {/* Pillar list */}
         <div className="flex-1 space-y-2 min-w-0">
           {list.length > 0 ? list.map((p: any, i: number) => {
-            const nota = pilarNotaValue(p);
-            const maximo = pilarMaximoValue(p);
+            let nota = pilarNotaValue(p);
+            let maximo = pilarMaximoValue(p);
             const pct = Math.round((nota / maximo) * 100);
             const barColor = pillarBarColor(pct);
             return (

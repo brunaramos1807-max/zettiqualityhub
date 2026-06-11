@@ -19,7 +19,9 @@ function normalize(body: Record<string, unknown>) {
   const cicloObj = body.ciclo as Record<string, unknown> | undefined;
   const scores = body.scores as Record<string, unknown> | undefined;
 
-  const email = (analista?.email || body.analista_email) as string;
+  // FIX: Handle analista as object (Lovable) or string (legacy)
+  const analistaObj = typeof analista === 'object' && analista !== null ? analista : null;
+  const email = (analistaObj?.email || body.analista_email) as string;
   const ciclo = (typeof cicloObj === 'object' && cicloObj?.nome ? cicloObj.nome : body.ciclo) as string;
   const qa = Number(scores?.qa ?? body.qa_score ?? 0);
   const iepc = Number(scores?.iepc ?? body.iepc_score ?? 0);
@@ -36,15 +38,39 @@ function normalize(body: Record<string, unknown>) {
 
   // Extract feedback_blocks fields — Lovable may send them nested or at root
   const feedbackBlocks = body.feedback_blocks as Record<string, unknown> | undefined;
-  const evolucaoTecnica = (feedbackBlocks?.evolucao_tecnica || body.evolucao_tecnica) as string | null || null;
-  const evolucaoComportamental = (feedbackBlocks?.evolucao_comportamental || body.evolucao_comportamental) as string | null || null;
-  // atencao_evolutiva: check all possible paths Lovable might use
-  const atencaoEvolutiva = (
+  // FIX: feedback_blocks values may be arrays (string[]) — join them safely
+  const joinField = (val: unknown): string | null => {
+    if (!val) return null;
+    if (Array.isArray(val)) return val.map(String).join('\n');
+    return String(val);
+  };
+  const evolucaoTecnica = joinField(feedbackBlocks?.evolucao_tecnica || body.evolucao_tecnica);
+  const evolucaoComportamental = joinField(feedbackBlocks?.evolucao_comportamental || body.evolucao_comportamental);
+  const atencaoEvolutiva = joinField(
     feedbackBlocks?.atencao_evolutiva ||
     body.atencao_evolutiva ||
-    feedbackBlocks?.atencao_evolutiva ||
     body.risco_operacional
-  ) as string | null || null;
+  );
+
+  // FIX: Extract nao_conformidades from Lovable payload
+  const nao_conformidades = Array.isArray(body.nao_conformidades) ? body.nao_conformidades as Record<string, unknown>[] : [];
+
+  // FIX: Extract pdi — Lovable sends array of {objetivo, acao, resultadoEsperado}
+  const pdi = Array.isArray(body.pdi) ? body.pdi as Record<string, unknown>[] : [];
+
+  // TEMPORARY DEBUG LOG
+  console.log('[feedbacks/import] payload recebido', JSON.stringify({
+    email,
+    ciclo,
+    qa,
+    iepc,
+    pdi_count: pdi.length,
+    nao_conformidades_count: nao_conformidades.length,
+    feedback_blocks_keys: feedbackBlocks ? Object.keys(feedbackBlocks) : [],
+    coaching_count: Array.isArray(body.coaching) ? (body.coaching as unknown[]).length : 0,
+    qa_pilares_count: rawQaPilares.length,
+    iepc_pilares_count: rawIepcPilares.length,
+  }, null, 2));
 
   return {
     email,
@@ -54,9 +80,9 @@ function normalize(body: Record<string, unknown>) {
     aderencia,
     pilares_qa,
     pilares_iepc,
-    coordenador: (analista?.coordenador || body.coordenador) as string | undefined,
-    equipe: (analista?.equipe || body.equipe) as string | undefined,
-    resumo_ciclo: body.resumo_ciclo as string | null || null,
+    coordenador: (analistaObj?.coordenador || body.coordenador) as string | undefined,
+    equipe: (analistaObj?.equipe || body.equipe) as string | undefined,
+    resumo_ciclo: (feedbackBlocks?.fechamento_ciclo || body.resumo_ciclo) as string | null || null,
     pontos_fortes: (body.pontos_fortes || []) as unknown[],
     oportunidades: (body.oportunidades || []) as unknown[],
     tendencias: (body.tendencias || {}) as Record<string, unknown>,
@@ -66,7 +92,8 @@ function normalize(body: Record<string, unknown>) {
     ciclos_consecutivos_evolucao: analytics?.ciclos_consecutivos_evolucao != null ? Number(analytics.ciclos_consecutivos_evolucao) : (body.ciclos_consecutivos_evolucao != null ? Number(body.ciclos_consecutivos_evolucao) : 0),
     atendimentos: (body.atendimentos || []) as Record<string, unknown>[],
     coaching: (body.coaching || []) as Record<string, unknown>[],
-    pdi: (body.pdi || []) as Record<string, unknown>[],
+    pdi,
+    nao_conformidades,
     historico: (body.historico || []) as Record<string, unknown>[],
     external_id: body.external_id as string | null || null,
     evolucao_tecnica: evolucaoTecnica,
@@ -200,6 +227,7 @@ export async function POST(req: NextRequest) {
         cliente: a.cliente,
         assunto: a.assunto,
         nota_qa: a.nota != null ? Number(a.nota) : (a.nota_qa != null ? Number(a.nota_qa) : null),
+        // FIX: Read nota_iepc from atendimento (Lovable sends nota_iepc and iepc_avaliado)
         nota_iepc: a.nota_iepc != null ? Number(a.nota_iepc) : null,
         classificacao: a.classificacao || null,
         observacao: a.sintese || a.observacao || null,
@@ -226,8 +254,9 @@ export async function POST(req: NextRequest) {
       n.pdi.map((p) => ({
         feedback_id: feedback.id,
         analista_id: analista.id,
-        objetivo: p.objetivo,
-        acao_desenvolvimento: p.acao || p.acao_desenvolvimento,
+        // FIX: Support Lovable format {objetivo, acao, resultadoEsperado} and legacy {objetivo, acao_desenvolvimento}
+        objetivo: p.objetivo || p.acao || '',
+        acao_desenvolvimento: p.acao || p.acao_desenvolvimento || p.resultadoEsperado || null,
         prazo: p.prazo || null,
         progresso: p.progresso != null ? Number(p.progresso) : 0,
         status: p.status || 'pendente',
@@ -257,6 +286,33 @@ export async function POST(req: NextRequest) {
     aderencia_score: n.aderencia,
   }], { onConflict: 'analista_id,ciclo', ignoreDuplicates: false });
 
+  // FIX: Save nao_conformidades to nc_records
+  if (n.nao_conformidades.length > 0) {
+    // Find the cycle_id for this period
+    const { data: cycleRow } = await supabaseAdmin
+      .from('import_cycles')
+      .select('id')
+      .eq('periodo', n.ciclo)
+      .maybeSingle();
+
+    const ncRows = n.nao_conformidades.map((nc: Record<string, unknown>) => ({
+      cycle_id: cycleRow?.id || null,
+      periodo: n.ciclo,
+      analista: (nc.analista as string) || analista.nome,
+      squad: (nc.squad as string) || analista.equipe || n.equipe || null,
+      coordenador: (nc.coordenador as string) || analista.coordenador || n.coordenador || null,
+      tipo_nc: (nc.tipo_nc as string) || 'Não Especificado',
+      descricao: (nc.descricao as string) || null,
+      pontos_deduzidos: typeof nc.pontos_deduzidos === 'number' ? nc.pontos_deduzidos : 0,
+      protocolo_referencia: (nc.protocolo as string) || null,
+      source: 'integration',
+    }));
+
+    const { error: ncError } = await supabaseAdmin.from('nc_records').insert(ncRows);
+    if (ncError) console.error('[feedbacks/import] NC insert error:', ncError.message);
+    else console.log(`[feedbacks/import] Saved ${ncRows.length} NC records`);
+  }
+
   // Log success
   await supabaseAdmin.from('feedback_import_logs').insert({
     origem: 'api_lovable',
@@ -264,6 +320,44 @@ export async function POST(req: NextRequest) {
     status: 'success',
     feedback_id: feedback.id,
   });
+
+  // ── Upsert cycle_scores so dashboard reflects this feedback ──────────────
+  const { data: cycleRowForScore } = await supabaseAdmin
+    .from('import_cycles')
+    .select('id')
+    .eq('periodo', n.ciclo)
+    .maybeSingle();
+
+  const cycleScoreRow = {
+    cycle_id: cycleRowForScore?.id || null,
+    periodo: n.ciclo,
+    analista: analista.nome,
+    squad: n.equipe || analista.equipe || null,
+    coordenador: n.coordenador || analista.coordenador || null,
+    nota_final_qa: n.qa,
+    iepc_total: n.iepc,
+    p1: n.pilares_qa[0] ? Number(n.pilares_qa[0].pontuacao) : null,
+    p2: n.pilares_qa[1] ? Number(n.pilares_qa[1].pontuacao) : null,
+    p3: n.pilares_qa[2] ? Number(n.pilares_qa[2].pontuacao) : null,
+    p4: n.pilares_qa[3] ? Number(n.pilares_qa[3].pontuacao) : null,
+    p5: n.pilares_qa[4] ? Number(n.pilares_qa[4].pontuacao) : null,
+    e1: n.pilares_iepc[0] ? Number(n.pilares_iepc[0].pontuacao) : null,
+    e2: n.pilares_iepc[1] ? Number(n.pilares_iepc[1].pontuacao) : null,
+    e3: n.pilares_iepc[2] ? Number(n.pilares_iepc[2].pontuacao) : null,
+    e4: n.pilares_iepc[3] ? Number(n.pilares_iepc[3].pontuacao) : null,
+    e5: n.pilares_iepc[4] ? Number(n.pilares_iepc[4].pontuacao) : null,
+    source: 'integration',
+    is_manual: false,
+  };
+
+  const { error: cycleScoreError } = await supabaseAdmin
+    .from('cycle_scores')
+    .upsert(cycleScoreRow, { onConflict: 'periodo,analista,squad' });
+  if (cycleScoreError) {
+    console.error('[feedbacks/import] cycle_scores upsert error:', cycleScoreError.message);
+  } else {
+    console.log(`[feedbacks/import] cycle_scores upserted for ${analista.nome} / ${n.ciclo}`);
+  }
 
   return NextResponse.json({ success: true, feedback_id: feedback.id }, { status: 201 });
 }

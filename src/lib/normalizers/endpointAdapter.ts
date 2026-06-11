@@ -23,16 +23,7 @@
  * 9. Validação de persistência final
  */
 
-import {
-  normalizePayload as normalizePayloadCore,
-  NormalizedPayload,
-  getQAScore,
-  getIEPCScore,
-  getAderenciaScore,
-  calculateTotalPenalty,
-  groupNCBySeverity,
-  isValidNormalizedPayload,
-} from '@/lib/normalizers/normalizePayload';
+import { normalizePayload as normalizePayloadCore, NormalizedPayload, getQAScore, getIEPCScore, getAderenciaScore, isValidNormalizedPayload,  } from '@/lib/normalizers/normalizePayload';
 
 /**
  * Represents the internal data structure the endpoint works with.
@@ -244,7 +235,7 @@ function calculateTotalNCs(rawPayload: any, normalized: NormalizedPayload): numb
  * - Soma apenas nc.pontos quando aplicar_pontos === true
  */
 function calculatePontosDeduzidos(flattened: Array<any>): number {
-  const total = flattened.reduce((sum, nc) => {
+  let total = flattened.reduce((sum, nc) => {
     const aplicar = nc.aplicar_pontos !== false;
     const pontos = typeof nc.pontos === 'number' ? nc.pontos : 0;
     return sum + (aplicar ? pontos : 0);
@@ -329,10 +320,11 @@ export function normalizePayloadForEndpoint(rawPayload: any): NormalizedEndpoint
   // ─── Step 3: Extract flat fields ───
   const analistaNome = normalized.analista || normalized.analyst?.nome || '';
   const analistaEmail = normalized.analyst?.email || null;
-  const coordenador = normalized.analyst?.coordenador || normalized.cycle?.nome || '';
-  const squad = normalized.analyst?.squad || '';
+  // FIX: coordenador fallback should NOT use cycle.nome — use empty string
+  const coordenador = normalized.analyst?.coordenador || (rawPayload?.analista as any)?.coordenador || rawPayload?.coordenador || '';
+  const squad = normalized.analyst?.squad || normalized.analyst?.equipe || (rawPayload?.analista as any)?.equipe || rawPayload?.squad || '';
   const auditor = normalized.analyst?.auditor || null;
-  const cicloNome = normalized.cycle?.periodo || normalized.periodo || '';
+  const cicloNome = normalized.cycle?.periodo || normalized.cycle?.nome || normalized.periodo || '';
   const cicloInicio = normalized.cycle?.data_inicio || null;
   const cicloFim = normalized.cycle?.data_fim || null;
 

@@ -31,7 +31,16 @@ export default function HomeKPICards() {
     }
 
     const qaAvg = scores.reduce((s: number, a: any) => s + (a.nota_final_qa || 0), 0) / scores.length;
-    const iepcAvg = scores.reduce((s: number, a: any) => s + (a.iepc_total || 0), 0) / scores.length;
+    const iepcAvg = scores.reduce((s: number, a: any) => {
+      // Defensive fallback: iepc_total → iepc → indice_satisfacao → iepc_total_calculado → 0
+      const iepc =
+        a?.iepc_total ??
+        a?.iepc ??
+        a?.indice_satisfacao ??
+        a?.iepc_total_calculado ??
+        0;
+      return s + Number(iepc);
+    }, 0) / scores.length;
 
     setKpis({
       qaAvg,

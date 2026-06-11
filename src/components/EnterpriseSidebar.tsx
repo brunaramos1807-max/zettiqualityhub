@@ -38,6 +38,7 @@ const NAV_SECTIONS: NavSection[] = [
       { id: 'ciclo-atual', label: 'Ciclo Atual', href: '/ciclo-atual', icon: <Activity size={14} /> },
       { id: 'ciclos', label: 'Ciclos', href: '/ciclos', icon: <RefreshCw size={14} /> },
       { id: 'auditoria', label: 'Auditoria', href: '/auditoria', icon: <ClipboardCheck size={14} /> },
+      { id: 'suporte', label: 'Organograma', href: '/suporte', icon: <Users size={14} /> },
     ],
   },
   {
@@ -97,6 +98,7 @@ function getActiveId(pathname: string): string {
   if (pathname.startsWith('/ciclo-atual')) return 'ciclo-atual';
   if (pathname.startsWith('/ciclos')) return 'ciclos';
   if (pathname.startsWith('/auditoria')) return 'auditoria';
+  if (pathname.startsWith('/suporte')) return 'suporte';
   if (pathname.startsWith('/qa-iepc')) return 'qa-iepc';
   if (pathname.startsWith('/nao-conformidades')) return 'ncs';
   if (pathname.startsWith('/mural-elogios')) return 'elogios';
