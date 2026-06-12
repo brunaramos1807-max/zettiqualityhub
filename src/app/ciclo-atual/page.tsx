@@ -55,13 +55,7 @@ function CicloAtualContent() {
       getActiveCycle(),
     ]);
 
-    setAllPeriodos(periodos);
-
-    // Determine which cycle to display
-    // Priority: overridePeriodo > selectedPeriodoRef > savedActiveCycle > periodos[0]
-    const currentSelected = selectedPeriodoRef.current;
-
-    // The active cycle from settings (may not have data yet)
+    // The active cycle from settings — this is the OPEN cycle
     const activeCycleFromSettings = savedActiveCycle || '';
     setActiveCycleDefault(activeCycleFromSettings || (periodos.length > 0 ? periodos[0] : ''));
 
@@ -77,6 +71,9 @@ function CicloAtualContent() {
 
     setAllPeriodos(allPeriodsWithActive);
 
+    // Ciclo Atual: always default to the OPEN/active cycle (not closed ones)
+    // Only allow override if user explicitly selects a different period
+    const currentSelected = selectedPeriodoRef.current;
     const current = overridePeriodo
       ? overridePeriodo
       : (currentSelected && allPeriodsWithActive.includes(currentSelected))

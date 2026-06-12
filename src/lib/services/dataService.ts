@@ -1375,6 +1375,7 @@ export interface AnalistaRecord {
   coordenador?: string;
   cargo_operacional?: string;
   nivel: string;
+  nivel_profissional?: string; // Júnior I, Júnior II, ... Especialista
   status: 'ativo' | 'ferias' | 'afastado' | 'desligado';
   aniversario?: string;
   tempo_empresa?: string;
@@ -1383,6 +1384,7 @@ export interface AnalistaRecord {
   ultima_promocao?: string;
   data_admissao?: string;
   observacoes?: string;
+  foto_url?: string;
   created_at: string;
   updated_at: string;
 }
