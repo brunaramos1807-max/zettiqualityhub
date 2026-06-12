@@ -685,18 +685,19 @@ function PDIsContent() {
     ]);
 
     // Backfill: also load feedbacks with pdi_objetivos in snapshot that don't have pdi_records entries
+    // This ensures ALL historical PDIs from ALL cycles are shown
     let allPdis = [...pdiList];
     try {
       const { createClient } = await import('@/lib/supabase/client');
       const supabase = createClient();
       if (supabase) {
         const existingFeedbackIds = new Set(pdiList.map((p: any) => p.feedback_id).filter(Boolean));
+        // Fetch ALL feedbacks with PDI data — no limit to ensure historical cycles appear
         const { data: feedbacksWithPdi } = await supabase
           .from('feedbacks')
-          .select('id, ciclo, analista_id, analistas(nome, equipe, coordenador), snapshot_json_completo, qa_score, iepc_score, mensagem_evolutiva')
+          .select('id, ciclo, analista_id, analistas(nome, equipe, coordenador), snapshot_json_completo, qa_score, iepc_score, mensagem_evolutiva, created_at, updated_at')
           .not('snapshot_json_completo', 'is', null)
-          .order('created_at', { ascending: false })
-          .limit(300);
+          .order('created_at', { ascending: false });
 
         if (feedbacksWithPdi) {
           for (const fb of feedbacksWithPdi) {
@@ -736,10 +737,62 @@ function PDIsContent() {
             allPdis.push(syntheticPdi);
           }
         }
+
+        // Also load from feedback_pdi table (legacy source)
+        const { data: feedbackPdiData } = await supabase
+          .from('feedback_pdi')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (feedbackPdiData && feedbackPdiData.length > 0) {
+          const existingIds = new Set(allPdis.map((p: any) => p.id));
+          for (const fp of feedbackPdiData) {
+            const syntheticId = `fp-${fp.id}`;
+            if (existingIds.has(syntheticId)) continue;
+            const syntheticPdi: any = {
+              id: syntheticId,
+              feedback_id: fp.feedback_id,
+              analista: fp.analista || '',
+              squad: fp.squad || '',
+              coordenador: fp.coordenador || '',
+              periodo: fp.ciclo || fp.periodo || '',
+              objetivo: fp.objetivo || fp.objetivo_desenvolvimento || '',
+              status_pdi: fp.status || 'aguardando alinhamento',
+              mensagem_evolutiva: fp.mensagem_evolutiva || '',
+              enterprise_objectives: fp.enterprise_objectives || [],
+              acoes: [],
+              metas: fp.metas || [],
+              evidencias: [],
+              nc_reincidentes: [],
+              qa_score: fp.qa_score || 0,
+              iepc_score: fp.iepc_score || 0,
+              created_at: fp.created_at || new Date().toISOString(),
+              updated_at: fp.updated_at || fp.created_at || new Date().toISOString(),
+              source: 'feedback_pdi',
+            };
+            allPdis.push(syntheticPdi);
+          }
+        }
       }
     } catch (err) {
       console.error('PDI backfill error:', err);
     }
+
+    // Deduplicate by analista+periodo combination — keep pdi_records over synthetic
+    const seen = new Map<string, any>();
+    for (const p of allPdis) {
+      const key = `${(p.analista || '').toLowerCase().trim()}__${(p.periodo || '').trim()}`;
+      if (!seen.has(key)) {
+        seen.set(key, p);
+      } else {
+        // Prefer real pdi_records over synthetic
+        const existing = seen.get(key);
+        if (existing.source && !p.source) {
+          seen.set(key, p);
+        }
+      }
+    }
+    allPdis = Array.from(seen.values());
 
     setPdis(allPdis);
     const map: Record<string, { name: string; squad: string; coordenador: string; qa: number; iepc: number; count: number }> = {};
