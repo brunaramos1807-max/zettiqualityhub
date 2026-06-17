@@ -22,9 +22,7 @@
  */
 export interface NormalizedScore {
   value: number;
-  source: 'scores.qa' | 'scores.iepc' | 'scores.aderencia' | 
-          'qa_score' | 'iepc_score' | 'analytics.percentual_aderencia' |
-          'qa_atual' | 'iepc_atual' | 'indice_satisfacao' | 'atendimentos.media_nota_iepc' | 'atendimentos.media_iepc_avaliado'; // Legacy export format
+  source: 'scores.qa' | 'scores.iepc' | 'scores.aderencia' | 'qa_score'| 'iepc_score' | 'analytics.percentual_aderencia' | 'qa_atual' | 'iepc_atual' | 'indice_satisfacao' | 'atendimentos.media_nota_iepc' | 'atendimentos.media_iepc_avaliado'; // Legacy export format
 }
 
 /**
