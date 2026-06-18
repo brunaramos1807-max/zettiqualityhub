@@ -1,3 +1,4 @@
+// ─── Static labels (used by charts/display) ──────────────────────────────────
 export const CYCLE_LABEL = 'Abril/2026';
 export const CYCLE_PERIOD = '04/2026';
 export const CYCLE_COMPLETION = 85;
@@ -21,7 +22,7 @@ export interface Analyst {
   qaScore: number;
   iepcScore: number;
   ncs: number;
-  ncPoints: number;
+  // ncPoints removed — NC penalty model is tipo+severidade+penalidade (Leve=3/Média=5/Grave=10/Crítica=15)
   p1: number; p2: number; p3: number; p4: number; p5: number;
   e1: number; e2: number; e3: number; e4: number; e5: number;
 }
@@ -34,8 +35,9 @@ export interface NC {
   coordenador: string;
   auditor: string;
   tipo: string;
+  severidade?: string;
+  penalidade?: number;
   descricao: string;
-  pontosDescontados: number;
   data: string;
   avaliacaoId: string;
 }
@@ -50,66 +52,11 @@ export interface Elogio {
   destaque: boolean;
 }
 
-export const MOCK_USERS: User[] = [
-  { id: 'user-001', name: 'Admin Zetti', email: 'admin@zetti.com.br', role: 'Admin', avatar: 'AZ' },
-  { id: 'user-002', name: 'Ayron Silva', email: 'ayron.silva@zetti.com.br', role: 'Coordenador', squad: 'PDV', avatar: 'AS' },
-  { id: 'user-003', name: 'Jonatas Jesus', email: 'jonatas.jesus@zetti.com.br', role: 'Coordenador', squad: 'Compras e Estoque', avatar: 'JJ' },
-  { id: 'user-004', name: 'Amanda Cristina', email: 'amanda.cristina@zetti.com.br', role: 'Coordenador', squad: 'Financeiro Fiscal', avatar: 'AC' },
-  { id: 'user-005', name: 'Diretoria Zetti', email: 'diretoria@zetti.com.br', role: 'Diretoria', avatar: 'DZ' },
-];
+// MOCK_USERS removed — user management is handled exclusively by Supabase Auth + analistas table
 
-// DEMO_CREDENTIALS removed — credentials must not be stored in source code
-
-export const ANALYSTS: Analyst[] = [
-  { id: 'analyst-001', name: 'Fabiano Feliz', squad: 'Financeiro Fiscal', coordenador: 'Amanda Cristina', qaScore: 94.00, iepcScore: 95.00, ncs: 0, ncPoints: 0, p1: 22, p2: 34, p3: 18, p4: 14, p5: 12, e1: 29, e2: 19, e3: 19, e4: 14, e5: 14 },
-  { id: 'analyst-002', name: 'Jherik Jesus', squad: 'PDV', coordenador: 'Ayron Silva', qaScore: 90.60, iepcScore: 90.00, ncs: 0, ncPoints: 0, p1: 20, p2: 32, p3: 16, p4: 13, p5: 11, e1: 27, e2: 18, e3: 18, e4: 14, e5: 13 },
-  { id: 'analyst-003', name: 'Fabiano Teste', squad: 'PDV', coordenador: 'Ayron Silva', qaScore: 90.00, iepcScore: 90.00, ncs: 0, ncPoints: 0, p1: 20, p2: 31, p3: 17, p4: 13, p5: 11, e1: 27, e2: 18, e3: 18, e4: 14, e5: 13 },
-  { id: 'analyst-004', name: 'Thalisson Silva', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus', qaScore: 89.50, iepcScore: 80.00, ncs: 0, ncPoints: 0, p1: 20, p2: 30, p3: 16, p4: 13, p5: 11, e1: 24, e2: 16, e3: 16, e4: 12, e5: 12 },
-  { id: 'analyst-005', name: 'Gabriel Vieira', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus', qaScore: 88.20, iepcScore: 80.00, ncs: 0, ncPoints: 0, p1: 19, p2: 30, p3: 16, p4: 13, p5: 11, e1: 24, e2: 16, e3: 16, e4: 12, e5: 12 },
-  { id: 'analyst-006', name: 'Bruno Reis', squad: 'PDV', coordenador: 'Ayron Silva', qaScore: 87.60, iepcScore: 80.00, ncs: 0, ncPoints: 0, p1: 19, p2: 30, p3: 16, p4: 12, p5: 11, e1: 24, e2: 16, e3: 16, e4: 12, e5: 12 },
-  { id: 'analyst-007', name: 'Fernando Carvalho', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus', qaScore: 87.50, iepcScore: 93.00, ncs: 1, ncPoints: -20, p1: 19, p2: 30, p3: 16, p4: 12, p5: 11, e1: 28, e2: 19, e3: 18, e4: 14, e5: 14 },
-  { id: 'analyst-008', name: 'Rafael Andrade', squad: 'PDV', coordenador: 'Ayron Silva', qaScore: 83.33, iepcScore: 84.00, ncs: 2, ncPoints: -40, p1: 18, p2: 28, p3: 15, p4: 12, p5: 10, e1: 25, e2: 17, e3: 17, e4: 13, e5: 12 },
-  { id: 'analyst-009', name: 'Milena Santos', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus', qaScore: 82.80, iepcScore: 76.00, ncs: 1, ncPoints: -20, p1: 18, p2: 28, p3: 15, p4: 11, p5: 10, e1: 23, e2: 15, e3: 15, e4: 12, e5: 11 },
-  { id: 'analyst-010', name: 'Adriel Sanches', squad: 'PDV', coordenador: 'Ayron Silva', qaScore: 82.50, iepcScore: 80.00, ncs: 0, ncPoints: 0, p1: 18, p2: 28, p3: 15, p4: 11, p5: 10, e1: 24, e2: 16, e3: 16, e4: 12, e5: 12 },
-  { id: 'analyst-011', name: 'Giovanna Oliveira', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus', qaScore: 80.60, iepcScore: 81.00, ncs: 1, ncPoints: -20, p1: 17, p2: 27, p3: 15, p4: 11, p5: 10, e1: 24, e2: 16, e3: 16, e4: 13, e5: 12 },
-  { id: 'analyst-012', name: 'Danilo Cerqueira', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus', qaScore: 81.00, iepcScore: 76.00, ncs: 1, ncPoints: -20, p1: 17, p2: 28, p3: 15, p4: 11, p5: 10, e1: 23, e2: 15, e3: 15, e4: 12, e5: 11 },
-  { id: 'analyst-013', name: 'Wyamar Milhomem', squad: 'Financeiro Fiscal', coordenador: 'Amanda Cristina', qaScore: 74.90, iepcScore: 78.00, ncs: 1, ncPoints: -20, p1: 16, p2: 25, p3: 13, p4: 10, p5: 9, e1: 23, e2: 16, e3: 15, e4: 12, e5: 12 },
-  { id: 'analyst-014', name: 'Bruno Ribeiro', squad: 'PDV', coordenador: 'Ayron Silva', qaScore: 74.60, iepcScore: 82.00, ncs: 2, ncPoints: -40, p1: 16, p2: 25, p3: 13, p4: 10, p5: 9, e1: 25, e2: 16, e3: 16, e4: 13, e5: 12 },
-  { id: 'analyst-015', name: 'Francisco Pereira', squad: 'PDV', coordenador: 'Ayron Silva', qaScore: 70.00, iepcScore: 67.00, ncs: 2, ncPoints: -40, p1: 15, p2: 24, p3: 13, p4: 9, p5: 9, e1: 20, e2: 13, e3: 13, e4: 11, e5: 10 },
-  { id: 'analyst-016', name: 'Artur Carvalho', squad: 'PDV N1', coordenador: 'Ayron Silva', qaScore: 63.20, iepcScore: 70.00, ncs: 2, ncPoints: -40, p1: 14, p2: 21, p3: 11, p4: 9, p5: 8, e1: 21, e2: 14, e3: 14, e4: 11, e5: 10 },
-  { id: 'analyst-017', name: 'Alair Filho', squad: 'PDV', coordenador: 'Ayron Silva', qaScore: 64.00, iepcScore: 75.00, ncs: 3, ncPoints: -60, p1: 14, p2: 22, p3: 11, p4: 9, p5: 8, e1: 22, e2: 15, e3: 15, e4: 12, e5: 11 },
-  { id: 'analyst-018', name: 'Gustavo Moreira', squad: 'PDV', coordenador: 'Ayron Silva', qaScore: 55.83, iepcScore: 53.00, ncs: 4, ncPoints: -80, p1: 12, p2: 19, p3: 10, p4: 8, p5: 7, e1: 16, e2: 10, e3: 11, e4: 9, e5: 7 },
-];
-
-export const SQUAD_AVERAGES = [
-  { squad: 'Compras e Estoque', avgQA: 84.93, avgIEPC: 81.00, analysts: 6 },
-  { squad: 'Financeiro Fiscal', avgQA: 84.45, avgIEPC: 86.50, analysts: 2 },
-  { squad: 'PDV', avgQA: 77.61, avgIEPC: 77.89, analysts: 9 },
-  { squad: 'PDV N1', avgQA: 63.20, avgIEPC: 70.00, analysts: 1 },
-];
-
-export const NC_RECORDS: NC[] = [
-  { id: 'nc-001', protocolo: '#427754', analista: 'Gustavo Moreira', squad: 'PDV', coordenador: 'Ayron Silva', auditor: 'Bruna Silva', tipo: 'Integridade do Fluxo Operacional', descricao: 'Analista não realizou a formalização do protocolo SUP no início do atendimento, comprometendo a rastreabilidade do fluxo operacional.', pontosDescontados: -20, data: '15/04/2026', avaliacaoId: 'eval-gm-001' },
-  { id: 'nc-002', protocolo: '#427891', analista: 'Gustavo Moreira', squad: 'PDV', coordenador: 'Ayron Silva', auditor: 'Bruna Silva', tipo: 'Conformidade de Registro e Rastreabilidade', descricao: 'Registro incompleto da tratativa no sistema de suporte — ausência de documentação técnica ao final do atendimento.', pontosDescontados: -20, data: '16/04/2026', avaliacaoId: 'eval-gm-002' },
-  { id: 'nc-003', protocolo: '#428102', analista: 'Gustavo Moreira', squad: 'PDV', coordenador: 'Ayron Silva', auditor: 'Bruna Silva', tipo: 'Conformidade de Registro e Rastreabilidade', descricao: 'Encerramento da interação sem confirmação do cliente e sem registro de resolução no protocolo.', pontosDescontados: -20, data: '17/04/2026', avaliacaoId: 'eval-gm-003' },
-  { id: 'nc-004', protocolo: '#428456', analista: 'Gustavo Moreira', squad: 'PDV', coordenador: 'Ayron Silva', auditor: '', tipo: 'Conformidade de Registro e Rastreabilidade', descricao: 'Ausência de boas-vindas padronizadas e identificação do analista no início do atendimento.', pontosDescontados: -20, data: '18/04/2026', avaliacaoId: 'eval-gm-004' },
-  { id: 'nc-005', protocolo: '#428701', analista: 'Alair Filho', squad: 'PDV', coordenador: 'Ayron Silva', auditor: 'Bruna Silva', tipo: 'Conformidade de Registro e Rastreabilidade', descricao: 'Protocolo não comunicado ao cliente durante o atendimento — violação do critério P1.1.2.', pontosDescontados: -20, data: '15/04/2026', avaliacaoId: 'eval-af-001' },
-  { id: 'nc-006', protocolo: '#429034', analista: 'Alair Filho', squad: 'PDV', coordenador: 'Ayron Silva', auditor: 'Bruna Silva', tipo: 'Conformidade de Registro e Rastreabilidade', descricao: 'Documentação técnica ausente — analista encerrou o ticket sem registrar os passos de resolução executados.', pontosDescontados: -20, data: '16/04/2026', avaliacaoId: 'eval-af-002' },
-  { id: 'nc-007', protocolo: '#429287', analista: 'Alair Filho', squad: 'PDV', coordenador: 'Ayron Silva', auditor: 'Bruna Silva', tipo: 'Conformidade de Registro e Rastreabilidade', descricao: 'Ausência de encerramento formal da interação — cliente ficou sem confirmação de resolução.', pontosDescontados: -20, data: '17/04/2026', avaliacaoId: 'eval-af-003' },
-  { id: 'nc-008', protocolo: '#429512', analista: 'Francisco Pereira', squad: 'PDV', coordenador: 'Ayron Silva', auditor: 'Bruna Silva', tipo: 'Integridade do Fluxo Operacional', descricao: 'Analista redirecionou o cliente para outro setor sem validar a demanda previamente — violação do critério P2.2.3.', pontosDescontados: -20, data: '18/04/2026', avaliacaoId: 'eval-fp-001' },
-  { id: 'nc-009', protocolo: '#429748', analista: 'Francisco Pereira', squad: 'PDV', coordenador: 'Ayron Silva', auditor: 'Bruna Silva', tipo: 'Conformidade de Registro e Rastreabilidade', descricao: 'Registro técnico incompleto — ausência de descrição detalhada da solução aplicada no protocolo.', pontosDescontados: -20, data: '19/04/2026', avaliacaoId: 'eval-fp-002' },
-  { id: 'nc-010', protocolo: '#430012', analista: 'Artur Carvalho', squad: 'PDV N1', coordenador: 'Ayron Silva', auditor: 'Bruna Silva', tipo: 'Conformidade de Registro e Rastreabilidade', descricao: 'Protocolo SUP não registrado no início do atendimento N1 — rastreabilidade comprometida.', pontosDescontados: -20, data: '19/04/2026', avaliacaoId: 'eval-ac-001' },
-  { id: 'nc-011', protocolo: '#430198', analista: 'Artur Carvalho', squad: 'PDV N1', coordenador: 'Ayron Silva', auditor: 'Bruna Silva', tipo: 'Conformidade de Registro e Rastreabilidade', descricao: 'Encerramento sem validação do cliente — critério P1.1.3 não atendido.', pontosDescontados: -20, data: '20/04/2026', avaliacaoId: 'eval-ac-002' },
-  { id: 'nc-012', protocolo: '#430445', analista: 'Rafael Andrade', squad: 'PDV', coordenador: 'Ayron Silva', auditor: 'Bruna Silva', tipo: 'Conformidade de Registro e Rastreabilidade', descricao: 'Ausência de documentação técnica — tratativa não registrada adequadamente no sistema.', pontosDescontados: -20, data: '20/04/2026', avaliacaoId: 'eval-ra-001' },
-  { id: 'nc-013', protocolo: '#430687', analista: 'Rafael Andrade', squad: 'PDV', coordenador: 'Ayron Silva', auditor: '', tipo: 'Integridade do Fluxo Operacional', descricao: 'Fluxo de escalação não seguido corretamente — analista resolveu demanda fora do seu escopo sem acionamento do nível superior.', pontosDescontados: -20, data: '21/04/2026', avaliacaoId: 'eval-ra-002' },
-  { id: 'nc-014', protocolo: '#430891', analista: 'Bruno Ribeiro', squad: 'PDV', coordenador: 'Ayron Silva', auditor: 'Bruna Silva', tipo: 'Conformidade de Registro e Rastreabilidade', descricao: 'Boas-vindas e identificação não realizadas conforme padrão — critério P1.1.1 não atendido.', pontosDescontados: -20, data: '21/04/2026', avaliacaoId: 'eval-br-001' },
-  { id: 'nc-015', protocolo: '#431102', analista: 'Bruno Ribeiro', squad: 'PDV', coordenador: 'Ayron Silva', auditor: 'Bruna Silva', tipo: 'Conformidade de Registro e Rastreabilidade', descricao: 'Protocolo não comunicado ao cliente — P1.1.2 violado pela segunda vez no ciclo.', pontosDescontados: -20, data: '22/04/2026', avaliacaoId: 'eval-br-002' },
-  { id: 'nc-016', protocolo: '#431345', analista: 'Danilo Cerqueira', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus', auditor: 'Bruna Silva', tipo: 'Conformidade de Registro e Rastreabilidade', descricao: 'Documentação da tratativa incompleta — sistema não atualizado com o status de resolução.', pontosDescontados: -20, data: '20/04/2026', avaliacaoId: 'eval-dc-001' },
-  { id: 'nc-017', protocolo: '#431567', analista: 'Fernando Carvalho', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus', auditor: 'Bruna Silva', tipo: 'Conformidade de Registro e Rastreabilidade', descricao: 'Encerramento da interação sem confirmação formal do cliente — critério P1.1.3 não cumprido.', pontosDescontados: -20, data: '21/04/2026', avaliacaoId: 'eval-fc-001' },
-  { id: 'nc-018', protocolo: '#431789', analista: 'Milena Santos', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus', auditor: '', tipo: 'Integridade do Fluxo Operacional', descricao: 'Fluxo de atendimento interrompido sem esclarecimento ao cliente sobre próximos passos — P2.2.2 não atendido.', pontosDescontados: -20, data: '21/04/2026', avaliacaoId: 'eval-ms-001' },
-  { id: 'nc-019', protocolo: '#432012', analista: 'Giovanna Oliveira', squad: 'Compras e Estoque', coordenador: 'Jonatas Jesus', auditor: 'Bruna Silva', tipo: 'Conformidade de Registro e Rastreabilidade', descricao: 'Registro técnico incompleto após orientação — analista não atualizou o protocolo com a solução final.', pontosDescontados: -20, data: '22/04/2026', avaliacaoId: 'eval-go-001' },
-  { id: 'nc-020', protocolo: '#432234', analista: 'Wyamar Milhomem', squad: 'Financeiro Fiscal', coordenador: 'Amanda Cristina', auditor: 'Bruna Silva', tipo: 'Integridade do Fluxo Operacional', descricao: 'Analista não seguiu o fluxo de validação fiscal antes de orientar o cliente — risco de informação incorreta transmitida.', pontosDescontados: -20, data: '22/04/2026', avaliacaoId: 'eval-wm-001' },
-];
+// NC_RECORDS removed — NC data is consumed exclusively from nc_records table in Supabase
+// NC penalty model: tipo (NC-1 to NC-5) + severidade (Leve=3/Média=5/Grave=10/Crítica=15)
+// The -20 fixed penalty rule no longer exists.
 
 export const ELOGIOS: Elogio[] = [
   { id: 'elogio-001', colaborador: 'Bruno Reis', squad: 'Compras e Estoque', cliente: 'Sarah', protocolo: 'SUP-63427', elogio: 'Cliente elogiou diretamente o trabalho do analista, destacando a atenção e clareza nas orientações prestadas.', destaque: true },
@@ -134,6 +81,7 @@ export const ELOGIOS: Elogio[] = [
   { id: 'elogio-020', colaborador: 'Gabriel Vieira', squad: 'Compras e Estoque', cliente: 'Cláudio', protocolo: 'SUP-66598', elogio: 'Cliente destacou que as orientações resolveram totalmente o problema — elogiou a expertise técnica e a clareza na comunicação.', destaque: true },
 ];
 
+// MONTHLY_TREND: fallback only when Supabase returns no data
 export const MONTHLY_TREND = [
   { month: 'Abr/2026', qa: 80.24, iepc: 80.06 },
 ];
@@ -150,6 +98,25 @@ export const PILLAR_DESCRIPTIONS: Record<string, { title: string; description: s
   E4: { title: 'Tempo e Fluidez', description: 'Avalia o tempo de resposta e a fluidez da interação ao longo do atendimento. Considera agilidade nas respostas, ausência de pausas longas e continuidade no fluxo de resolução.', maxPoints: 15, type: 'IEPC' },
   E5: { title: 'Experiência Relacional', description: 'Experiência relacional do cliente — cordialidade, personalização e empatia demonstradas pelo analista durante toda a interação.', maxPoints: 15, type: 'IEPC' },
 };
+
+// ─── NC Official Model ────────────────────────────────────────────────────────
+// Tipo: NC-1 to NC-5 | Severidade: Leve=3 / Média=5 / Grave=10 / Crítica=15
+// Penalidade pertence à severidade, NÃO ao tipo.
+// Regra -20 pontos fixos foi REMOVIDA definitivamente.
+export const NC_SEVERIDADE_PENALIDADE: Record<string, number> = {
+  'Leve': 3,
+  'Média': 5,
+  'Grave': 10,
+  'Crítica': 15,
+};
+
+export const NC_TIPOS = [
+  { key: 'NC-1', nome: 'Postura e Ética Profissional', descricao: 'Desvio relacionado à conduta profissional.' },
+  { key: 'NC-2', nome: 'Acuracidade e Rigor Técnico', descricao: 'Falha técnica relevante.' },
+  { key: 'NC-3', nome: 'Conformidade de Registro e Rastreabilidade', descricao: 'Ausência ou falha de registros obrigatórios.' },
+  { key: 'NC-4', nome: 'Integridade do Fluxo Operacional', descricao: 'Quebra do fluxo institucional.' },
+  { key: 'NC-5', nome: 'Segurança da Informação', descricao: 'Violação de segurança.' },
+];
 
 export function getScoreColor(score: number): string {
   if (score >= 85) return '#22C55E';
@@ -168,3 +135,12 @@ export function getScoreLabel(score: number): string {
   if (score >= 70) return 'Atenção';
   return 'Crítico';
 }
+const ANALYSTS: any = null;
+
+export { ANALYSTS };
+const NC_RECORDS: any = null;
+
+export { NC_RECORDS };
+const SQUAD_AVERAGES: any = null;
+
+export { SQUAD_AVERAGES };

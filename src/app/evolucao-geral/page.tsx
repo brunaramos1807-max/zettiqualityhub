@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import ImportModal from '@/components/ImportModal';
-import { fetchCycleScores, fetchNCRecords, fetchManualCycles, dispatchDataChanged } from '@/lib/services/dataService';
+import { fetchCycleScores, fetchNCRecords, dispatchDataChanged } from '@/lib/services/dataService';
 import { MONTHLY_TREND, getScoreColor } from '@/lib/mockData';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -205,7 +205,18 @@ function EvolucaoGeralContent() {
       ]);
       setScores(scoresData as ScoreRow[]);
       setNCs(ncsData as NCRow[]);
-      setManualCycles(fetchManualCycles());
+      // Manual cycles from Supabase app_settings (no localStorage dependency)
+      try {
+        const supabase = createClient();
+        const { data: manualData } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'manual_cycles')
+          .maybeSingle();
+        if (manualData?.value && Array.isArray(manualData.value)) {
+          setManualCycles(manualData.value);
+        }
+      } catch { /* ignore — manual cycles are optional */ }
     } catch {
       // use mock fallback
     } finally {

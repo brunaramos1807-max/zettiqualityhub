@@ -738,17 +738,27 @@ function PDIsContent() {
           }
         }
 
-        // Also load from feedback_pdi table (legacy source)
+        // Also load from feedback_pdi table (legacy source — read-only snapshot, NOT a second PDI system)
+        // feedback_pdi is treated as a historical snapshot/read-only link to pdi_records
+        // It is NOT a second PDI management system. PDI management lives exclusively in pdi_records.
         const { data: feedbackPdiData } = await supabase
           .from('feedback_pdi')
-          .select('*')
+          .select('id, feedback_id, analista, squad, coordenador, ciclo, periodo, objetivo, objetivo_desenvolvimento, status, mensagem_evolutiva, enterprise_objectives, metas, qa_score, iepc_score, created_at, updated_at')
           .order('created_at', { ascending: false });
 
         if (feedbackPdiData && feedbackPdiData.length > 0) {
           const existingIds = new Set(allPdis.map((p: any) => p.id));
+          // Only include feedback_pdi entries that have NO corresponding pdi_records entry
+          // This prevents duplication — feedback_pdi is a read-only snapshot, not a management record
+          const existingAnalistaPeriodo = new Set(
+            allPdis.map((p: any) => `${(p.analista || '').toLowerCase().trim()}__${(p.periodo || '').trim()}`)
+          );
           for (const fp of feedbackPdiData) {
             const syntheticId = `fp-${fp.id}`;
             if (existingIds.has(syntheticId)) continue;
+            const analistaKey = `${(fp.analista || '').toLowerCase().trim()}__${(fp.ciclo || fp.periodo || '').trim()}`;
+            // Skip if a real pdi_records entry already covers this analista+periodo
+            if (existingAnalistaPeriodo.has(analistaKey)) continue;
             const syntheticPdi: any = {
               id: syntheticId,
               feedback_id: fp.feedback_id,
@@ -768,7 +778,7 @@ function PDIsContent() {
               iepc_score: fp.iepc_score || 0,
               created_at: fp.created_at || new Date().toISOString(),
               updated_at: fp.updated_at || fp.created_at || new Date().toISOString(),
-              source: 'feedback_pdi',
+              source: 'feedback_pdi_snapshot', // clearly marked as read-only snapshot
             };
             allPdis.push(syntheticPdi);
           }

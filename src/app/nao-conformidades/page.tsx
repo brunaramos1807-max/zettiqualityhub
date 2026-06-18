@@ -8,11 +8,11 @@ import { AlertTriangle, Search, BarChart2, RefreshCw, TrendingDown, Shield, Laye
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend, AreaChart, Area } from 'recharts';
 
 const NC_TYPES = [
-  { key: 'NC-1', fullName: 'NC-1 — Postura e Ética Profissional', short: 'Postura e Ética', color: '#7C3AED', icon: '🤝', criticidade: 'Alta' },
-  { key: 'NC-2', fullName: 'NC-2 — Acuracidade e Rigor Técnico', short: 'Rigor Técnico', color: '#EF4444', icon: '🎯', criticidade: 'Alta' },
-  { key: 'NC-3', fullName: 'NC-3 — Registro e Rastreabilidade', short: 'Rastreabilidade', color: '#F59E0B', icon: '📋', criticidade: 'Média' },
-  { key: 'NC-4', fullName: 'NC-4 — Integridade do Fluxo Operacional', short: 'Fluxo Operacional', color: '#38BDF8', icon: '⚙️', criticidade: 'Alta' },
-  { key: 'NC-5', fullName: 'NC-5 — Segurança da Informação', short: 'Segurança', color: '#22C55E', icon: '🔒', criticidade: 'Crítica' },
+  { key: 'NC-1', fullName: 'NC-1 — Postura e Ética Profissional', short: 'Postura e Ética', color: '#94A3B8', icon: '🤝', criticidade: 'Alta' },
+  { key: 'NC-2', fullName: 'NC-2 — Acuracidade e Rigor Técnico', short: 'Rigor Técnico', color: '#CBD5E1', icon: '🎯', criticidade: 'Alta' },
+  { key: 'NC-3', fullName: 'NC-3 — Registro e Rastreabilidade', short: 'Rastreabilidade', color: '#94A3B8', icon: '📋', criticidade: 'Média' },
+  { key: 'NC-4', fullName: 'NC-4 — Integridade do Fluxo Operacional', short: 'Fluxo Operacional', color: '#CBD5E1', icon: '⚙️', criticidade: 'Alta' },
+  { key: 'NC-5', fullName: 'NC-5 — Segurança da Informação', short: 'Segurança', color: '#F87171', icon: '🔒', criticidade: 'Crítica' },
 ];
 
 const NC_NAME_MAP: Record<string, string> = {
@@ -71,21 +71,21 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 function getSeveridadeColor(sev?: string): string {
-  if (!sev) return '#94A3B8';
+  if (!sev) return '#64748B';
   const s = sev.toLowerCase();
   if (s === 'crítica' || s === 'critica' || s === 'critical') return '#EF4444';
-  if (s === 'alta' || s === 'high') return '#F97316';
-  if (s === 'moderada' || s === 'media' || s === 'média' || s === 'medium') return '#F59E0B';
-  if (s === 'baixa' || s === 'low') return '#22C55E';
-  return '#94A3B8';
+  if (s === 'grave' || s === 'alta' || s === 'high') return '#F97316';
+  if (s === 'moderada' || s === 'media' || s === 'média' || s === 'medium') return '#EAB308';
+  if (s === 'leve' || s === 'baixa' || s === 'low') return '#94A3B8';
+  return '#64748B';
 }
 
 function SeveridadeBadge({ sev }: { sev?: string }) {
   const color = getSeveridadeColor(sev);
   const label = sev || 'Não informada';
   return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
-      style={{ backgroundColor: `${color}18`, color, border: `1px solid ${color}40` }}>
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+      style={{ backgroundColor: 'rgba(255,255,255,0.04)', color, border: `1px solid rgba(255,255,255,0.08)` }}>
       {label}
     </span>
   );
@@ -337,22 +337,37 @@ function NCContent() {
         ))}
       </div>
 
-      {/* NC Type Legend */}
+      {/* NC Type Legend — clean executive style, no counters inside cards */}
       <div className="rounded-xl p-4 mb-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
         <p className="text-xs font-semibold text-white mb-3">Nomenclatura Padronizada</p>
         <div className="flex flex-wrap gap-2">
           {NC_TYPES.map((t) => (
-            <div key={t.key} className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all hover:opacity-80"
-              style={{ backgroundColor: `${t.color}10`, border: `1px solid ${t.color}25` }}
-              onClick={() => setFilterType(filterType === t.key ? 'all' : t.key)}>
-              <span>{t.icon}</span>
-              <span className="text-xs font-bold" style={{ color: t.color }}>{t.key}</span>
-              <span className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>{t.short}</span>
-              <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: `${t.color}20`, color: t.color, fontSize: 9 }}>{t.criticidade}</span>
-              {byType[t.key] > 0 && <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: `${t.color}25`, color: t.color }}>{byType[t.key]}</span>}
-            </div>
+            <button
+              key={t.key}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg transition-all hover:opacity-80"
+              style={{
+                backgroundColor: filterType === t.key ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${filterType === t.key ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.06)'}`,
+              }}
+              onClick={() => setFilterType(filterType === t.key ? 'all' : t.key)}
+            >
+              <span className="text-xs font-bold" style={{ color: '#CBD5E1' }}>{t.key}</span>
+              <span className="text-xs" style={{ color: '#64748B' }}>{t.short}</span>
+              {/* Severity label only — no count badges inside type cards */}
+              <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: 'rgba(255,255,255,0.04)', color: '#94A3B8', fontSize: 9 }}>{t.criticidade}</span>
+            </button>
           ))}
         </div>
+        {/* Counts appear here — in the summary area, not inside type cards */}
+        {filtered.length > 0 && (
+          <div className="flex flex-wrap gap-3 mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+            {NC_TYPES.filter((t) => byType[t.key] > 0).map((t) => (
+              <span key={t.key} className="text-xs" style={{ color: '#64748B' }}>
+                <span className="font-semibold" style={{ color: '#94A3B8' }}>{t.key}</span>: {byType[t.key]}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Filters */}
