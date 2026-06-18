@@ -58,7 +58,9 @@ export interface NCRow {
   auditor?: string;
   tipo_nc: string;
   descricao?: string;
-  pontos_deduzidos: number;
+  pontos_deduzidos?: number | null;
+  severidade?: string | null;
+  penalidade?: number | null;
   protocolo_referencia?: string;
   avaliacao_id?: string;
 }
@@ -356,7 +358,9 @@ export function parseNCsCSV(rows: Record<string, any>[], fallbackPeriodo?: strin
       auditor: String(get('Auditor') ?? '').trim(),
       tipo_nc: tipo_nc_raw || 'Não Especificado',
       descricao: descricao_raw || undefined,
-      pontos_deduzidos: parseNum(get('Pontos Deduzidos', 'Pontos Deduzidos por NC', 'pontos_deduzidos')),
+      pontos_deduzidos: parseNum(get('Pontos Deduzidos', 'Pontos Deduzidos por NC', 'pontos_deduzidos')) || null,
+      severidade: String(get('Severidade', 'severidade') ?? '').trim() || null,
+      penalidade: parseNum(get('Penalidade', 'penalidade')) || null,
       protocolo_referencia: String(get('Protocolo Referência', 'Protocolo Referencia', 'Protocolo') ?? '').trim(),
       avaliacao_id: String(get('ID da Avaliação', 'ID da Avaliacao', 'ID Avaliação') ?? '').trim(),
     };
@@ -667,6 +671,8 @@ export function buildAnalystsFromScores(scores: any[]): RealAnalyst[] {
     iepcScore: s.iepc_total || 0,
     ncs: s.total_ncs || 0,
     pontosDeduzidos: Math.abs(Number(s.pontos_deduzidos_nc) || 0),
+    // ncPoints kept for backward compat with legacy dashboards — reflects pontos_deduzidos_nc from cycle_scores
+    // This is NOT the -20 rule. It's the actual value stored in the cycle score record.
     ncPoints: Math.abs(Number(s.pontos_deduzidos_nc) || 0),
     p1: s.p1 || 0,
     p2: s.p2 || 0,
