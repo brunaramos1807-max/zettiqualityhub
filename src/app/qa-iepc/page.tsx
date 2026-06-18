@@ -1040,6 +1040,166 @@ function QAIEPCContent() {
               </ComposedChart>
             </ResponsiveContainer>
           </div>
+
+          {/* ── CRITERIA ADHERENCE TABLE — Most Critical Operational Data ── */}
+          <div className="rounded-xl overflow-hidden" style={{ backgroundColor: CARD_BG, border: '1px solid rgba(56,189,248,0.2)' }}>
+            <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'linear-gradient(90deg, rgba(56,189,248,0.06) 0%, transparent 60%)' }}>
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.25)' }}>
+                  <Target size={13} style={{ color: '#38BDF8' }} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Aderência por Pilar QA</h3>
+                  <p className="text-[10px]" style={{ color: '#64748B' }}>Taxa de aderência por pilar · Critérios mais falhados e oportunidades de treinamento</p>
+                </div>
+              </div>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(56,189,248,0.12)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}>
+                {filtered.length} avaliações
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', backgroundColor: 'rgba(255,255,255,0.02)' }}>
+                    {['Pilar', 'Nome', 'Peso Máx.', 'Média Obtida', 'Aderência %', 'Status', 'Oportunidade de Treinamento'].map((h) => (
+                      <th key={h} className="text-left px-4 py-3 font-semibold text-[10px] uppercase tracking-wider" style={{ color: '#94A3B8' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {pillarAvgs.sort((a, b) => a.pct - b.pct).map((pilar) => {
+                    const isWorst = pilar.key === worstPilar?.key;
+                    const isBest = pilar.key === bestPilar?.key;
+                    const statusColor = pilar.pct >= 80 ? '#22C55E' : pilar.pct >= 65 ? '#F59E0B' : '#EF4444';
+                    const statusLabel = pilar.pct >= 80 ? 'Aderido' : pilar.pct >= 65 ? 'Atenção' : 'Crítico';
+                    const trainingOpp = pilar.pct < 65
+                      ? `Treinamento urgente em ${pilar.fullName.split('—')[1]?.trim() || pilar.label}`
+                      : pilar.pct < 80
+                        ? `Reforço recomendado em ${pilar.label}`
+                        : 'Manter padrão atual';
+                    return (
+                      <tr key={pilar.key} className="hover:bg-white/[0.02] transition-colors" style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', backgroundColor: isWorst ? 'rgba(239,68,68,0.04)' : 'transparent' }}>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-bold"
+                            style={{ backgroundColor: `${pilar.color}15`, color: pilar.color, border: `1px solid ${pilar.color}30` }}>
+                            {pilar.label.split(' ')[0]}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-white">{pilar.fullName.split('—')[1]?.trim() || pilar.fullName}</p>
+                          {isWorst && <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold" style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#EF4444' }}>⚠ Pilar Crítico</span>}
+                          {isBest && <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold" style={{ backgroundColor: 'rgba(34,197,94,0.15)', color: '#22C55E' }}>★ Melhor Pilar</span>}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs" style={{ color: '#94A3B8' }}>{pilar.max} pts</td>
+                        <td className="px-4 py-3 font-bold" style={{ color: pilar.color }}>{pilar.value.toFixed(1)} pts</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-20 h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
+                              <div className="h-full rounded-full" style={{ width: `${pilar.pct}%`, backgroundColor: statusColor }} />
+                            </div>
+                            <span className="font-bold text-xs" style={{ color: statusColor }}>{pilar.pct.toFixed(0)}%</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+                            style={{ backgroundColor: `${statusColor}15`, color: statusColor, border: `1px solid ${statusColor}30` }}>
+                            {statusLabel}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs" style={{ color: pilar.pct < 65 ? '#F59E0B' : pilar.pct < 80 ? '#94A3B8' : '#64748B' }}>
+                          {trainingOpp}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {/* Training Recommendations Summary */}
+            {pillarAvgs.filter(p => p.pct < 80).length > 0 && (
+              <div className="px-5 py-4" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', backgroundColor: 'rgba(245,158,11,0.04)' }}>
+                <p className="text-xs font-bold text-white mb-2 flex items-center gap-2">
+                  <Zap size={12} style={{ color: '#F59E0B' }} />
+                  Recomendações de Treinamento
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {pillarAvgs.filter(p => p.pct < 80).sort((a, b) => a.pct - b.pct).map(p => (
+                    <div key={p.key} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs"
+                      style={{ backgroundColor: p.pct < 65 ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)', color: p.pct < 65 ? '#EF4444' : '#F59E0B', border: `1px solid ${p.pct < 65 ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)'}` }}>
+                      <span className="font-bold">{p.label.split(' ')[0]}</span>
+                      <span>{p.pct.toFixed(0)}%</span>
+                      {p.pct < 65 && <span className="font-bold">— URGENTE</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── IEPC Adherence Table ── */}
+          <div className="rounded-xl overflow-hidden" style={{ backgroundColor: CARD_BG, border: '1px solid rgba(6,182,212,0.2)' }}>
+            <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'linear-gradient(90deg, rgba(6,182,212,0.06) 0%, transparent 60%)' }}>
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.25)' }}>
+                  <Star size={13} style={{ color: '#06B6D4' }} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Aderência por Dimensão IEPC</h3>
+                  <p className="text-[10px]" style={{ color: '#64748B' }}>Taxa de aderência por dimensão de experiência percebida pelo cliente</p>
+                </div>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', backgroundColor: 'rgba(255,255,255,0.02)' }}>
+                    {['Dim.', 'Nome', 'Peso Máx.', 'Média Obtida', 'Aderência %', 'Status', 'Impacto no Cliente'].map((h) => (
+                      <th key={h} className="text-left px-4 py-3 font-semibold text-[10px] uppercase tracking-wider" style={{ color: '#94A3B8' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {iepcAvgs.sort((a, b) => a.pct - b.pct).map((dim) => {
+                    const statusColor = dim.pct >= 80 ? '#22C55E' : dim.pct >= 65 ? '#F59E0B' : '#EF4444';
+                    const statusLabel = dim.pct >= 80 ? 'Aderido' : dim.pct >= 65 ? 'Atenção' : 'Crítico';
+                    const impacto = dim.pct < 65
+                      ? `Alto impacto negativo na percepção do cliente — ${dim.fullName.split('—')[1]?.trim() || dim.label}`
+                      : dim.pct < 80
+                        ? `Impacto moderado — oportunidade de melhoria`
+                        : 'Experiência positiva do cliente';
+                    return (
+                      <tr key={dim.key} className="hover:bg-white/[0.02] transition-colors" style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-bold"
+                            style={{ backgroundColor: `${dim.color}15`, color: dim.color, border: `1px solid ${dim.color}30` }}>
+                            {dim.label.split(' ')[0]}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-white">{dim.fullName.split('—')[1]?.trim() || dim.fullName}</td>
+                        <td className="px-4 py-3 font-mono text-xs" style={{ color: '#94A3B8' }}>{dim.max} pts</td>
+                        <td className="px-4 py-3 font-bold" style={{ color: dim.color }}>{dim.value.toFixed(1)} pts</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-20 h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
+                              <div className="h-full rounded-full" style={{ width: `${dim.pct}%`, backgroundColor: statusColor }} />
+                            </div>
+                            <span className="font-bold text-xs" style={{ color: statusColor }}>{dim.pct.toFixed(0)}%</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+                            style={{ backgroundColor: `${statusColor}15`, color: statusColor, border: `1px solid ${statusColor}30` }}>
+                            {statusLabel}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs" style={{ color: dim.pct < 65 ? '#F59E0B' : '#64748B' }}>{impacto}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </>
       )}
 

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Users, TrendingUp, TrendingDown, Star, Award, Search, RefreshCw, Activity, Minus, X, BarChart2, BookOpen, Phone, Clock, UserCheck, UserPlus, Gift, ChevronRight,  } from 'lucide-react';
+import { Users, TrendingUp, TrendingDown, Star, Award, Search, RefreshCw, Activity, Minus, X, BarChart2, BookOpen, Phone, Clock, UserCheck, UserPlus, Gift, ChevronRight } from 'lucide-react';
 
 interface AnalistaGestao {
   id: string;
@@ -11,6 +11,7 @@ interface AnalistaGestao {
   nome: string;
   nome_completo?: string;
   cargo_operacional?: string;
+  nivel_profissional?: string;
   squad?: string;
   equipe?: string;
   coordenador?: string;
@@ -20,6 +21,7 @@ interface AnalistaGestao {
   data_nascimento?: string;
   ultima_promocao?: string;
   status?: string;
+  foto_url?: string;
   avgQA: number;
   avgIEPC: number;
   totalNCs: number;
@@ -112,15 +114,25 @@ function AnalystDetailDrawer({ analista, onClose }: { analista: AnalistaGestao; 
         <div className="sticky top-0 z-10 p-6" style={{ backgroundColor: '#0D1117', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-lg font-bold text-white flex-shrink-0"
+              {/* Avatar with photo support */}
+              <div className="relative w-14 h-14 rounded-2xl overflow-hidden flex-shrink-0"
                 style={{ background: 'linear-gradient(135deg, #1E40AF, #3B82F6)' }}>
-                {initials}
+                {analista.foto_url ? (
+                  <img src={analista.foto_url} alt={analista.nome} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-lg font-bold text-white">
+                    {initials}
+                  </div>
+                )}
               </div>
               <div>
                 <h2 className="text-lg font-bold text-white">{analista.nome_completo || analista.nome}</h2>
                 <p className="text-sm mt-0.5" style={{ color: '#94A3B8' }}>
                   {analista.cargo_operacional || 'Analista'} · {analista.squad || analista.equipe || '—'}
                 </p>
+                {analista.nivel_profissional && (
+                  <p className="text-xs mt-0.5" style={{ color: '#38BDF8' }}>{analista.nivel_profissional}</p>
+                )}
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <span className="text-xs px-2 py-0.5 rounded-full font-medium"
                     style={{ backgroundColor: `${getStatusColor(analista.status)}18`, color: getStatusColor(analista.status) }}>
@@ -146,11 +158,13 @@ function AnalystDetailDrawer({ analista, onClose }: { analista: AnalistaGestao; 
           <div className="grid grid-cols-2 gap-3">
             {[
               { label: 'Coordenador', value: analista.coordenador || '—', icon: <UserCheck size={13} /> },
+              { label: 'Nível Profissional', value: analista.nivel_profissional || '—', icon: <Star size={13} /> },
               { label: 'Tempo de Empresa', value: analista.tempoEmpresa, icon: <Clock size={13} /> },
               { label: 'Telefone', value: analista.telefone || '—', icon: <Phone size={13} /> },
               { label: 'Aniversário', value: formatBirthday(analista.data_nascimento), icon: <Gift size={13} /> },
               { label: 'Última Promoção', value: analista.ultima_promocao ? new Date(analista.ultima_promocao + 'T00:00:00').toLocaleDateString('pt-BR') : '—', icon: <Star size={13} /> },
               { label: 'PDI Ativo', value: analista.pdiAtivo ? 'Sim' : 'Não', icon: <BookOpen size={13} /> },
+              { label: 'Status', value: getStatusLabel(analista.status), icon: <Activity size={13} /> },
             ].map((info) => (
               <div key={info.label} className="p-3 rounded-xl" style={{ backgroundColor: '#161B22', border: '1px solid rgba(255,255,255,0.08)' }}>
                 <div className="flex items-center gap-1.5 mb-1" style={{ color: '#8B949E' }}>
@@ -162,7 +176,7 @@ function AnalystDetailDrawer({ analista, onClose }: { analista: AnalistaGestao; 
             ))}
           </div>
 
-          {/* QA / IEPC — only in detail */}
+          {/* QA / IEPC */}
           <div className="p-4 rounded-xl" style={{ backgroundColor: '#161B22', border: '1px solid rgba(255,255,255,0.08)' }}>
             <h3 className="text-xs font-bold tracking-widest mb-3 uppercase" style={{ color: '#8B949E' }}>Performance QA / IEPC</h3>
             <div className="grid grid-cols-4 gap-3">
@@ -263,9 +277,15 @@ function AnalystCard({ analista, onClick }: { analista: AnalistaGestao; onClick:
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="w-11 h-11 rounded-xl flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
+            <div className="w-11 h-11 rounded-xl overflow-hidden flex-shrink-0"
               style={{ background: 'linear-gradient(135deg, #1E3A5F, #2563EB)' }}>
-              {initials}
+              {analista.foto_url ? (
+                <img src={analista.foto_url} alt={analista.nome} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-sm font-bold text-white">
+                  {initials}
+                </div>
+              )}
             </div>
             <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 flex items-center justify-center"
               style={{ backgroundColor: getStatusColor(analista.status), borderColor: '#0F1B31' }} />
@@ -273,6 +293,9 @@ function AnalystCard({ analista, onClick }: { analista: AnalistaGestao; onClick:
           <div className="min-w-0">
             <p className="text-sm font-semibold text-white truncate leading-tight">{analista.nome}</p>
             <p className="text-xs truncate mt-0.5" style={{ color: '#94A3B8' }}>{analista.cargo_operacional || 'Analista'}</p>
+            {analista.nivel_profissional && (
+              <p className="text-xs truncate" style={{ color: '#38BDF8', fontSize: 10 }}>{analista.nivel_profissional}</p>
+            )}
           </div>
         </div>
         <div className="flex flex-col items-end gap-1">
@@ -443,9 +466,7 @@ function GestaoContent() {
         const firstName = nomeShort.split(' ')[0];
         const matchName = (n: string) => {
           const nl = (n || '').toLowerCase().trim();
-          // Exact match first (most reliable)
           if (nl === nomeCompleto || nl === nomeShort) return true;
-          // Prefix match: cycle_scores.analista starts with same first name AND last name token matches
           const nlParts = nl.split(' ');
           const nomeParts = nomeCompleto.split(' ');
           if (nlParts[0] === firstName && nlParts.length > 1 && nomeParts.length > 1) {
@@ -488,6 +509,7 @@ function GestaoContent() {
           nome: a.nome || '',
           nome_completo: a.nome_completo || a.nome || '',
           cargo_operacional: a.cargo_operacional || a.cargo || 'Analista',
+          nivel_profissional: a.nivel_profissional || '',
           squad: a.squad || '',
           equipe: a.equipe || '',
           coordenador: a.coordenador || '',
@@ -497,6 +519,7 @@ function GestaoContent() {
           data_nascimento: a.data_nascimento || '',
           ultima_promocao: a.ultima_promocao || '',
           status: a.status || 'ativo',
+          foto_url: a.foto_url || '',
           avgQA: Math.round(avgQA * 10) / 10,
           avgIEPC: Math.round(avgIEPC * 10) / 10,
           totalNCs,

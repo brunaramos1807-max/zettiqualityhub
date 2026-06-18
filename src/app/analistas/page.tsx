@@ -45,6 +45,7 @@ interface AnalistaFormState {
   telefone: string;
   cargo_operacional: string;
   nivel: string;
+  nivel_profissional: string;
   coordenador: string;
   squad: string;
   status: 'ativo' | 'ferias' | 'afastado' | 'desligado';
@@ -57,14 +58,22 @@ interface AnalistaFormState {
 
 const EMPTY_FORM: AnalistaFormState = {
   nome: '', nome_completo: '', email: '', telefone: '',
-  cargo_operacional: 'Analista', nivel: 'Júnior',
+  cargo_operacional: 'Analista', nivel: 'Júnior I', nivel_profissional: 'Júnior I',
   coordenador: '', squad: '', status: 'ativo',
   data_admissao: '', aniversario: '', ultima_promocao: '', observacoes: '',
   foto_url: '',
 };
 
 const CARGO_OPTIONS = ['Analista', 'Analista Sênior', 'Especialista', 'Coordenador', 'Supervisor', 'Gerente'];
-const NIVEL_OPTIONS = ['Júnior', 'Pleno', 'Sênior', 'Especialista'];
+
+// Professional levels as requested
+const NIVEL_PROFISSIONAL_OPTIONS = [
+  'Júnior I', 'Júnior II', 'Júnior III',
+  'Pleno I', 'Pleno II', 'Pleno III',
+  'Sênior I', 'Sênior II',
+  'Especialista',
+];
+
 const EQUIPE_OPTIONS = ['PDV', 'PDV N1', 'Compras e Estoque', 'Financeiro Fiscal'];
 const STATUS_OPTIONS = [
   { value: 'ativo', label: 'Ativo', color: '#22C55E' },
@@ -625,9 +634,9 @@ function AnalistaFormModal({ initial, onSave, onClose, saving, saveError }: Anal
               </select>
             </div>
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: '#8B949E' }}>Nível</label>
-              <select value={form.nivel} onChange={(e) => set('nivel', e.target.value)} style={selectStyle}>
-                {NIVEL_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
+              <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: '#8B949E' }}>Nível Profissional</label>
+              <select value={form.nivel_profissional || form.nivel} onChange={(e) => { set('nivel_profissional', e.target.value); set('nivel', e.target.value); }} style={selectStyle}>
+                {NIVEL_PROFISSIONAL_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
             </div>
           </div>

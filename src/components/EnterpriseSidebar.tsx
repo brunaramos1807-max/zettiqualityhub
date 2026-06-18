@@ -55,7 +55,7 @@ const NAV_SECTIONS: NavSection[] = [
     color: '#FB923C',
     items: [
       { id: 'feedback', label: 'Feedback', href: '/feedback', icon: <MessageSquare size={14} /> },
-      { id: 'feedback-pdi', label: 'Plano de Desenvolvimento', href: '/feedback/pdi', icon: <GitBranch size={14} /> },
+      { id: 'pdis', label: 'Plano de Desenvolvimento', href: '/pdis', icon: <GitBranch size={14} /> },
       { id: 'gestao', label: 'Gestão de Pessoas', href: '/gestao', icon: <Users size={14} /> },
       { id: 'advertencias', label: 'Advertências', href: '/advertencias', icon: <ShieldAlert size={14} /> },
     ],
@@ -102,7 +102,8 @@ function getActiveId(pathname: string): string {
   if (pathname.startsWith('/qa-iepc')) return 'qa-iepc';
   if (pathname.startsWith('/nao-conformidades')) return 'ncs';
   if (pathname.startsWith('/mural-elogios')) return 'elogios';
-  if (pathname.startsWith('/feedback/pdi')) return 'feedback-pdi';
+  if (pathname.startsWith('/feedback/pdi')) return 'pdis';
+  if (pathname.startsWith('/pdis')) return 'pdis';
   if (pathname.startsWith('/feedback')) return 'feedback';
   if (pathname.startsWith('/gestao')) return 'gestao';
   if (pathname.startsWith('/advertencias')) return 'advertencias';
