@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
+import { useSystemAuth } from '@/contexts/SystemAuthContext';
 import { BookOpen, Search, Target, Clock, CheckCircle, AlertCircle, TrendingUp, Users, Plus, Edit2, X, Save, Loader2, History, ChevronDown, ChevronUp, Trash2, Circle, Download } from 'lucide-react';
 
 // ── Types ──
@@ -455,8 +456,10 @@ function PdiTimeline({ pdis }: { pdis: PdiItem[] }) {
 // ── Main Page ──
 export default function FeedbackPdiPage() {
   const supabase = createClient();
+  const { isAdmin, session } = useSystemAuth();
   const [pdis, setPdis] = useState<PdiItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncLoading, setSyncLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterEquipe, setFilterEquipe] = useState('');
@@ -490,9 +493,94 @@ export default function FeedbackPdiPage() {
     setAnalistas(enriched);
   };
 
+  const materializeFeedbackPdis = async (updateExisting = false): Promise<{ created: number; updated: number; ignored: number }> => {
+    if (!supabase) return { created: 0, updated: 0, ignored: 0 };
+
+    const { data: feedbacksWithPdi } = await supabase
+      .from('feedbacks')
+      .select('id, ciclo, analista_id, coordenador, equipe, qa_score, iepc_score, aderencia_score, analistas(nome, equipe), snapshot_json_completo, mensagem_evolutiva')
+      .not('snapshot_json_completo', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    let created = 0;
+    let updated = 0;
+    let ignored = 0;
+
+    for (const fb of ((feedbacksWithPdi || []) as any[])) {
+      const snap = Array.isArray(fb.snapshot_json_completo) ? fb.snapshot_json_completo[0] : (fb.snapshot_json_completo || {});
+      const objectives = extractPdiObjectivesFromSnapshot(snap);
+      if (objectives.length === 0 || !objectives.some((objective) => objective.objetivo?.trim())) {
+        ignored += 1;
+        continue;
+      }
+
+      const analistaNome = fb.analistas?.nome || snap?.analista?.nome || '';
+      const periodo = fb.ciclo || snap?.ciclo?.nome || snap?.analista?.ciclo || '';
+      if (!analistaNome || !periodo) {
+        ignored += 1;
+        continue;
+      }
+
+      const firstObjective = objectives[0];
+      const pdiPayload = {
+        feedback_id: fb.id,
+        analista_id: fb.analista_id || null,
+        periodo,
+        ciclo: periodo,
+        analista: analistaNome,
+        squad: fb.equipe || fb.analistas?.equipe || snap?.analista?.equipe || '',
+        coordenador: fb.coordenador || snap?.analista?.coordenador || '',
+        status_pdi: firstObjective.status === 'cumprido' ? 'Concluído' : 'Em andamento',
+        objetivo: firstObjective.objetivo || objectives.map((objective) => objective.objetivo).filter(Boolean).join('; '),
+        objetivo_desenvolvimento: firstObjective.objetivo || null,
+        acao_desenvolvimento: firstObjective.acao_esperada || null,
+        resultado_esperado: firstObjective.resultado_esperado || null,
+        acoes: objectives.map((objective) => objective.acao_esperada || objective.objetivo).filter(Boolean),
+        metas: objectives.map((objective) => objective.resultado_esperado || objective.objetivo).filter(Boolean),
+        enterprise_objectives: objectives,
+        mensagem_evolutiva: snap?.feedback_blocks?.mensagem_evolutiva || snap?.feedbackBlocks?.mensagem_evolutiva || fb.mensagem_evolutiva || null,
+        qa_score: fb.qa_score || 0,
+        iepc_score: fb.iepc_score || 0,
+        aderencia_score: fb.aderencia_score || null,
+        source: 'feedback_snapshot',
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data: existingByFeedback } = await supabase
+        .from('pdi_records')
+        .select('id')
+        .eq('feedback_id', fb.id)
+        .maybeSingle();
+
+      const { data: existingByAnalistaPeriodo } = existingByFeedback ? { data: null } : await supabase
+        .from('pdi_records')
+        .select('id')
+        .eq('analista', analistaNome)
+        .eq('periodo', periodo)
+        .maybeSingle();
+
+      const existingId = existingByFeedback?.id || existingByAnalistaPeriodo?.id;
+      if (existingId) {
+        if (updateExisting) {
+          await supabase.from('pdi_records').update(pdiPayload).eq('id', existingId);
+          updated += 1;
+        } else {
+          ignored += 1;
+        }
+      } else {
+        await supabase.from('pdi_records').insert(pdiPayload);
+        created += 1;
+      }
+    }
+
+    return { created, updated, ignored };
+  };
+
   const loadPdis = async () => {
     setLoading(true);
     try {
+      await materializeFeedbackPdis(false);
       const { data: feedbackPdis } = await supabase
         .from('feedback_pdi')
         .select(`id, objetivo, acao_desenvolvimento, prazo, progresso, status, responsavel, ciclo_origem, evidencia, created_at, updated_at, analistas(id, nome, equipe), feedbacks(ciclo)`)
@@ -597,6 +685,27 @@ export default function FeedbackPdiPage() {
   };
 
   useEffect(() => { loadAnalistas().then(() => loadPdis()); }, []);
+
+  const handleSyncFeedbackPdis = async () => {
+    if (!isAdmin) return;
+    setSyncLoading(true);
+    try {
+      const result = await materializeFeedbackPdis(true);
+      await supabase.from('permission_logs').insert({
+        actor_email: session?.email || 'admin',
+        action: 'sincronizar_pdis_feedbacks',
+        entity_type: 'pdi_records',
+        details: JSON.stringify(result),
+      });
+      await loadPdis();
+      window.alert(`Sincronização concluída: ${result.created} criado(s), ${result.updated} atualizado(s), ${result.ignored} ignorado(s).`);
+    } catch (err) {
+      console.error('Erro ao sincronizar PDIs dos feedbacks:', err);
+      window.alert('Erro ao sincronizar PDIs dos feedbacks.');
+    } finally {
+      setSyncLoading(false);
+    }
+  };
 
   const updateStatus = async (pdi: PdiItem, newStatus: string) => {
     try {
@@ -746,6 +855,13 @@ export default function FeedbackPdiPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {isAdmin && (
+              <button onClick={handleSyncFeedbackPdis} disabled={syncLoading}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-60"
+                style={{ backgroundColor: 'rgba(34,197,94,0.1)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.25)' }}>
+                {syncLoading ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Sincronizar PDIs dos Feedbacks
+              </button>
+            )}
             <button onClick={() => setShowTimeline((v) => !v)}
               className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all"
               style={{ backgroundColor: showTimeline ? 'rgba(167,139,250,0.2)' : 'rgba(167,139,250,0.1)', color: '#A78BFA', border: '1px solid rgba(167,139,250,0.25)' }}>
