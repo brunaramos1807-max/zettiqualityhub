@@ -595,6 +595,25 @@ export default function FeedbackPdiPage() {
 
     const { data: inserted, error } = await supabase.from('feedback_pdi').insert(payload).select().single();
     if (!error && inserted) {
+      // Auto-sync to pdi_records (source of truth for management)
+      const analista = analistas.find((a) => a.id === analistaId);
+      await supabase.from('pdi_records').upsert({
+        feedback_id: inserted.id,
+        analista: data.analista_nome || null,
+        analista_id: analistaId,
+        squad: analista?.equipe || null,
+        objetivo: data.objectives.map((o) => o.objetivo).filter(Boolean).join(' | ') || 'PDI',
+        acoes: data.objectives,
+        prazo: data.prazo || null,
+        responsavel: data.responsavel || null,
+        status_pdi: data.status,
+        progresso: progress,
+        enterprise_objectives: data.objectives,
+        mensagem_evolutiva: data.mensagem_evolutiva || null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'feedback_id', ignoreDuplicates: false });
+
       const newPdi: PdiItem = {
         id: inserted.id, objetivo: inserted.objetivo, acao_desenvolvimento: inserted.acao_desenvolvimento,
         prazo: inserted.prazo, progresso: progress, status: inserted.status || 'nao_iniciado',

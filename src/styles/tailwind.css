@@ -5,18 +5,18 @@
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --background: #0A0F1E;
-  --foreground: #F1F5F9;
-  --primary: #1E40AF;
+  --background: #0C1220;
+  --foreground: #E2E8F0;
+  --primary: #2563EB;
   --primary-foreground: #FFFFFF;
   --secondary: #3B82F6;
   --secondary-foreground: #FFFFFF;
-  --accent: rgba(59,130,246,0.1);
-  --accent-foreground: #60A5FA;
-  --muted: #111827;
-  --muted-foreground: rgba(255,255,255,0.4);
+  --accent: rgba(59,130,246,0.08);
+  --accent-foreground: #93C5FD;
+  --muted: #141E2E;
+  --muted-foreground: rgba(255,255,255,0.35);
   --card: #111827;
-  --card-foreground: #F1F5F9;
+  --card-foreground: #E2E8F0;
   --border: rgba(255,255,255,0.06);
   --input: rgba(255,255,255,0.04);
   --ring: #3B82F6;
@@ -26,11 +26,11 @@
   --success: #22C55E;
   --warning: #F59E0B;
   --danger: #EF4444;
-  --success-bg: rgba(34,197,94,0.1);
-  --warning-bg: rgba(245,158,11,0.1);
-  --danger-bg: rgba(239,68,68,0.1);
-  --header-bg: #0F172A;
-  --header-border: rgba(255,255,255,0.06);
+  --success-bg: rgba(34,197,94,0.08);
+  --warning-bg: rgba(245,158,11,0.08);
+  --danger-bg: rgba(239,68,68,0.08);
+  --header-bg: #0C1220;
+  --header-border: rgba(255,255,255,0.05);
 }
 
 @layer base {
@@ -52,7 +52,7 @@
   }
   select option {
     background-color: #1E293B;
-    color: #F1F5F9;
+    color: #E2E8F0;
   }
 }
 
@@ -98,20 +98,20 @@
     scrollbar-width: none;
   }
   .tab-active {
-    color: #60A5FA;
+    color: #93C5FD;
     border-bottom: 2px solid #3B82F6;
     background-color: rgba(59,130,246,0.06);
   }
   .tab-inactive {
-    color: rgba(255,255,255,0.4);
+    color: rgba(255,255,255,0.35);
     border-bottom: 2px solid transparent;
   }
   .tab-inactive:hover {
-    color: rgba(255,255,255,0.7);
-    background-color: rgba(255,255,255,0.04);
+    color: rgba(255,255,255,0.6);
+    background-color: rgba(255,255,255,0.03);
   }
   .card-glow {
-    box-shadow: 0 0 0 1px rgba(59,130,246,0.1), 0 4px 24px rgba(0,0,0,0.3);
+    box-shadow: 0 0 0 1px rgba(59,130,246,0.08), 0 4px 16px rgba(0,0,0,0.25);
   }
   .metric-value {
     font-variant-numeric: tabular-nums;
@@ -131,7 +131,7 @@
     transition: border-color 0.2s ease;
   }
   .kpi-card:hover {
-    border-color: rgba(59,130,246,0.2);
+    border-color: rgba(59,130,246,0.15);
   }
   .btn-primary {
     background-color: var(--primary);
@@ -150,9 +150,9 @@
     background-color: #1D4ED8;
   }
   .btn-secondary {
-    background-color: rgba(255,255,255,0.06);
-    color: rgba(255,255,255,0.7);
-    border: 1px solid rgba(255,255,255,0.1);
+    background-color: rgba(255,255,255,0.05);
+    color: rgba(255,255,255,0.6);
+    border: 1px solid rgba(255,255,255,0.08);
     border-radius: 0.5rem;
     padding: 0.5rem 1rem;
     font-weight: 500;
@@ -164,7 +164,7 @@
     font-family: var(--font-sans);
   }
   .btn-secondary:hover {
-    background-color: rgba(255,255,255,0.1);
+    background-color: rgba(255,255,255,0.08);
   }
   .input-field {
     background-color: var(--input);
@@ -179,8 +179,8 @@
     font-family: var(--font-sans);
   }
   .input-field:focus {
-    border-color: rgba(59,130,246,0.5);
-    box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+    border-color: rgba(59,130,246,0.4);
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.08);
   }
   .input-field::placeholder {
     color: var(--muted-foreground);
@@ -188,7 +188,7 @@
   .badge-success {
     background-color: var(--success-bg);
     color: var(--success);
-    border: 1px solid rgba(34,197,94,0.2);
+    border: 1px solid rgba(34,197,94,0.15);
     border-radius: 9999px;
     padding: 0.125rem 0.625rem;
     font-size: 0.75rem;
@@ -197,7 +197,7 @@
   .badge-warning {
     background-color: var(--warning-bg);
     color: var(--warning);
-    border: 1px solid rgba(245,158,11,0.2);
+    border: 1px solid rgba(245,158,11,0.15);
     border-radius: 9999px;
     padding: 0.125rem 0.625rem;
     font-size: 0.75rem;
@@ -206,7 +206,7 @@
   .badge-danger {
     background-color: var(--danger-bg);
     color: var(--danger);
-    border: 1px solid rgba(239,68,68,0.2);
+    border: 1px solid rgba(239,68,68,0.15);
     border-radius: 9999px;
     padding: 0.125rem 0.625rem;
     font-size: 0.75rem;
@@ -227,8 +227,8 @@
     aspect-ratio: 1;
   }
   .pillar-square:hover {
-    border-color: rgba(59,130,246,0.3);
-    background-color: rgba(59,130,246,0.05);
+    border-color: rgba(59,130,246,0.2);
+    background-color: rgba(59,130,246,0.04);
   }
   .section-header {
     font-size: 1rem;
@@ -245,6 +245,16 @@
     font-size: 0.875rem;
     color: var(--muted-foreground);
     margin-top: 0.25rem;
+  }
+  /* Executive card style */
+  .exec-card {
+    background-color: #111827;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 0.75rem;
+    transition: border-color 0.2s ease;
+  }
+  .exec-card:hover {
+    border-color: rgba(255,255,255,0.1);
   }
 }
 

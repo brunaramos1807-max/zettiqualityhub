@@ -17,7 +17,7 @@ export default function EnterpriseLayout({ children, requireAdmin = false }: Ent
 
   return (
     <RouteGuard requireAdmin={requireAdmin}>
-      <div className="flex h-screen overflow-hidden" style={{ backgroundColor: '#071426' }}>
+      <div className="flex h-screen overflow-hidden" style={{ backgroundColor: '#0C1220' }}>
         <EnterpriseSidebar collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} />
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
           <EnterpriseTopbar />

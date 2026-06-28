@@ -68,7 +68,7 @@ interface PermissionLog {
   created_at: string;
 }
 
-type Tab = 'usuarios' | 'cargos' | 'permissoes' | 'escopos' | 'logs' | 'auditoria';
+type Tab = 'usuarios' | 'cargos' | 'permissoes' | 'escopos' | 'logs' | 'auditoria' | 'notion';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -1351,6 +1351,219 @@ function IntegracoesTab() {
   );
 }
 
+// ─── Notion Sync Panel ────────────────────────────────────────────────────────
+
+interface KnowledgeSource {
+  id: string;
+  source_name: string;
+  source_type: string;
+  notion_database_id: string | null;
+  last_sync_at: string | null;
+  sync_status: string;
+  error_message: string | null;
+  records_synced: number;
+  is_active: boolean;
+}
+
+const SOURCE_TYPE_MAP: Record<string, string> = {
+  'Critérios QA': 'qa_criteria',
+  'Dimensões IEPC': 'iepc_dimensions',
+  'Tipos de NC': 'nc_types',
+  'Treinamentos': 'training',
+};
+
+function NotionSyncPanel() {
+  const [sources, setSources] = useState<KnowledgeSource[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState<string | null>(null);
+  const [editingSource, setEditingSource] = useState<KnowledgeSource | null>(null);
+  const [dbIdInput, setDbIdInput] = useState('');
+  const [saveMsg, setSaveMsg] = useState('');
+  const supabase = createClient();
+
+  const loadSources = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('knowledge_sources').select('*').order('source_name');
+    setSources((data as KnowledgeSource[]) || []);
+    setLoading(false);
+  };
+
+  useEffect(() => { loadSources(); }, []);
+
+  const handleSaveDbId = async () => {
+    if (!editingSource) return;
+    await supabase.from('knowledge_sources').update({
+      notion_database_id: dbIdInput.trim() || null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', editingSource.id);
+    setSaveMsg('ID salvo!');
+    setTimeout(() => setSaveMsg(''), 2000);
+    setEditingSource(null);
+    loadSources();
+  };
+
+  const handleSync = async (source: KnowledgeSource) => {
+    if (!source.notion_database_id) {
+      alert('Configure o ID do banco Notion antes de sincronizar.');
+      return;
+    }
+    setSyncing(source.id);
+    try {
+      const sourceType = SOURCE_TYPE_MAP[source.source_name] || 'qa_criteria';
+      const res = await fetch('/api/admin/sync-notion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_id: source.id,
+          database_id: source.notion_database_id,
+          source_type: sourceType,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Sync failed');
+      setSaveMsg(`✓ ${result.synced} registros sincronizados`);
+      setTimeout(() => setSaveMsg(''), 3000);
+    } catch (e: any) {
+      setSaveMsg(`Erro: ${e.message}`);
+      setTimeout(() => setSaveMsg(''), 4000);
+    }
+    setSyncing(null);
+    loadSources();
+  };
+
+  const statusColor: Record<string, string> = {
+    pending: '#64748B',
+    syncing: '#3B82F6',
+    success: '#22C55E',
+    partial: '#F59E0B',
+    error: '#EF4444',
+  };
+
+  const statusLabel: Record<string, string> = {
+    pending: 'Pendente',
+    syncing: 'Sincronizando...',
+    success: 'Sincronizado',
+    partial: 'Parcial',
+    error: 'Erro',
+  };
+
+  const panelCard: React.CSSProperties = {
+    backgroundColor: '#111827',
+    border: '1px solid rgba(255,255,255,0.06)',
+    borderRadius: '0.75rem',
+  };
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-base font-bold text-white">Base de Conhecimento — Integração Notion</h2>
+        <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>
+          Sincronize os bancos do Notion para o Supabase. As telas usam os dados sincronizados para gerar insights, recomendações e contexto.
+        </p>
+      </div>
+
+      {saveMsg && (
+        <div className="px-4 py-2.5 rounded-lg text-sm font-medium" style={{ backgroundColor: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', color: '#22C55E' }}>
+          {saveMsg}
+        </div>
+      )}
+
+      {/* Setup instructions */}
+      <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.15)' }}>
+        <p className="text-xs font-semibold text-blue-400 mb-2">Como configurar</p>
+        <ol className="text-xs space-y-1" style={{ color: '#94A3B8' }}>
+          <li>1. Adicione <code className="px-1 py-0.5 rounded text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>NOTION_API_KEY</code> nas variáveis de ambiente do projeto.</li>
+          <li>2. Compartilhe cada banco do Notion com sua integração.</li>
+          <li>3. Cole o ID de cada banco abaixo (URL do Notion: notion.so/workspace/<strong>ID_AQUI</strong>?v=...).</li>
+          <li>4. Clique em Sincronizar para importar os dados para o Supabase.</li>
+        </ol>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-10">
+          <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {sources.map((source) => (
+            <div key={source.id} style={panelCard} className="p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-semibold text-white">{source.source_name}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: `${statusColor[source.sync_status] || '#64748B'}14`, color: statusColor[source.sync_status] || '#64748B', border: `1px solid ${statusColor[source.sync_status] || '#64748B'}30` }}>
+                      {statusLabel[source.sync_status] || source.sync_status}
+                    </span>
+                    {source.records_synced > 0 && (
+                      <span className="text-xs" style={{ color: '#475569' }}>{source.records_synced} registros</span>
+                    )}
+                  </div>
+                  {source.last_sync_at && (
+                    <p className="text-xs" style={{ color: '#475569' }}>
+                      Última sincronização: {new Date(source.last_sync_at).toLocaleString('pt-BR')}
+                    </p>
+                  )}
+                  {source.error_message && (
+                    <p className="text-xs mt-1" style={{ color: '#EF4444' }}>Erro: {source.error_message}</p>
+                  )}
+
+                  {/* DB ID input */}
+                  {editingSource?.id === source.id ? (
+                    <div className="flex items-center gap-2 mt-3">
+                      <input
+                        value={dbIdInput}
+                        onChange={(e) => setDbIdInput(e.target.value)}
+                        placeholder="ID do banco Notion (ex: abc123def456...)"
+                        className="flex-1 px-3 py-2 rounded-lg text-xs text-white outline-none"
+                        style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                      />
+                      <button onClick={handleSaveDbId} className="px-3 py-2 rounded-lg text-xs font-medium text-white" style={{ backgroundColor: '#1E40AF' }}>Salvar</button>
+                      <button onClick={() => setEditingSource(null)} className="px-3 py-2 rounded-lg text-xs font-medium" style={{ color: '#64748B', border: '1px solid rgba(255,255,255,0.06)' }}>Cancelar</button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-xs font-mono" style={{ color: source.notion_database_id ? '#94A3B8' : '#475569' }}>
+                        {source.notion_database_id ? `${source.notion_database_id.slice(0, 8)}...${source.notion_database_id.slice(-4)}` : 'ID não configurado'}
+                      </span>
+                      <button
+                        onClick={() => { setEditingSource(source); setDbIdInput(source.notion_database_id || ''); }}
+                        className="text-xs px-2 py-0.5 rounded transition-colors"
+                        style={{ color: '#3B82F6', border: '1px solid rgba(59,130,246,0.2)' }}
+                      >
+                        {source.notion_database_id ? 'Editar ID' : 'Configurar ID'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => handleSync(source)}
+                  disabled={syncing === source.id || !source.notion_database_id}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all disabled:opacity-40 flex-shrink-0"
+                  style={{ backgroundColor: 'rgba(59,130,246,0.1)', color: '#60A5FA', border: '1px solid rgba(59,130,246,0.2)' }}
+                >
+                  {syncing === source.id ? (
+                    <><Loader2 size={12} className="animate-spin" /> Sincronizando...</>
+                  ) : (
+                    <><RefreshCw size={12} /> Sincronizar</>
+                  )}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="rounded-xl p-4" style={{ backgroundColor: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.12)' }}>
+        <p className="text-xs font-semibold mb-1" style={{ color: '#F59E0B' }}>Segurança</p>
+        <p className="text-xs" style={{ color: '#64748B' }}>
+          O token do Notion nunca é exposto no frontend. Todas as chamadas à API do Notion são feitas server-side via rota <code className="px-1 py-0.5 rounded" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>/api/admin/sync-notion</code>. Apenas administradores podem executar sincronizações.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 function ConfiguracoesContent() {
@@ -1498,6 +1711,7 @@ function ConfiguracoesContent() {
     { id: 'escopos', label: 'Escopos', icon: <Globe size={14} /> },
     { id: 'logs', label: 'Logs de Acesso', icon: <History size={14} />, badge: permLogs.length },
     { id: 'auditoria', label: 'Auditoria RBAC', icon: <ShieldCheck size={14} /> },
+    { id: 'notion', label: 'Base Notion', icon: <Database size={14} /> },
   ];
 
   // RBAC matrix filtered pages
@@ -2045,6 +2259,11 @@ function ConfiguracoesContent() {
             </p>
           </div>
         </div>
+      )}
+
+      {/* ── TAB: Base Notion ── */}
+      {activeTab === 'notion' && (
+        <NotionSyncPanel />
       )}
 
       {/* Enterprise Edit Access Side Panel */}
