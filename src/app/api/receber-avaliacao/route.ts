@@ -9,8 +9,28 @@ import {
 } from '@/lib/normalizers/endpointAdapter';
 import type { NormalizedPayload } from '@/lib/normalizers/normalizePayload';
 
+// ─── Local integration typing ────────────────────────────────────────────────
+// Minimal local contracts only for this route. They avoid Supabase `never`
+// inference while preserving the existing runtime payload and persistence logic.
+type IntegrationServiceClient = any;
+
+interface IntegrationTokenRow {
+  id: string;
+  is_active?: boolean;
+  expires_at?: string | null;
+  label?: string | null;
+}
+
+interface IntegrationRequestLogRow { id: string }
+interface AnalistaRow { id: string }
+interface CycleRow { id: string }
+interface FeedbackRow { id: string }
+interface CycleScoreRow { id?: string; nota_final_qa?: number; iepc_total?: number; total_ncs?: number }
+interface FeedbackPdiRow { id?: string; feedback_id?: string; analista_id?: string | null }
+interface NcRecordRow { id?: string; periodo?: string; analista?: string; tipo_nc?: string }
+
 // ─── Service-role Supabase client (bypasses RLS) ─────────────────────────────
-function getServiceClient() {
+function getServiceClient(): IntegrationServiceClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceKey) {
@@ -18,7 +38,7 @@ function getServiceClient() {
   }
   return createSupabaseClient(url, serviceKey, {
     auth: { persistSession: false },
-  });
+  }) as IntegrationServiceClient;
 }
 
 // ─── Types — NEW payload contract from Lovable ────────────────────────────────
@@ -117,12 +137,17 @@ interface NewPayloadFeedbackBlocks {
 interface NewPayloadPDI {
   objetivo?: string;
   acao?: string;
+  resultadoEsperado?: string;
+  resultado_esperado?: string;
+  objetivo_desenvolvimento?: string;
+  acao_desenvolvimento?: string;
+  acao_esperada?: string;
   prazo?: string;
+  responsavel?: string;
   status?: string;
   // old format
   acoes?: string[];
   metas?: string[];
-  responsavel?: string;
 }
 
 interface NewPayloadHistorico {
@@ -187,6 +212,7 @@ interface ParsedPdiItem {
   acao?: string;
   acao_desenvolvimento?: string;
   resultado_esperado?: string;
+  resultadoEsperado?: string;
   prazo?: string;
   status?: string;
   acoes?: string[];
@@ -317,7 +343,7 @@ function parseCriteriosArray(criterios: NewPayloadCriterio[]): Record<string, { 
 // ─── Token validation ───────────────────────────────────────────────────────[...]
 
 async function validateToken(
-  supabase: ReturnType<typeof createSupabaseClient>,
+  supabase: IntegrationServiceClient,
   authHeader: string | null
 ): Promise<{ valid: boolean; error?: string }> {
   console.log('[receber-avaliacao] Raw Authorization header:', authHeader);
@@ -356,14 +382,16 @@ async function validateToken(
     return { valid: false, error: 'Invalid or inactive token' };
   }
 
-  if (tokenRow.expires_at && new Date(tokenRow.expires_at) < new Date()) {
+  const tokenData = tokenRow as IntegrationTokenRow;
+
+  if (tokenData.expires_at && new Date(tokenData.expires_at) < new Date()) {
     return { valid: false, error: 'Token expired' };
   }
 
   await supabase
     .from('integration_tokens')
     .update({ last_used_at: new Date().toISOString() })
-    .eq('id', tokenRow.id);
+    .eq('id', tokenData.id);
 
   return { valid: true };
 }
@@ -418,7 +446,7 @@ function validatePayload(body: unknown): { valid: boolean; errors: string[] } {
 // ─── Duplicate detection ──────────────────────────────────────────────────────
 
 async function checkDuplicate(
-  supabase: ReturnType<typeof createSupabaseClient>,
+  supabase: IntegrationServiceClient,
   analista: string,
   ciclo: string,
   payloadHash: string
@@ -433,13 +461,13 @@ async function checkDuplicate(
     .eq('status', 'success')
     .gte('received_at', fiveMinutesAgo)
     .maybeSingle();
-  return !!data;
+  return !!(data as IntegrationRequestLogRow | null);
 }
 
 // ─── Find or create analista record ──────────────────────────────────────────
 
 async function findOrCreateAnalista(
-  supabase: ReturnType<typeof createSupabaseClient>,
+  supabase: IntegrationServiceClient,
   nome: string,
   email: string | null,
   equipe: string,
@@ -452,7 +480,7 @@ async function findOrCreateAnalista(
         .select('id')
         .eq('email', email.toLowerCase())
         .maybeSingle();
-      if (byEmail) return byEmail.id;
+      if (byEmail) return (byEmail as AnalistaRow).id;
     }
 
     const { data: byName } = await supabase
@@ -460,7 +488,7 @@ async function findOrCreateAnalista(
       .select('id')
       .ilike('nome', nome.trim())
       .maybeSingle();
-    if (byName) return byName.id;
+    if (byName) return (byName as AnalistaRow).id;
 
     const parts = nome.trim().split(' ');
     if (parts.length >= 2) {
@@ -469,7 +497,7 @@ async function findOrCreateAnalista(
         .select('id')
         .ilike('nome', `%${parts[0]}%${parts[parts.length - 1]}%`)
         .maybeSingle();
-      if (byPartial) return byPartial.id;
+      if (byPartial) return (byPartial as AnalistaRow).id;
     }
 
     const { data: created } = await supabase
@@ -485,7 +513,7 @@ async function findOrCreateAnalista(
       .select('id')
       .single();
 
-    return created?.id || null;
+    return (created as AnalistaRow | null)?.id || null;
   } catch (err) {
     console.error('[receber-avaliacao] findOrCreateAnalista error:', err);
     return null;
@@ -497,7 +525,7 @@ async function findOrCreateAnalista(
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   let logId: string | null = null;
-  let supabase: ReturnType<typeof createSupabaseClient>;
+  let supabase: IntegrationServiceClient;
 
   try {
     supabase = getServiceClient();
@@ -940,13 +968,14 @@ export async function POST(request: NextRequest) {
       .eq('periodo', norm.cicloNome);
 
     if (allScores && allScores.length > 0) {
-      const qaMedia = allScores.reduce((s, r) => s + parseNum(r.nota_final_qa), 0) / allScores.length;
-      const iepcMedia = allScores.reduce((s, r) => s + parseNum(r.iepc_total), 0) / allScores.length;
-      const totalNCs = allScores.reduce((s, r) => s + (r.total_ncs ?? 0), 0);
+      const scoreRows = allScores as CycleScoreRow[];
+      const qaMedia = scoreRows.reduce((s: number, r: CycleScoreRow) => s + parseNum(r.nota_final_qa), 0) / scoreRows.length;
+      const iepcMedia = scoreRows.reduce((s: number, r: CycleScoreRow) => s + parseNum(r.iepc_total), 0) / scoreRows.length;
+      const totalNCs = scoreRows.reduce((s: number, r: CycleScoreRow) => s + (r.total_ncs ?? 0), 0);
       await supabase.from('cycle_summaries').upsert(
         {
           periodo: norm.cicloNome,
-          total_analistas: allScores.length,
+          total_analistas: scoreRows.length,
           qa_media: Math.round(qaMedia * 100) / 100,
           iepc_media: Math.round(iepcMedia * 100) / 100,
           total_ncs: totalNCs,
@@ -992,7 +1021,7 @@ export async function POST(request: NextRequest) {
 
 // ─── Helper: update log entry ─────────────────────────────────────────────────
 async function updateLog(
-  supabase: ReturnType<typeof createSupabaseClient>,
+  supabase: IntegrationServiceClient,
   logId: string | null,
   status: string,
   errorMessage: string | null,
