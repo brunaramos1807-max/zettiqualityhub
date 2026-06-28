@@ -33,6 +33,45 @@ function generateMensagemEvolutiva(analista: string, qa: number, iepc: number, n
   return `${analista || 'O analista'} apresentou desempenho ${qaLabel} em QA (${qa > 0 ? qa.toFixed(1) : '—'}) com aderência ${iepcLabel} no IEPC (${iepc > 0 ? iepc.toFixed(1) + '%' : '—'}).${ncText}${elogioText} O presente PDI visa estruturar o desenvolvimento contínuo, fortalecendo competências técnicas e comportamentais para evolução sustentada nos próximos ciclos.`;
 }
 
+function extractPdiObjectivesFromSnapshot(snapshot: any): ObjectiveBlock[] {
+  const blocks = snapshot?.feedback_blocks || snapshot?.feedbackBlocks || {};
+  const blockObjectives = blocks?.pdi_objetivos || blocks?.pdiObjetivos || [];
+  if (Array.isArray(blockObjectives) && blockObjectives.length > 0) {
+    return blockObjectives;
+  }
+
+  const rawPdi = snapshot?.pdi;
+  if (Array.isArray(rawPdi)) {
+    return rawPdi
+      .map((item: any) => ({
+        id: Math.random().toString(36).slice(2),
+        categoria: item.categoria || 'PDI',
+        objetivo: item.objetivo || item.objetivo_desenvolvimento || '',
+        acao_esperada: item.acao_esperada || item.acao || item.acao_desenvolvimento || '',
+        resultado_esperado: item.resultado_esperado || item.resultadoEsperado || '',
+        status: 'nao_cumprido' as const,
+        observacao_coordenador: '',
+      }))
+      .filter((item: ObjectiveBlock) => item.objetivo || item.acao_esperada);
+  }
+
+  if (rawPdi && typeof rawPdi === 'object') {
+    const acoes = Array.isArray(rawPdi.acoes) ? rawPdi.acoes : [];
+    const metas = Array.isArray(rawPdi.metas) ? rawPdi.metas : [];
+    return acoes.map((acao: string, index: number) => ({
+      id: Math.random().toString(36).slice(2),
+      categoria: 'PDI',
+      objetivo: acao,
+      acao_esperada: acao,
+      resultado_esperado: metas[index] || '',
+      status: 'nao_cumprido' as const,
+      observacao_coordenador: '',
+    }));
+  }
+
+  return [];
+}
+
 interface PdiItem {
   id: string;
   objetivo: string;
@@ -522,7 +561,7 @@ export default function FeedbackPdiPage() {
         for (const fb of feedbacksWithPdi) {
           if (existingFeedbackIds.has(fb.id)) continue;
           const snap = Array.isArray(fb.snapshot_json_completo) ? fb.snapshot_json_completo[0] : (fb.snapshot_json_completo || {});
-          const pdiObjs = snap?.feedback_blocks?.pdi_objetivos;
+          const pdiObjs = extractPdiObjectivesFromSnapshot(snap);
           if (!Array.isArray(pdiObjs) || pdiObjs.length === 0) continue;
           const hasObjective = pdiObjs.some((o: any) => o.objetivo?.trim());
           if (!hasObjective) continue;
