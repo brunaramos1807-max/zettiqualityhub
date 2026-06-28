@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import type { AuthChangeEvent, Session, User } from '@supabase/supabase-js';
 import { getCurrentSession, loginUser, logoutUser, seedDefaultAdmin, type SessionData, ADMIN_PERMISSIONS, DEFAULT_PERMISSIONS,  } from '@/lib/authSystem';
 import { createClient } from '@/lib/supabase/client';
 
@@ -368,7 +369,7 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
   );
 
   const applySupabaseUser = useCallback(
-    async (supaUser: any) => {
+    async (supaUser: User) => {
       const derived = buildSupabaseSession(supaUser);
       setSession(derived);
       startInactivityTimer();
@@ -461,7 +462,7 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
           clearTimeout(safetyTimer);
           setLoading(false);
 
-          const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+          const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, newSession: Session | null) => {
             if (event === 'SIGNED_IN' && newSession?.user) {
               // ── Whitelist check on every sign-in event ───────────────────
               const ok = await checkWhitelist(newSession.user.email || '');
@@ -531,7 +532,7 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
         }
 
         // Listen for auth state changes (handles Google OAuth redirect)
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, newSession: Session | null) => {
           if (event === 'SIGNED_IN' && newSession?.user) {
             // ── Whitelist check ──────────────────────────────────────────────
             const ok = await checkWhitelist(newSession.user.email || '');
