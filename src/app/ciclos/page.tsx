@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
-import { fetchCycleScores, fetchAllPeriodos, fetchNCRecords, fetchElogios, buildAnalystsFromScores, syncClosedCyclesFromSupabase, deletePeriodDataFromDB } from '@/lib/services/dataService';
+import { fetchCycleScores, fetchAllPeriodos, fetchNCRecords, fetchElogios, buildAnalystsFromScores, syncClosedCyclesFromSupabase, deletePeriodDataFromDB, sortPeriodosDesc } from '@/lib/services/dataService';
 import { createClient } from '@/lib/supabase/client';
 import { RefreshCw, Lock, Unlock, BarChart2, ChevronRight, Activity, CheckCircle, X, Clock, History, Loader2, Trash2, RotateCcw, Shield } from 'lucide-react';
 import Link from 'next/link';
@@ -10,6 +10,17 @@ import { useSystemAuth } from '@/contexts/SystemAuthContext';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type CycleStatus = 'aberto' | 'em_andamento' | 'fechado' | 'reaberto';
+
+interface ImportCycleRow {
+  id?: string;
+  periodo: string;
+  is_closed?: boolean | null;
+  status?: CycleStatus | string | null;
+  closed_at?: string | null;
+  closed_by_email?: string | null;
+  reopened_at?: string | null;
+  reopened_by_email?: string | null;
+}
 
 interface CycleSummary {
   periodo: string;
@@ -45,6 +56,20 @@ const STATUS_CONFIG: Record<CycleStatus, { label: string; color: string; bg: str
   fechado: { label: 'Fechado', color: '#22C55E', bg: 'rgba(34,197,94,0.1)', border: 'rgba(34,197,94,0.25)', icon: <Lock size={10} /> },
   reaberto: { label: 'Reaberto', color: '#A78BFA', bg: 'rgba(167,139,250,0.1)', border: 'rgba(167,139,250,0.25)', icon: <RotateCcw size={10} /> },
 };
+
+function normalizeCycleStatus(cycle?: ImportCycleRow): CycleStatus {
+  if (!cycle) return 'aberto';
+  if (cycle.is_closed || cycle.status === 'fechado') return 'fechado';
+  if (cycle.status === 'reaberto') return 'reaberto';
+  if (cycle.status === 'em_andamento') return 'em_andamento';
+  return 'aberto';
+}
+
+function parsePeriodoOrder(periodo: string): number {
+  const [month, year] = periodo.split('/').map((part) => Number(part));
+  if (!month || !year) return 0;
+  return year * 100 + month;
+}
 
 // ─── Close Cycle Modal ────────────────────────────────────────────────────────
 
@@ -279,7 +304,7 @@ function CleanupModal({ onClose, onSuccess, actorEmail }: CleanupModalProps) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 function CiclosContent() {
-  const { session, isAdmin } = useSystemAuth();
+  const { session, isAdmin, canCloseCycle } = useSystemAuth();
   const [cycles, setCycles] = useState<CycleSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -295,8 +320,12 @@ function CiclosContent() {
   const actorEmail = session?.email || 'sistema';
   const actorName = session?.nome || 'Sistema';
 
-  // Can close/reopen: Admin or Coordenadora Qualidade
-  const canManageCycles = isAdmin || session?.cargo === 'Administrador' || session?.cargo === 'Coordenadora Qualidade' || session?.cargo === 'Coordenador Geral';
+  // Can close/reopen: Admin, explicit cycle permission, or legacy quality/coordinator cargos.
+  const sessionCargo = String(session?.cargo || '');
+  const canManageCycles =
+    isAdmin ||
+    canCloseCycle() ||
+    ['Administrador', 'Coordenadora Qualidade', 'Coordenador Geral'].includes(sessionCargo);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -309,17 +338,29 @@ function CiclosContent() {
       ]);
 
       const supabase = createClient();
-      let cycleData: Record<string, any> = {};
+      let cycleData: Record<string, ImportCycleRow> = {};
       if (supabase) {
         const { data } = await supabase.from('import_cycles').select('periodo, is_closed, status, closed_at, closed_by_email, reopened_at, reopened_by_email, id');
         if (data) {
-          data.forEach((d: any) => { cycleData[d.periodo] = d; });
-          // Sync Supabase closed status into localStorage cache so isCycleClosed() works everywhere
-          syncClosedCyclesFromSupabase(data.map((d: any) => ({ periodo: d.periodo, is_closed: !!d.is_closed, closed_at: d.closed_at, status: d.status })));
+          (data as ImportCycleRow[]).forEach((d) => { cycleData[d.periodo] = d; });
         }
       }
 
-      const summaries: CycleSummary[] = periodos.map((periodo) => {
+      // Supabase/import_cycles is authoritative for status. Periods with scores but
+      // no import_cycles row are treated as open, which also clears stale LS cache.
+      syncClosedCyclesFromSupabase(periodos.map((periodo) => {
+        const cd = cycleData[periodo];
+        const status = normalizeCycleStatus(cd);
+        return {
+          periodo,
+          is_closed: status === 'fechado',
+          closed_at: cd?.closed_at || undefined,
+          status,
+        };
+      }));
+
+      const orderedPeriodos = sortPeriodosDesc(periodos);
+      const summaries: CycleSummary[] = orderedPeriodos.map((periodo) => {
         const pScores = scores.filter((s: any) => s.periodo === periodo);
         const pNCs = ncs.filter((n: any) => n.periodo === periodo);
         const pElogios = elogios.filter((e: any) => e.periodo === periodo);
@@ -327,19 +368,19 @@ function CiclosContent() {
         const qa = analysts.length > 0 ? analysts.reduce((s: number, a: any) => s + a.qaScore, 0) / analysts.length : 0;
         const iepc = analysts.length > 0 ? analysts.reduce((s: number, a: any) => s + a.iepcScore, 0) / analysts.length : 0;
         const cd = cycleData[periodo];
-        const isClosed = cd?.is_closed || false;
-        let status: CycleStatus = cd?.status || (isClosed ? 'fechado' : 'aberto');
+        const status = normalizeCycleStatus(cd);
+        const isClosed = status === 'fechado';
         return {
           periodo, analistas: analysts.length,
           qa: parseFloat(qa.toFixed(2)), iepc: parseFloat(iepc.toFixed(2)),
           ncs: pNCs.length, elogios: pElogios.length,
           isClosed, status, cycleId: cd?.id,
-          closed_at: cd?.closed_at, closed_by_email: cd?.closed_by_email,
-          reopened_at: cd?.reopened_at, reopened_by_email: cd?.reopened_by_email,
+          closed_at: cd?.closed_at || undefined, closed_by_email: cd?.closed_by_email || undefined,
+          reopened_at: cd?.reopened_at || undefined, reopened_by_email: cd?.reopened_by_email || undefined,
         };
       });
 
-      setCycles([...summaries].reverse());
+      setCycles(summaries);
     } catch { /* ignore */ }
     setLoading(false);
   }, []);
@@ -368,20 +409,28 @@ function CiclosContent() {
       const supabase = createClient();
       if (supabase) {
         const now = new Date().toISOString();
-        // Use upsert so it works even if no import_cycles row exists yet for this period
-        await supabase.from('import_cycles').upsert(
-          {
-            periodo,
-            is_closed: true,
-            status: 'fechado',
-            closed_at: now,
-            closed_by_email: actorEmail,
-            closure_notes: notes,
-            file_name: 'Ciclo',
-            record_count: 0,
-          },
-          { onConflict: 'periodo' }
-        );
+        const existingCycle = cycles.find((c) => c.periodo === periodo);
+        const closePayload = {
+          is_closed: true,
+          status: 'fechado',
+          closed_at: now,
+          closed_by_email: actorEmail,
+          closure_notes: notes,
+        };
+
+        if (existingCycle?.cycleId) {
+          await supabase.from('import_cycles').update(closePayload).eq('id', existingCycle.cycleId);
+        } else {
+          await supabase.from('import_cycles').upsert(
+            {
+              periodo,
+              ...closePayload,
+              file_name: 'Ciclo',
+              record_count: 0,
+            },
+            { onConflict: 'periodo' }
+          );
+        }
 
         // Log to closure history
         const cycle = cycles.find((c) => c.periodo === periodo);
@@ -411,19 +460,27 @@ function CiclosContent() {
       const supabase = createClient();
       if (supabase) {
         const now = new Date().toISOString();
-        // Use upsert so it works even if no import_cycles row exists yet for this period
-        await supabase.from('import_cycles').upsert(
-          {
-            periodo,
-            is_closed: false,
-            status: 'reaberto',
-            reopened_at: now,
-            reopened_by_email: actorEmail,
-            file_name: 'Ciclo',
-            record_count: 0,
-          },
-          { onConflict: 'periodo' }
-        );
+        const existingCycle = cycles.find((c) => c.periodo === periodo);
+        const reopenPayload = {
+          is_closed: false,
+          status: 'reaberto',
+          reopened_at: now,
+          reopened_by_email: actorEmail,
+        };
+
+        if (existingCycle?.cycleId) {
+          await supabase.from('import_cycles').update(reopenPayload).eq('id', existingCycle.cycleId);
+        } else {
+          await supabase.from('import_cycles').upsert(
+            {
+              periodo,
+              ...reopenPayload,
+              file_name: 'Ciclo',
+              record_count: 0,
+            },
+            { onConflict: 'periodo' }
+          );
+        }
 
         await supabase.from('cycle_closure_history').insert({
           periodo, action: 'reaberto',
@@ -479,6 +536,15 @@ function CiclosContent() {
     editado: { label: 'Editado', color: '#F59E0B' },
   };
 
+  const inconsistentCycles = cycles.filter((cycle) =>
+    cycle.status === 'fechado' &&
+    cycles.some((candidate) =>
+      candidate.periodo !== cycle.periodo &&
+      candidate.status !== 'fechado' &&
+      parsePeriodoOrder(candidate.periodo) < parsePeriodoOrder(cycle.periodo)
+    )
+  );
+
   return (
     <div className="p-6 max-w-screen-2xl mx-auto w-full">
       <div className="flex items-start justify-between mb-6">
@@ -518,6 +584,15 @@ function CiclosContent() {
           </div>
         ))}
       </div>
+
+      {inconsistentCycles.length > 0 && (
+        <div className="mb-6 rounded-xl p-4" style={{ backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.18)' }}>
+          <p className="text-sm font-semibold" style={{ color: '#F59E0B' }}>⚠️ Possível inconsistência de ciclo</p>
+          <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
+            Existe ciclo mais recente fechado enquanto ciclo anterior permanece aberto. Use as ações confirmadas desta tela para reabrir o ciclo mais recente ou fechar o ciclo anterior, sem alterar dados históricos.
+          </p>
+        </div>
+      )}
 
       {/* Closure History Panel */}
       {showHistory && (
@@ -591,6 +666,11 @@ function CiclosContent() {
                         {isClosed && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs" style={{ backgroundColor: 'rgba(34,197,94,0.08)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.15)' }}>
                             <Shield size={9} /> Bloqueado
+                          </span>
+                        )}
+                        {cycle.periodo === cycles[0]?.periodo && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs" style={{ backgroundColor: 'rgba(56,189,248,0.08)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.15)' }}>
+                            Ciclo mais recente
                           </span>
                         )}
                       </div>
