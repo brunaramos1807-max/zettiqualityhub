@@ -74,7 +74,9 @@ export default function NonConformitiesGuide() {
   const [expandedGuide, setExpandedGuide] = useState<string | null>('guide-1');
   const [activeTab, setActiveTab] = useState<'registros' | 'guia'>('registros');
 
-  const filteredNCs = NC_RECORDS.filter((nc) =>
+  const safeNCRecords = NC_RECORDS ?? [];
+
+  const filteredNCs = safeNCRecords.filter((nc) =>
     searchTerm === '' ||
     nc.analista.toLowerCase().includes(searchTerm.toLowerCase()) ||
     nc.protocolo.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -84,7 +86,7 @@ export default function NonConformitiesGuide() {
 
   const ncByType = NC_TYPES.map((t) => ({
     ...t,
-    count: NC_RECORDS.filter((nc) => nc.tipo === t.tipo).length,
+    count: safeNCRecords.filter((nc) => nc.tipo === t.tipo).length,
   }));
 
   return (
@@ -98,7 +100,7 @@ export default function NonConformitiesGuide() {
           <div>
             <h3 className="font-display text-base font-semibold text-white">Não Conformidades</h3>
             <p className="text-xs mt-0.5" style={{ color: '#8B949E' }}>
-              {NC_RECORDS.length} registros no ciclo · {NC_RECORDS.reduce((s, nc) => s + nc.pontosDescontados, 0)} pts deduzidos
+              {safeNCRecords.length} registros no ciclo · {safeNCRecords.reduce((s: number, nc: any) => s + (nc.pontosDescontados ?? 0), 0)} pts deduzidos
             </p>
           </div>
         </div>
