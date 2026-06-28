@@ -19,6 +19,13 @@ interface EquipeMedia {
   total: number;
 }
 
+interface FeedbackAnalyticsRow {
+  qa_score: number | null;
+  iepc_score: number | null;
+  equipe: string | null;
+  analistas: { nome: string } | null;
+}
+
 export default function PeopleAnalyticsPage() {
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
@@ -40,17 +47,18 @@ export default function PeopleAnalyticsPage() {
 
       if (!data) { setLoading(false); return; }
 
-      const list = data.map((d) => ({
-        nome: (d.analistas as { nome: string } | null)?.nome || 'Desconhecido',
+      const feedbackRows = data as FeedbackAnalyticsRow[];
+      const list: AnalyticsData[] = feedbackRows.map((d: FeedbackAnalyticsRow) => ({
+        nome: d.analistas?.nome || 'Desconhecido',
         qa_score: d.qa_score || 0,
         iepc_score: d.iepc_score || 0,
         equipe: d.equipe || 'Sem equipe',
       }));
 
-      const eq = [...new Set(list.map((l) => l.equipe))];
+      const eq: string[] = [...new Set(list.map((l: AnalyticsData) => l.equipe))];
       setEquipes(eq);
 
-      const filtered = filterEquipe ? list.filter((l) => l.equipe === filterEquipe) : list;
+      const filtered: AnalyticsData[] = filterEquipe ? list.filter((l: AnalyticsData) => l.equipe === filterEquipe) : list;
 
       // Top performers by QA
       const sorted = [...filtered].sort((a, b) => b.qa_score - a.qa_score).slice(0, 10);
@@ -58,14 +66,14 @@ export default function PeopleAnalyticsPage() {
 
       // Global averages
       if (filtered.length > 0) {
-        setMediaGlobalQa(Math.round(filtered.reduce((s, l) => s + l.qa_score, 0) / filtered.length * 10) / 10);
-        setMediaGlobalIepc(Math.round(filtered.reduce((s, l) => s + l.iepc_score, 0) / filtered.length * 10) / 10);
+        setMediaGlobalQa(Math.round(filtered.reduce((s: number, l: AnalyticsData) => s + l.qa_score, 0) / filtered.length * 10) / 10);
+        setMediaGlobalIepc(Math.round(filtered.reduce((s: number, l: AnalyticsData) => s + l.iepc_score, 0) / filtered.length * 10) / 10);
       }
       setTotalFeedbacks(filtered.length);
 
       // Per equipe
       const equipeMap: Record<string, { qa: number[]; iepc: number[] }> = {};
-      filtered.forEach((l) => {
+      filtered.forEach((l: AnalyticsData) => {
         if (!equipeMap[l.equipe]) equipeMap[l.equipe] = { qa: [], iepc: [] };
         equipeMap[l.equipe].qa.push(l.qa_score);
         equipeMap[l.equipe].iepc.push(l.iepc_score);
