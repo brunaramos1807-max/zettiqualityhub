@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import type { AuthChangeEvent, Session, User } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
 import { Loader2, ShieldX } from 'lucide-react';
 import { useState } from 'react';
@@ -63,7 +64,7 @@ export default function AuthCallbackPage() {
           }
         } else {
           // No code — might be hash-based flow, let onAuthStateChange handle it
-          const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+          const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
             if (event === 'SIGNED_IN' && session) {
               const allowed = await checkAndEnsureProfile(supabase, session.user);
               subscription?.unsubscribe();
@@ -130,7 +131,7 @@ export default function AuthCallbackPage() {
 }
 
 // Check if user is pre-registered; if yes, ensure profile exists. Returns true if allowed.
-async function checkAndEnsureProfile(supabase: any, user: any): Promise<boolean> {
+async function checkAndEnsureProfile(supabase: any, user: User): Promise<boolean> {
   if (!user?.id || !user?.email) return false;
 
   const email = user.email.toLowerCase();
@@ -177,7 +178,7 @@ async function checkAndEnsureProfile(supabase: any, user: any): Promise<boolean>
 }
 
 // Ensure user profile exists in user_profiles table
-async function ensureUserProfile(supabase: any, user: any, preReg: any) {
+async function ensureUserProfile(supabase: any, user: User, preReg: any) {
   if (!user?.id || !user?.email) return;
   try {
     const email = user.email.toLowerCase();
