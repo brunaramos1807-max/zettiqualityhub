@@ -28,6 +28,7 @@ interface FeedbackRow { id: string }
 interface CycleScoreRow { id?: string; nota_final_qa?: number; iepc_total?: number; total_ncs?: number }
 interface FeedbackPdiRow { id?: string; feedback_id?: string; analista_id?: string | null }
 interface NcRecordRow { id?: string; periodo?: string; analista?: string; tipo_nc?: string }
+interface PdiRecordRow { id?: string }
 
 // ─── Service-role Supabase client (bypasses RLS) ─────────────────────────────
 function getServiceClient(): IntegrationServiceClient {
@@ -464,6 +465,89 @@ async function checkDuplicate(
   return !!(data as IntegrationRequestLogRow | null);
 }
 
+async function findExistingCycleScore(
+  supabase: IntegrationServiceClient,
+  periodo: string,
+  analista: string,
+  squad: string,
+  idempotencyKey: string | null,
+  allowConsolidatedFallback: boolean
+): Promise<CycleScoreRow | null> {
+  let query = supabase
+    .from('cycle_scores')
+    .select('id')
+    .eq('periodo', periodo)
+    .eq('analista', analista)
+    .eq('squad', squad);
+
+  if (idempotencyKey) {
+    query = query.eq('protocolo', idempotencyKey);
+  } else if (allowConsolidatedFallback) {
+    query = query.is('protocolo', null);
+  } else {
+    return null;
+  }
+
+  const { data } = await query.order('created_at', { ascending: false }).limit(1).maybeSingle();
+  return (data as CycleScoreRow | null) || null;
+}
+
+function extractEvaluationIdempotencyKey(rawPayload: AvaliacaoPayload): string | null {
+  const candidateValues = [
+    (rawPayload as any).external_id,
+    (rawPayload as any).source_id,
+    (rawPayload as any).avaliacao_id,
+    (rawPayload as any).evaluation_id,
+    (rawPayload as any).id_avaliacao,
+    (rawPayload as any).atendimento_id,
+    (rawPayload as any).ticket_id,
+    rawPayload.protocolo,
+    (rawPayload as any).sup,
+  ];
+
+  for (const value of candidateValues) {
+    if (value != null && String(value).trim()) return String(value).trim();
+  }
+
+  if (Array.isArray(rawPayload.atendimentos) && rawPayload.atendimentos.length === 1) {
+    const atendimento = rawPayload.atendimentos[0] as NewPayloadAtendimento;
+    const atendimentoKey = atendimento.protocolo || atendimento.sup;
+    if (atendimentoKey && String(atendimentoKey).trim()) return String(atendimentoKey).trim();
+  }
+
+  return null;
+}
+
+function isConsolidatedEvaluationPayload(rawPayload: AvaliacaoPayload, idempotencyKey: string | null): boolean {
+  if (idempotencyKey) return false;
+  if (typeof rawPayload.atendimentos === 'number') return true;
+  if (Array.isArray(rawPayload.atendimentos)) return rawPayload.atendimentos.length !== 1;
+  return true;
+}
+
+async function savePdiRecord(
+  supabase: IntegrationServiceClient,
+  analista: string,
+  periodo: string,
+  pdiRow: Record<string, unknown>
+): Promise<void> {
+  const { data: existingPdi } = await supabase
+    .from('pdi_records')
+    .select('id')
+    .eq('analista', analista)
+    .eq('periodo', periodo)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const existingId = (existingPdi as PdiRecordRow | null)?.id;
+  if (existingId) {
+    await supabase.from('pdi_records').update(pdiRow).eq('id', existingId);
+  } else {
+    await supabase.from('pdi_records').insert(pdiRow);
+  }
+}
+
 // ─── Find or create analista record ──────────────────────────────────────────
 
 async function findOrCreateAnalista(
@@ -652,27 +736,58 @@ export async function POST(request: NextRequest) {
   // ── 6. Duplicate detection ───────────────────────────────────────────────
   const isDuplicate = await checkDuplicate(supabase, norm.analistaNome, norm.cicloNome, payloadHash);
   if (isDuplicate) {
-    if (logId) await supabase.from('integration_request_logs').update({ status: 'duplicate', duration_ms: Date.now() - startTime }).eq('id', logId);
-    return NextResponse.json({ success: false, error: 'Duplicate request detected.' }, { status: 409 });
+    console.log('[receber-avaliacao] Duplicate payload hash detected; reprocessing idempotently instead of creating duplicates.');
+    if (logId) {
+      await supabase
+        .from('integration_request_logs')
+        .update({ status: 'duplicate_reprocessing', duration_ms: Date.now() - startTime })
+        .eq('id', logId);
+    }
   }
 
-  // ── 7. Upsert import_cycles ──────────────────────────────────────────────
-  const { data: cycleData, error: cycleError } = await supabase
+  // ── 7. Upsert import_cycles without overwriting manual close/reopen status ──
+  const { data: existingCycleStatus } = await supabase
     .from('import_cycles')
-    .upsert(
-      {
+    .select('id, is_closed, status')
+    .eq('periodo', norm.cicloNome)
+    .maybeSingle();
+
+  let cycleData: CycleRow | null = (existingCycleStatus as CycleRow | null) || null;
+  let cycleError: { message: string } | null = null;
+
+  if ((existingCycleStatus as CycleRow | null)?.id) {
+    const updateResult = await supabase
+      .from('import_cycles')
+      .update({
+        file_name: `integration_lovable_${norm.cicloNome}`,
+        record_count: 1,
+        import_status: 'completed',
+        data_type: 'integration',
+        metadata: { source: 'lovable', last_updated: new Date().toISOString() },
+      })
+      .eq('id', (existingCycleStatus as CycleRow).id)
+      .select('id')
+      .single();
+    cycleData = updateResult.data as CycleRow | null;
+    cycleError = updateResult.error;
+  } else {
+    const insertResult = await supabase
+      .from('import_cycles')
+      .insert({
         periodo: norm.cicloNome,
         file_name: `integration_lovable_${norm.cicloNome}`,
         record_count: 1,
         import_status: 'completed',
-        status: 'completed',
+        status: 'em_andamento',
+        is_closed: false,
         data_type: 'integration',
         metadata: { source: 'lovable', last_updated: new Date().toISOString() },
-      },
-      { onConflict: 'periodo' }
-    )
-    .select('id')
-    .single();
+      })
+      .select('id')
+      .single();
+    cycleData = insertResult.data as CycleRow | null;
+    cycleError = insertResult.error;
+  }
 
   if (cycleError) {
     await updateLog(supabase, logId, 'error', `cycle upsert: ${cycleError.message}`, startTime);
@@ -690,6 +805,8 @@ export async function POST(request: NextRequest) {
   }
 
   // ── 9B. SEÇÃO 3: Usar buildCycleScoresRow e pontosDeduzidosNC real ────────
+  const evaluationIdempotencyKey = extractEvaluationIdempotencyKey(rawPayload);
+  const allowConsolidatedFallback = isConsolidatedEvaluationPayload(rawPayload, evaluationIdempotencyKey);
   const scoreRow = {
     cycle_id: cycleId,
     periodo: norm.cicloNome,
@@ -715,7 +832,7 @@ export async function POST(request: NextRequest) {
     e5: parseNum(norm.pilaresIEPC[4]?.nota),
     tipo_demanda: rawPayload.tipo_demanda ?? null,
     qtd_atendimentos_avaliados: Array.isArray(rawPayload.atendimentos) ? rawPayload.atendimentos.length : (typeof rawPayload.atendimentos === 'number' ? rawPayload.atendimentos : 0),
-    protocolo: rawPayload.protocolo ?? null,
+    protocolo: evaluationIdempotencyKey,
     sintese_ia: null,
     tendencias: rawPayload.tendencias ?? null,
     reincidencia: rawPayload.reincidencia ?? null,
@@ -729,8 +846,27 @@ export async function POST(request: NextRequest) {
     is_manual: false,
   };
 
-  const { error: scoreError } = await supabase.from('cycle_scores').upsert(scoreRow, { onConflict: 'periodo,analista,squad' });
-  if (scoreError) {
+  const existingScore = await findExistingCycleScore(
+    supabase,
+    norm.cicloNome,
+    norm.analistaNome,
+    norm.squad,
+    evaluationIdempotencyKey,
+    allowConsolidatedFallback
+  );
+  if (!existingScore && !evaluationIdempotencyKey && !allowConsolidatedFallback && logId) {
+    await supabase
+      .from('integration_request_logs')
+      .update({ status: 'possible_duplicate_requires_review' })
+      .eq('id', logId);
+  }
+  if (existingScore?.id) {
+    const { error: scoreUpdateError } = await supabase.from('cycle_scores').update(scoreRow).eq('id', existingScore.id);
+    if (scoreUpdateError) {
+      await updateLog(supabase, logId, 'error', `scores update: ${scoreUpdateError.message}`, startTime);
+      return NextResponse.json({ success: false, error: `Failed to update evaluation score: ${scoreUpdateError.message}` }, { status: 500 });
+    }
+  } else {
     const { error: insertError } = await supabase.from('cycle_scores').insert(scoreRow);
     if (insertError) {
       await updateLog(supabase, logId, 'error', `scores insert: ${insertError.message}`, startTime);
@@ -935,7 +1071,7 @@ export async function POST(request: NextRequest) {
       source: 'integration',
       updated_at: new Date().toISOString(),
     };
-    await supabase.from('pdi_records').upsert(pdiRow, { onConflict: 'analista,periodo' });
+    await savePdiRecord(supabase, norm.analistaNome, norm.cicloNome, pdiRow);
   } else {
     // Legacy format: single object with acoes/metas
     const oldPdi = rawPayload.pdi as NewPayloadPDI | undefined;
@@ -956,7 +1092,7 @@ export async function POST(request: NextRequest) {
         source: 'integration',
         updated_at: new Date().toISOString(),
       };
-      await supabase.from('pdi_records').upsert(pdiRow, { onConflict: 'analista,periodo' });
+      await savePdiRecord(supabase, norm.analistaNome, norm.cicloNome, pdiRow);
     }
   }
 

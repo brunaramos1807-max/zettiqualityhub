@@ -48,6 +48,26 @@ interface ClosureHistoryEntry {
   created_at: string;
 }
 
+interface EvaluationCorrectionRow {
+  id: string;
+  periodo: string;
+  analista: string;
+  squad: string;
+  data_registro?: string | null;
+  nota_final_qa?: number | null;
+  iepc_total?: number | null;
+  total_ncs?: number | null;
+  source?: string | null;
+  protocolo?: string | null;
+  created_at?: string | null;
+  duplicateKey: string;
+  isDuplicate: boolean;
+  keepRecommended: boolean;
+  feedbackCount: number;
+  ncCount: number;
+  pdiCount: number;
+}
+
 // ─── Status Config ────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<CycleStatus, { label: string; color: string; bg: string; border: string; icon: React.ReactNode }> = {
@@ -316,6 +336,9 @@ function CiclosContent() {
   const [showCleanup, setShowCleanup] = useState(false);
   const [closureHistory, setClosureHistory] = useState<ClosureHistoryEntry[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [correctionPeriodo, setCorrectionPeriodo] = useState('');
+  const [correctionRows, setCorrectionRows] = useState<EvaluationCorrectionRow[]>([]);
+  const [correctionLoading, setCorrectionLoading] = useState(false);
 
   const actorEmail = session?.email || 'sistema';
   const actorName = session?.nome || 'Sistema';
@@ -394,6 +417,68 @@ function CiclosContent() {
     } catch { /* ignore */ }
   }, []);
 
+  const loadCorrectionRows = useCallback(async (periodo: string) => {
+    if (!periodo) return;
+    setCorrectionLoading(true);
+    try {
+      const supabase = createClient();
+      if (!supabase) return;
+      const { data } = await supabase
+        .from('cycle_scores')
+        .select('id, periodo, analista, squad, data_registro, nota_final_qa, iepc_total, total_ncs, source, protocolo, created_at')
+        .eq('periodo', periodo)
+        .order('created_at', { ascending: false });
+
+      const [feedbackRes, ncRes, pdiRecordsRes, feedbackPdiRes] = await Promise.all([
+        supabase.from('feedbacks').select('id, ciclo, analistas(nome)').eq('ciclo', periodo),
+        supabase.from('nc_records').select('id, periodo, analista').eq('periodo', periodo),
+        supabase.from('pdi_records').select('id, periodo, analista').eq('periodo', periodo),
+        supabase.from('feedback_pdi').select('id, feedbacks(ciclo, analistas(nome))'),
+      ]);
+
+      const normalizeName = (value: string | null | undefined) => (value || '').trim().toLowerCase();
+      const countByAnalista = (items: any[], getName: (item: any) => string | null | undefined) =>
+        items.reduce<Record<string, number>>((acc, item) => {
+          const key = normalizeName(getName(item));
+          if (key) acc[key] = (acc[key] || 0) + 1;
+          return acc;
+        }, {});
+
+      const feedbackCounts = countByAnalista((feedbackRes.data || []) as any[], (item) => item.analistas?.nome);
+      const ncCounts = countByAnalista((ncRes.data || []) as any[], (item) => item.analista);
+      const pdiRecordCounts = countByAnalista((pdiRecordsRes.data || []) as any[], (item) => item.analista);
+      const feedbackPdiCounts = countByAnalista(
+        ((feedbackPdiRes.data || []) as any[]).filter((item) => item.feedbacks?.ciclo === periodo),
+        (item) => item.feedbacks?.analistas?.nome
+      );
+
+      const rows = ((data || []) as Array<Omit<EvaluationCorrectionRow, 'duplicateKey' | 'isDuplicate' | 'keepRecommended' | 'feedbackCount' | 'ncCount' | 'pdiCount'>>)
+        .map((row) => ({
+          ...row,
+          duplicateKey: `${row.periodo}|${(row.analista || '').trim().toLowerCase()}|${(row.squad || '').trim().toLowerCase()}|${row.protocolo || 'consolidado'}`,
+          isDuplicate: false,
+          keepRecommended: false,
+          feedbackCount: feedbackCounts[normalizeName(row.analista)] || 0,
+          ncCount: ncCounts[normalizeName(row.analista)] || 0,
+          pdiCount: (pdiRecordCounts[normalizeName(row.analista)] || 0) + (feedbackPdiCounts[normalizeName(row.analista)] || 0),
+        }));
+
+      const counts = rows.reduce<Record<string, number>>((acc, row) => {
+        acc[row.duplicateKey] = (acc[row.duplicateKey] || 0) + 1;
+        return acc;
+      }, {});
+      const firstByKey = new Set<string>();
+      setCorrectionRows(rows.map((row) => {
+        const isDuplicate = counts[row.duplicateKey] > 1;
+        const keepRecommended = isDuplicate && !firstByKey.has(row.duplicateKey);
+        if (keepRecommended) firstByKey.add(row.duplicateKey);
+        return { ...row, isDuplicate, keepRecommended };
+      }));
+    } finally {
+      setCorrectionLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadData();
     loadHistory();
@@ -401,6 +486,16 @@ function CiclosContent() {
     window.addEventListener('zetti_data_changed', handler);
     return () => window.removeEventListener('zetti_data_changed', handler);
   }, [loadData, loadHistory]);
+
+  useEffect(() => {
+    if (!correctionPeriodo && cycles[0]?.periodo) {
+      setCorrectionPeriodo(cycles[0].periodo);
+    }
+  }, [cycles, correctionPeriodo]);
+
+  useEffect(() => {
+    if (correctionPeriodo) loadCorrectionRows(correctionPeriodo);
+  }, [correctionPeriodo, loadCorrectionRows]);
 
   const handleCloseCycle = async (periodo: string, notes: string) => {
     if (!canManageCycles) return;
@@ -444,12 +539,20 @@ function CiclosContent() {
 
         // Audit log
         await supabase.from('permission_logs').insert({ actor_email: actorEmail, action: 'ciclo_fechado', entity_type: 'ciclo', entity_id: periodo, details: `Ciclo ${periodo} fechado por ${actorEmail}` });
+      } else {
+        window.alert('Supabase indisponível. Não foi possível fechar o ciclo.');
+        setActionLoading(null);
+        return;
       }
       // Sync localStorage cache so isCycleClosed() works everywhere without a full reload
       syncClosedCyclesFromSupabase([{ periodo, is_closed: true, closed_at: new Date().toISOString(), status: 'fechado' }]);
       setClosingCycle(null);
       await loadData(); await loadHistory();
-    } catch { /* ignore */ }
+      window.alert(`Ciclo ${periodo} fechado com sucesso.`);
+    } catch (err) {
+      console.error('Erro ao fechar ciclo:', err);
+      window.alert('Erro ao fechar ciclo. Verifique permissões/RLS e tente novamente.');
+    }
     setActionLoading(null);
   };
 
@@ -489,12 +592,20 @@ function CiclosContent() {
         });
 
         await supabase.from('permission_logs').insert({ actor_email: actorEmail, action: 'ciclo_reaberto', entity_type: 'ciclo', entity_id: periodo, details: `Ciclo ${periodo} reaberto por ${actorEmail}. Motivo: ${notes}` });
+      } else {
+        window.alert('Supabase indisponível. Não foi possível reabrir o ciclo.');
+        setActionLoading(null);
+        return;
       }
       // Sync localStorage cache
       syncClosedCyclesFromSupabase([{ periodo, is_closed: false, status: 'reaberto' }]);
       setReopeningCycle(null);
       await loadData(); await loadHistory();
-    } catch { /* ignore */ }
+      window.alert(`Ciclo ${periodo} reaberto com sucesso.`);
+    } catch (err) {
+      console.error('Erro ao reabrir ciclo:', err);
+      window.alert('Erro ao reabrir ciclo. Verifique permissões/RLS e tente novamente.');
+    }
     setActionLoading(null);
   };
 
@@ -510,6 +621,40 @@ function CiclosContent() {
       }
     } catch { /* ignore */ }
     setActionLoading(null);
+  };
+
+  const handleRemoveDuplicateScores = async (duplicateKey: string) => {
+    if (!canManageCycles) return;
+    const group = correctionRows.filter((row) => row.duplicateKey === duplicateKey);
+    const keep = group.find((row) => row.keepRecommended);
+    const remove = group.filter((row) => row.id !== keep?.id);
+    if (remove.length === 0) return;
+    const ok = window.confirm(`Excluir ${remove.length} avaliação(ões) duplicada(s) de ${keep?.analista || 'analista'} em ${correctionPeriodo}? Há ${keep?.feedbackCount || 0} feedback(s), ${keep?.ncCount || 0} NC(s) e ${keep?.pdiCount || 0} PDI(s) relacionados no diagnóstico. Esta ação remove apenas cycle_scores duplicado(s), não apaga vínculos relacionados, não apaga o ciclo e ficará registrada em log.`);
+    if (!ok) return;
+
+    setActionLoading(duplicateKey);
+    try {
+      const supabase = createClient();
+      if (!supabase) return;
+      const ids = remove.map((row) => row.id);
+      const { error } = await supabase.from('cycle_scores').delete().in('id', ids);
+      if (error) {
+        window.alert(`Erro ao excluir duplicidades: ${error.message}`);
+        return;
+      }
+      await supabase.from('permission_logs').insert({
+        actor_email: actorEmail,
+        action: 'avaliacoes_duplicadas_excluidas',
+        entity_type: 'cycle_scores',
+        entity_id: correctionPeriodo,
+        details: JSON.stringify({ periodo: correctionPeriodo, kept_id: keep?.id, removed_ids: ids, duplicate_key: duplicateKey }),
+      });
+      await loadCorrectionRows(correctionPeriodo);
+      await loadData();
+      window.alert('Duplicidades excluídas com sucesso.');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const handleGenerateSummary = async (cycle: CycleSummary) => {
@@ -593,6 +738,77 @@ function CiclosContent() {
           </p>
         </div>
       )}
+
+      {/* Central de Correção do Ciclo */}
+      <div className="mb-6 rounded-xl overflow-hidden" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="flex items-center justify-between gap-3 p-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div>
+            <h3 className="text-sm font-semibold text-white">Central de Correção do Ciclo</h3>
+            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Diagnóstico de avaliações que alimentam os indicadores, com correção manual e auditada.</p>
+          </div>
+          <select
+            value={correctionPeriodo}
+            onChange={(e) => setCorrectionPeriodo(e.target.value)}
+            className="px-3 py-2 rounded-lg text-xs text-white outline-none"
+            style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
+          >
+            {cycles.map((cycle) => <option key={cycle.periodo} value={cycle.periodo}>{cycle.periodo}</option>)}
+          </select>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr style={{ backgroundColor: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                {['Status', 'Analista', 'Squad', 'Data', 'Origem', 'SUP/Protocolo', 'QA', 'IEPC', 'NCs', 'Feedbacks', 'PDIs', 'Ação'].map((h) => (
+                  <th key={h} className="text-left py-3 px-4 font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {correctionLoading ? (
+                <tr><td colSpan={12} className="py-6 text-center" style={{ color: '#94A3B8' }}>Carregando avaliações...</td></tr>
+              ) : correctionRows.length === 0 ? (
+                <tr><td colSpan={12} className="py-6 text-center" style={{ color: '#94A3B8' }}>Nenhuma avaliação encontrada para o ciclo selecionado.</td></tr>
+              ) : correctionRows.map((row) => (
+                <tr key={row.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                  <td className="py-3 px-4">
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: row.isDuplicate ? 'rgba(245,158,11,0.12)' : 'rgba(34,197,94,0.1)', color: row.isDuplicate ? '#F59E0B' : '#22C55E', border: `1px solid ${row.isDuplicate ? 'rgba(245,158,11,0.25)' : 'rgba(34,197,94,0.2)'}` }}>
+                      {row.isDuplicate ? (row.keepRecommended ? 'Manter' : 'Duplicado') : 'Ativo'}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-white">{row.analista}</td>
+                  <td className="py-3 px-4" style={{ color: '#94A3B8' }}>{row.squad}</td>
+                  <td className="py-3 px-4" style={{ color: '#94A3B8' }}>{row.data_registro || '—'}</td>
+                  <td className="py-3 px-4" style={{ color: '#94A3B8' }}>{row.source || '—'}</td>
+                  <td className="py-3 px-4" style={{ color: '#94A3B8' }}>{row.protocolo || 'consolidado'}</td>
+                  <td className="py-3 px-4 text-white">{row.nota_final_qa ?? '—'}</td>
+                  <td className="py-3 px-4 text-white">{row.iepc_total ?? '—'}</td>
+                  <td className="py-3 px-4 text-white">{row.total_ncs ?? 0}</td>
+                  <td className="py-3 px-4" style={{ color: row.feedbackCount > 1 ? '#F59E0B' : '#94A3B8' }}>{row.feedbackCount}</td>
+                  <td className="py-3 px-4" style={{ color: row.pdiCount > 1 ? '#F59E0B' : '#94A3B8' }}>{row.pdiCount}</td>
+                  <td className="py-3 px-4">
+                    {canManageCycles && row.isDuplicate && row.keepRecommended && (
+                      <button
+                        onClick={() => handleRemoveDuplicateScores(row.duplicateKey)}
+                        disabled={actionLoading === row.duplicateKey}
+                        className="px-2 py-1 rounded-lg text-xs font-medium disabled:opacity-50"
+                        style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}
+                      >
+                        {actionLoading === row.duplicateKey ? 'Corrigindo...' : 'Excluir duplicadas'}
+                      </button>
+                    )}
+                    {row.isDuplicate && row.keepRecommended && (
+                      <p className="mt-1 max-w-40" style={{ color: '#94A3B8' }}>
+                        Relacionados: {row.feedbackCount} feedback(s), {row.ncCount} NC(s), {row.pdiCount} PDI(s). A exclusão remove apenas o score duplicado.
+                      </p>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {/* Closure History Panel */}
       {showHistory && (
