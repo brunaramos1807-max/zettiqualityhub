@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
-import { Users, Briefcase, Lock, Plus, Edit2, Trash2, X, Save, CheckCircle, Loader2, UserCheck, Clock, AlertTriangle, RefreshCw, Key, Database, Copy, ToggleLeft, ToggleRight, Search, Upload, History, Trash, Link, Activity, Eye, FileText, Presentation, ChevronDown, ChevronRight, Globe, UserX, Layers, BarChart3, ShieldCheck, SlidersHorizontal, Camera } from 'lucide-react';
+import { Users, Briefcase, Lock, Plus, Edit2, Trash2, X, Save, CheckCircle, Loader2, UserCheck, Clock, AlertTriangle, RefreshCw, Key, Database, Copy, ToggleLeft, ToggleRight, Search, Upload, History, Trash, Link, Activity, Eye, FileText, Presentation, ChevronDown, ChevronRight, Globe, UserX, Layers, BarChart3, ShieldCheck, SlidersHorizontal, Camera, Send, Shuffle, ShieldAlert } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,10 +48,15 @@ interface UserPermission {
   user_profile_id: string;
   module_name: string;
   can_view: boolean;
+  can_create?: boolean;
   can_edit: boolean;
   can_delete: boolean;
   can_import: boolean;
   can_export: boolean;
+  can_send?: boolean;
+  can_sync?: boolean;
+  can_manage_permissions?: boolean;
+  can_cancel?: boolean;
   can_close_cycle: boolean;
   can_reopen_cycle: boolean;
   can_approve: boolean;
@@ -68,7 +73,7 @@ interface PermissionLog {
   created_at: string;
 }
 
-type Tab = 'usuarios' | 'cargos' | 'permissoes' | 'escopos' | 'logs' | 'auditoria' | 'notion';
+type Tab = 'usuarios' | 'cargos' | 'permissoes' | 'usuario_permissoes' | 'escopos' | 'acoes' | 'logs' | 'auditoria';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -78,14 +83,19 @@ const NIVEL_OPTIONS = ['Trainee', 'Junior', 'Pleno', 'Senior', 'Especialista', '
 
 const PERMISSION_ACTIONS = [
   { key: 'can_view', label: 'Visualizar', short: 'Ver', color: '#38BDF8' },
+  { key: 'can_create', label: 'Criar', short: 'Criar', color: '#22C55E' },
   { key: 'can_edit', label: 'Editar', short: 'Edit', color: '#A78BFA' },
   { key: 'can_delete', label: 'Excluir', short: 'Del', color: '#EF4444' },
+  { key: 'can_send', label: 'Enviar', short: 'Env', color: '#06B6D4' },
   { key: 'can_import', label: 'Importar', short: 'Imp', color: '#F59E0B' },
-  { key: 'can_export', label: 'PDF/Exp', short: 'PDF', color: '#22C55E' },
+  { key: 'can_export', label: 'Exportar', short: 'Exp', color: '#22C55E' },
+  { key: 'can_sync', label: 'Sincronizar', short: 'Sync', color: '#FB923C' },
   { key: 'can_close_cycle', label: 'Fechar Ciclo', short: 'FC', color: '#06B6D4' },
   { key: 'can_reopen_cycle', label: 'Reabrir', short: 'RC', color: '#FB923C' },
   { key: 'can_approve', label: 'Aprovar', short: 'Apr', color: '#2DD4BF' },
-  { key: 'can_admin', label: 'Admin', short: 'Adm', color: '#EF4444' },
+  { key: 'can_cancel', label: 'Cancelar', short: 'Canc', color: '#F97316' },
+  { key: 'can_manage_permissions', label: 'Alterar Permissões', short: 'Perm', color: '#E879F9' },
+  { key: 'can_admin', label: 'Administrar', short: 'Adm', color: '#EF4444' },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -96,22 +106,45 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const SYSTEM_MODULES = [
-  { id: 'executivo', label: 'Executivo', color: '#38BDF8', pages: ['Painel Executivo', 'Evolução', 'Analytics'] },
+  { id: 'executivo', label: 'Executivo', color: '#38BDF8', pages: ['Home Executiva', 'Analytics Operacional', 'Evolução Histórica'] },
   { id: 'operacao', label: 'Operação', color: '#A78BFA', pages: ['Ciclo Atual', 'Ciclos', 'Auditoria'] },
-  { id: 'qualidade', label: 'Qualidade', color: '#2DD4BF', pages: ['QA & IEPC 360°', 'Não Conformidades', 'Elogios'] },
-  { id: 'dh', label: 'Desenvolvimento Humano', color: '#F59E0B', pages: ['Feedback', 'PDI', 'Gestão de Pessoas', 'Advertências'] },
-  { id: 'governanca', label: 'Governança', color: '#22C55E', pages: ['Documentos', 'Histórico'] },
-  { id: 'admin', label: 'Admin', color: '#EF4444', pages: ['Configurações', 'Analistas', 'Integrações', 'Importações', 'Logs & Diagnóstico'] },
+  { id: 'qualidade', label: 'Qualidade', color: '#2DD4BF', pages: ['QA & IEPC', 'Não Conformidades', 'Reconhecimento'] },
+  { id: 'dh', label: 'Desenvolvimento Humano', color: '#F59E0B', pages: ['Gestão de Feedbacks', 'PDI', 'Gestão de Pessoas', 'People Analytics', 'Advertências'] },
+  { id: 'governanca', label: 'Governança', color: '#22C55E', pages: ['Histórico', 'Base de Conhecimento', 'Documentos'] },
+  { id: 'admin', label: 'Administração', color: '#EF4444', pages: ['Configurações', 'Usuários', 'Analistas', 'Importações', 'Diagnóstico'] },
 ];
 
 const PAGE_ACTIONS = [
   { key: 'visualizar', label: 'Visualizar', icon: <Eye size={10} />, color: '#38BDF8' },
+  { key: 'criar', label: 'Criar', icon: <Plus size={10} />, color: '#22C55E' },
   { key: 'editar', label: 'Editar', icon: <Edit2 size={10} />, color: '#A78BFA' },
   { key: 'excluir', label: 'Excluir', icon: <Trash2 size={10} />, color: '#EF4444' },
+  { key: 'enviar', label: 'Enviar', icon: <Send size={10} />, color: '#06B6D4' },
   { key: 'importar', label: 'Importar', icon: <Upload size={10} />, color: '#F59E0B' },
-  { key: 'exportar_pdf', label: 'PDF', icon: <FileText size={10} />, color: '#22C55E' },
-  { key: 'gerar_link', label: 'Link', icon: <Link size={10} />, color: '#06B6D4' },
-  { key: 'apresentacao', label: 'Apresent.', icon: <Presentation size={10} />, color: '#FB923C' },
+  { key: 'exportar', label: 'Exportar', icon: <FileText size={10} />, color: '#22C55E' },
+  { key: 'sincronizar', label: 'Sincron.', icon: <Shuffle size={10} />, color: '#FB923C' },
+  { key: 'administrar', label: 'Admin.', icon: <ShieldCheck size={10} />, color: '#EF4444' },
+];
+
+const SENSITIVE_ACTIONS = [
+  { module: 'feedback', title: 'Excluir feedback', description: 'Remove um feedback individual.', flag: 'can_delete' },
+  { module: 'feedback', title: 'Excluir feedback em massa', description: 'Permite exclusão múltipla de feedbacks.', flag: 'can_delete' },
+  { module: 'feedback', title: 'Alterar status de feedback', description: 'Muda status de feedbacks operacionais.', flag: 'can_edit' },
+  { module: 'pdi', title: 'Criar PDI', description: 'Cria plano de desenvolvimento.', flag: 'can_create' },
+  { module: 'pdi', title: 'Editar PDI', description: 'Edita plano de desenvolvimento.', flag: 'can_edit' },
+  { module: 'pdi', title: 'Concluir PDI', description: 'Marca plano como concluído.', flag: 'can_approve' },
+  { module: 'pdi', title: 'Cancelar PDI', description: 'Cancela/inativa plano sensível.', flag: 'can_cancel' },
+  { module: 'advertencias', title: 'Criar advertência', description: 'Cria advertência disciplinar.', flag: 'can_create' },
+  { module: 'advertencias', title: 'Cancelar advertência', description: 'Cancela advertência sensível.', flag: 'can_cancel' },
+  { module: 'nao_conformidades', title: 'Excluir NC', description: 'Remove não conformidade operacional.', flag: 'can_delete' },
+  { module: 'importacoes', title: 'Importar dados', description: 'Executa importações operacionais.', flag: 'can_import' },
+  { module: 'importacoes', title: 'Excluir importação', description: 'Remove lote ou importação.', flag: 'can_delete' },
+  { module: 'ciclo_atual', title: 'Fechar ciclo', description: 'Fecha ciclo operacional.', flag: 'can_close_cycle' },
+  { module: 'ciclo_atual', title: 'Reabrir ciclo', description: 'Reabre ciclo fechado.', flag: 'can_reopen_cycle' },
+  { module: 'base_conhecimento', title: 'Sincronizar Notion', description: 'Sincroniza base externa.', flag: 'can_sync' },
+  { module: 'configuracoes', title: 'Alterar permissões', description: 'Altera acessos, perfis e regras.', flag: 'can_manage_permissions' },
+  { module: 'diagnostico', title: 'Acessar logs', description: 'Visualiza logs administrativos.', flag: 'can_view' },
+  { module: 'diagnostico', title: 'Acessar diagnóstico', description: 'Acessa diagnóstico técnico.', flag: 'can_admin' },
 ];
 
 // ─── Shared Styles ────────────────────────────────────────────────────────────
@@ -287,9 +320,9 @@ function EditAccessPanel({ user, cargos, onClose, onSave, actorEmail, modules, e
       const existing = existingPermissions.find((p) => p.module_name === m.nome);
       map[m.nome] = existing || {
         user_profile_id: user.id, module_name: m.nome,
-        can_view: false, can_edit: false, can_delete: false, can_import: false,
-        can_export: false, can_close_cycle: false, can_reopen_cycle: false,
-        can_approve: false, can_admin: false,
+        can_view: false, can_create: false, can_edit: false, can_delete: false, can_import: false,
+        can_export: false, can_send: false, can_sync: false, can_close_cycle: false, can_reopen_cycle: false,
+        can_approve: false, can_cancel: false, can_manage_permissions: false, can_admin: false,
       };
     });
     return map;
@@ -360,6 +393,15 @@ function EditAccessPanel({ user, cargos, onClose, onSave, actorEmail, modules, e
         const upserts = Object.values(perms).map((p) => ({ ...p, updated_at: new Date().toISOString() }));
         await supabase.from('user_permissions').upsert(upserts, { onConflict: 'user_profile_id,module_name' }).then(() => {}).catch(() => {});
       }
+
+      await supabase.from('user_scope_permissions').upsert({
+        user_id: user.id,
+        escopo_tipo: scopeType,
+        squads_visiveis: payload.squads,
+        squads_editaveis: editableSquads,
+        squads_gerenciaveis: scopeType === 'all' ? ['Todas'] : editableSquads,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' }).then(() => {}).catch(() => {});
 
       await supabase.from('permission_logs').insert({
         actor_email: actorEmail, target_email: user.email,
@@ -437,7 +479,7 @@ function EditAccessPanel({ user, cargos, onClose, onSave, actorEmail, modules, e
                   <label className="block text-xs font-semibold text-white mb-2">Role (Sistema)</label>
                   <select value={role} onChange={(e) => setRole(e.target.value)} style={selectStyle}>
                     <option value="">Selecionar...</option>
-                    {['Admin','Coordenador','Coordenador Geral','Gestor','Gerente','Auditor','QA','Analista','Visualizador'].map((r) => <option key={r} value={r}>{r}</option>)}
+                    {['admin','qualidade','coordenador','gestor','diretoria','analista','Admin','Coordenador','Coordenador Geral','Gestor','Gerente','Auditor','QA','Analista','Visualizador'].map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </div>
               </div>
@@ -705,10 +747,10 @@ function EditAccessPanel({ user, cargos, onClose, onSave, actorEmail, modules, e
                             <td className="py-2.5 px-2 text-center">
                               <div className="flex items-center justify-center gap-1">
                                 <button onClick={() => {
-                                  setPerms((prev) => ({ ...prev, [mod.nome]: { ...prev[mod.nome], can_view: true, can_edit: true, can_delete: true, can_import: true, can_export: true, can_close_cycle: true, can_reopen_cycle: true, can_approve: true, can_admin: true } }));
+                                  setPerms((prev) => ({ ...prev, [mod.nome]: { ...prev[mod.nome], can_view: true, can_create: true, can_edit: true, can_delete: true, can_import: true, can_export: true, can_send: true, can_sync: true, can_close_cycle: true, can_reopen_cycle: true, can_approve: true, can_cancel: true, can_manage_permissions: true, can_admin: true } }));
                                 }} className="px-1.5 py-0.5 rounded text-xs" style={{ backgroundColor: 'rgba(34,197,94,0.1)', color: '#22C55E' }}>✓</button>
                                 <button onClick={() => {
-                                  setPerms((prev) => ({ ...prev, [mod.nome]: { ...prev[mod.nome], can_view: false, can_edit: false, can_delete: false, can_import: false, can_export: false, can_close_cycle: false, can_reopen_cycle: false, can_approve: false, can_admin: false } }));
+                                  setPerms((prev) => ({ ...prev, [mod.nome]: { ...prev[mod.nome], can_view: false, can_create: false, can_edit: false, can_delete: false, can_import: false, can_export: false, can_send: false, can_sync: false, can_close_cycle: false, can_reopen_cycle: false, can_approve: false, can_cancel: false, can_manage_permissions: false, can_admin: false } }));
                                 }} className="px-1.5 py-0.5 rounded text-xs" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444' }}>✗</button>
                               </div>
                             </td>
@@ -815,7 +857,7 @@ function AddUserModal({ cargos, onClose, onSave, actorEmail }: AddUserModalProps
           <div>
             <label className="block text-xs font-semibold text-white mb-2">Role (Sistema)</label>
             <select value={role} onChange={(e) => setRole(e.target.value)} style={selectStyle}>
-              {['Admin','Coordenador','Coordenador Geral','Gestor','Gerente','Auditor','QA','Analista','Visualizador'].map((r) => <option key={r} value={r}>{r}</option>)}
+              {['admin','qualidade','coordenador','gestor','diretoria','analista','Admin','Coordenador','Coordenador Geral','Gestor','Gerente','Auditor','QA','Analista','Visualizador'].map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
           <div>
@@ -1706,10 +1748,12 @@ function ConfiguracoesContent() {
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: 'usuarios', label: 'Usuários', icon: <Users size={14} />, badge: users.length },
-    { id: 'cargos', label: 'Cargos', icon: <Briefcase size={14} />, badge: cargos.length },
-    { id: 'permissoes', label: 'Permissões', icon: <Lock size={14} /> },
-    { id: 'escopos', label: 'Escopos', icon: <Globe size={14} /> },
-    { id: 'logs', label: 'Logs de Acesso', icon: <History size={14} />, badge: permLogs.length },
+    { id: 'cargos', label: 'Perfis e Papéis', icon: <Briefcase size={14} />, badge: cargos.length },
+    { id: 'permissoes', label: 'Permissões por Tela/Módulo', icon: <Lock size={14} /> },
+    { id: 'usuario_permissoes', label: 'Permissões por Usuário', icon: <UserCheck size={14} /> },
+    { id: 'escopos', label: 'Permissões por Squad/Escopo', icon: <Globe size={14} /> },
+    { id: 'acoes', label: 'Ações Sensíveis', icon: <ShieldAlert size={14} /> },
+    { id: 'logs', label: 'Logs e Auditoria', icon: <History size={14} />, badge: permLogs.length },
     { id: 'auditoria', label: 'Auditoria RBAC', icon: <ShieldCheck size={14} /> },
     { id: 'notion', label: 'Base Notion', icon: <Database size={14} /> },
   ];
@@ -1798,7 +1842,7 @@ function ConfiguracoesContent() {
               </div>
               <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)} style={{ ...selectStyle, width: '130px', height: '36px', fontSize: '0.8rem' }}>
                 <option value="">Todos cargos</option>
-                {['Admin','Coordenador','Coordenador Geral','Gestor','Gerente','Auditor','QA','Analista','Visualizador'].map((r) => <option key={r} value={r}>{r}</option>)}
+                {['admin','qualidade','coordenador','gestor','diretoria','analista','Admin','Coordenador','Coordenador Geral','Gestor','Gerente','Auditor','QA','Analista','Visualizador'].map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
               <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{ ...selectStyle, width: '120px', height: '36px', fontSize: '0.8rem' }}>
                 <option value="">Todos status</option>
@@ -1921,8 +1965,8 @@ function ConfiguracoesContent() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-base font-bold text-white">Cargos Configuráveis</h2>
-              <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Estrutura base — permissões são definidas individualmente por usuário</p>
+              <h2 className="text-base font-bold text-white">Perfis e Papéis</h2>
+              <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Perfis mínimos: admin, qualidade, coordenador, gestor, diretoria e analista</p>
             </div>
             <button onClick={() => setEditingCargo(null)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white" style={{ backgroundColor: '#1E40AF' }}>
               <Plus size={14} /> Novo Cargo
@@ -1966,12 +2010,12 @@ function ConfiguracoesContent() {
       )}
 
       {/* ── TAB: Permissões — Visual RBAC Matrix ── */}
-      {activeTab === 'permissoes' && (
+      {(activeTab === 'permissoes' || activeTab === 'usuario_permissoes') && (
         <div className="space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
-              <h2 className="text-base font-bold text-white">Matriz Visual de Permissões RBAC</h2>
-              <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Visão consolidada — clique em um usuário para editar acesso completo</p>
+              <h2 className="text-base font-bold text-white">{activeTab === 'usuario_permissoes' ? 'Permissões por Usuário' : 'Permissões por Tela/Módulo'}</h2>
+              <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>{activeTab === 'usuario_permissoes' ? 'Exceções individuais persistidas em user_permissions' : 'Matriz visual de módulos, telas e ações configuráveis'}</p>
             </div>
             <div className="relative">
               <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#64748B' }} />
@@ -2109,8 +2153,48 @@ function ConfiguracoesContent() {
           <div className="p-4 rounded-xl" style={{ backgroundColor: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.15)' }}>
             <p className="text-xs font-semibold text-amber-400 mb-2">⚠️ Status de Enforcement</p>
             <p className="text-xs" style={{ color: '#94A3B8' }}>
-              A interface de configuração está ativa. O enforcement real via <code className="text-amber-300 bg-amber-900/20 px-1 rounded">canAccess()</code> será ativado após validação completa da matriz RBAC. Atualmente, as permissões são salvas no banco mas não bloqueiam acesso.
+              A interface de configuração está ativa e a migration conservadora bloqueia acesso anon a dados administrativos/sensíveis. O escopo granular por squad ainda será aplicado em fase posterior, após validação completa dos vínculos.
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB: Ações Sensíveis ── */}
+      {activeTab === 'acoes' && (
+        <div className="space-y-4">
+          <div className="p-4 rounded-xl" style={{ backgroundColor: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.16)' }}>
+            <div className="flex items-start gap-3">
+              <ShieldAlert size={17} className="text-red-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <h2 className="text-base font-bold text-white">Ações Sensíveis</h2>
+                <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Estas ações exigem permissão explícita na matriz do usuário e são protegidas por RLS/admin para dados administrativos. Use "Editar Acesso" para liberar ou bloquear.</p>
+              </div>
+            </div>
+          </div>
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {SENSITIVE_ACTIONS.map((action) => {
+              const affectedUsers = users.filter((u) => userPermissions.some((p) => p.user_profile_id === u.id && p.module_name === action.module && Boolean(p[action.flag as keyof UserPermission])));
+              return (
+                <div key={`${action.module}-${action.title}`} className="p-4 rounded-xl" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.07)' }}>
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div>
+                      <p className="text-sm font-bold text-white">{action.title}</p>
+                      <p className="text-xs mt-1" style={{ color: '#64748B' }}>{action.description}</p>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(239,68,68,0.12)', color: '#FCA5A5', border: '1px solid rgba(239,68,68,0.22)' }}>{action.flag.replace('can_', '')}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                    <span style={{ color: '#64748B' }}>Módulo</span>
+                    <span className="font-semibold text-slate-300">{action.module}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs mt-2">
+                    <span style={{ color: '#64748B' }}>Usuários liberados</span>
+                    <span className="font-semibold" style={{ color: affectedUsers.length > 0 ? '#22C55E' : '#64748B' }}>{affectedUsers.length}</span>
+                  </div>
+                  <button onClick={() => setActiveTab('usuario_permissoes')} className="mt-3 w-full py-2 rounded-lg text-xs font-semibold" style={{ color: '#38BDF8', border: '1px solid rgba(56,189,248,0.18)', backgroundColor: 'rgba(56,189,248,0.06)' }}>Configurar por usuário</button>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -2255,7 +2339,7 @@ function ConfiguracoesContent() {
           <div className="p-4 rounded-xl" style={{ backgroundColor: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.12)' }}>
             <p className="text-xs font-semibold text-sky-400 mb-1">ℹ️ Sobre a Auditoria RBAC</p>
             <p className="text-xs" style={{ color: '#64748B' }}>
-              Esta aba mostra a estrutura completa de módulos e páginas do sistema. Para configurar permissões individuais por usuário, use a aba <strong className="text-slate-300">Usuários</strong> → <strong className="text-slate-300">Editar Acesso</strong>. O enforcement real será ativado após validação da matriz.
+              Esta aba mostra a estrutura completa de módulos e páginas do sistema. Para configurar permissões individuais por usuário, use a aba <strong className="text-slate-300">Usuários</strong> → <strong className="text-slate-300">Editar Acesso</strong>. A RLS conservadora já bloqueia anon em dados administrativos/sensíveis; granularidade por squad será refinada em fase posterior.
             </p>
           </div>
         </div>

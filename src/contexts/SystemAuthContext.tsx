@@ -5,15 +5,20 @@ import { getCurrentSession, loginUser, logoutUser, seedDefaultAdmin, type Sessio
 import { createClient } from '@/lib/supabase/client';
 
 export type UserRole =
-  | 'Admin' |'Coordenador' |'Diretoria' |'Gestor' |'Coordenador Geral' |'Auditor' |'Analista' |'QA' |'Supervisor' |'Gerente' |'Analista Qualidade' |'Coordenadora Qualidade' |'Visualizador';
+  | 'admin' | 'qualidade' | 'coordenador' | 'diretoria' | 'gestor' | 'analista' | 'Admin' |'Coordenador' |'Diretoria' |'Gestor' |'Coordenador Geral' |'Auditor' |'Analista' |'QA' |'Supervisor' |'Gerente' |'Analista Qualidade' |'Coordenadora Qualidade' |'Visualizador';
 
 export interface ModulePermission {
   module_name: string;
   can_view: boolean;
+  can_create?: boolean;
   can_edit: boolean;
   can_delete: boolean;
   can_import: boolean;
   can_export: boolean;
+  can_send?: boolean;
+  can_sync?: boolean;
+  can_manage_permissions?: boolean;
+  can_cancel?: boolean;
   can_close_cycle: boolean;
   can_reopen_cycle: boolean;
   can_approve: boolean;
@@ -78,13 +83,13 @@ const INACTIVITY_TIMEOUT = 30 * 60 * 1000;
 const ADMIN_EMAILS = ['brunaramos1807@gmail.com', 'bruna.silva@zetti.tech', 'admin@zetti.com.br'];
 
 // Roles that are admin-level
-const ADMIN_ROLES: string[] = ['Admin', 'Administrador'];
+const ADMIN_ROLES: string[] = ['admin', 'Admin', 'Administrador'];
 
 // Roles that are coordinator-level
-const COORDINATOR_ROLES: string[] = ['Coordenador', 'Coordenador Geral', 'Coordenadora Qualidade', 'QA', 'Auditor'];
+const COORDINATOR_ROLES: string[] = ['coordenador', 'qualidade', 'Coordenador', 'Coordenador Geral', 'Coordenadora Qualidade', 'QA', 'Auditor'];
 
 // Roles that are gestor-level (read-only broad access)
-const GESTOR_ROLES: string[] = ['Gestor', 'Gerente', 'Diretoria'];
+const GESTOR_ROLES: string[] = ['gestor', 'diretoria', 'Gestor', 'Gerente', 'Diretoria'];
 
 function buildSupabaseSession(supaUser: any): SessionData {
   const email: string = supaUser.email || '';
@@ -245,8 +250,8 @@ function buildDefaultPermissions(role: UserRole | null, isAdminMaster: boolean):
   if (isAdminMaster || ADMIN_ROLES.includes(role || '')) {
     return ALL_MODULES.map((m) => ({
       module_name: m,
-      can_view: true, can_edit: true, can_delete: true, can_import: true,
-      can_export: true, can_close_cycle: true, can_reopen_cycle: true,
+      can_view: true, can_create: true, can_edit: true, can_delete: true, can_import: true,
+      can_export: true, can_send: true, can_sync: true, can_manage_permissions: true, can_cancel: true, can_close_cycle: true, can_reopen_cycle: true,
       can_approve: true, can_admin: true,
     }));
   }
@@ -255,10 +260,12 @@ function buildDefaultPermissions(role: UserRole | null, isAdminMaster: boolean):
     return ALL_MODULES.map((m) => ({
       module_name: m,
       can_view: true,
+      can_create: false,
       can_edit: !['configuracoes'].includes(m),
       can_delete: false,
       can_import: ['importacoes','ciclo_atual','auditoria'].includes(m),
       can_export: true,
+      can_send: false, can_sync: false, can_manage_permissions: false, can_cancel: false,
       can_close_cycle: ['ciclos','ciclo_atual','importacoes'].includes(m),
       can_reopen_cycle: false,
       can_approve: ['pdis','nao_conformidades','calibragem'].includes(m),
@@ -270,10 +277,12 @@ function buildDefaultPermissions(role: UserRole | null, isAdminMaster: boolean):
     return ALL_MODULES.map((m) => ({
       module_name: m,
       can_view: !['configuracoes'].includes(m),
+      can_create: false,
       can_edit: false,
       can_delete: false,
       can_import: false,
       can_export: true,
+      can_send: false, can_sync: false, can_manage_permissions: false, can_cancel: false,
       can_close_cycle: false,
       can_reopen_cycle: false,
       can_approve: false,
@@ -285,8 +294,9 @@ function buildDefaultPermissions(role: UserRole | null, isAdminMaster: boolean):
   return ALL_MODULES.map((m) => ({
     module_name: m,
     can_view: ['painel_executivo','evolucao','ciclo_atual','nao_conformidades','elogios','pdis','historico','analytics','feedback'].includes(m),
+    can_create: false,
     can_edit: false, can_delete: false, can_import: false,
-    can_export: false, can_close_cycle: false, can_reopen_cycle: false,
+    can_export: false, can_send: false, can_sync: false, can_manage_permissions: false, can_cancel: false, can_close_cycle: false, can_reopen_cycle: false,
     can_approve: false, can_admin: false,
   }));
 }

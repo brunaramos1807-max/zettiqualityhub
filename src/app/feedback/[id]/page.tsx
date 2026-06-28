@@ -338,6 +338,7 @@ export default function FeedbackViewPage() {
       });
       const sorted = Array.from(histMap.values()).sort(sortByCiclo);
       setHistorico(sorted);
+    }
 
       const analistaNome = rawData.analistas?.nome || rawData.analistas?.nome_completo;
       if (analistaNome) {
@@ -355,7 +356,9 @@ export default function FeedbackViewPage() {
           .limit(20);
 
         if (ciclo) elogiosQuery = elogiosQuery.eq('periodo', ciclo);
+
         const { data: elogiosRows } = await elogiosQuery;
+
         // Post-filter: require first+last name match to avoid false positives
         const filteredElogios = (elogiosRows || []).filter((e: any) => {
           const colLower = (e.colaborador || '').toLowerCase();
@@ -372,7 +375,9 @@ export default function FeedbackViewPage() {
           .ilike('analista', `${analistaNome.split(' ')[0]}%`);
 
         if (ciclo) ncQuery = ncQuery.eq('periodo', ciclo);
+
         const { data: ncRows } = await ncQuery;
+
         // Post-filter: require first+last name match
         const filteredNCs = (ncRows || []).filter((nc: any) => {
           const ncLower = (nc.analista || '').toLowerCase();
@@ -382,7 +387,6 @@ export default function FeedbackViewPage() {
         });
         setDbNCs(filteredNCs);
       }
-    }
 
     setLoading(false);
     setRefreshing(false);
