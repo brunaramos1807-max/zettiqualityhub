@@ -16,12 +16,10 @@ import { getActiveCycle } from '@/lib/services/supabaseDataService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,  } from 'recharts';
 import {
   TrendingUp, TrendingDown, AlertTriangle, Star, Users, BarChart2, Activity,
-  RefreshCw, ChevronRight, Sparkles, Lock, CheckCircle, X, Filter, Calendar,
+  RefreshCw, ChevronRight, CheckCircle, X, Filter, Calendar,
   ChevronDown, Info, Target, Zap,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useChat } from '@/lib/hooks/useChat';
-import { createClient } from '@/lib/supabase/client';
 import { DrilldownPanel } from '@/components/DrilldownNavigation';
 
 // ─── Official pillar weights ──────────────────────────────────────────────────
@@ -833,145 +831,13 @@ function PilarModal({ type, onClose, qaPillars, iepcPillars, ncData, totalNCs, p
   );
 }
 
-// ─── Close Cycle Modal ────────────────────────────────────────────────────────
-interface CloseCycleModalProps {
-  periodo: string;
-  summary: PeriodSummary;
-  onClose: () => void;
-  onConfirm: (aiSummary: string) => Promise<void>;
-}
-
-function CloseCycleModal({ periodo, summary, onClose, onConfirm }: CloseCycleModalProps) {
-  const [step, setStep] = useState<'confirm' | 'generating' | 'done'>('confirm');
-  const [aiSummary, setAiSummary] = useState('');
-  const [closing, setClosing] = useState(false);
-  const { response, isLoading, sendMessage } = useChat('GEMINI', 'gemini/gemini-2.5-flash', false);
-
-  useEffect(() => {
-    if (response && !isLoading && step === 'generating') {
-      setAiSummary(response);
-      setStep('done');
-    }
-  }, [response, isLoading, step]);
-
-  const handleGenerate = () => {
-    setStep('generating');
-    const squadLines = Object.entries(summary.squads)
-      .map(([sq, d]) => `  - ${sq}: QA ${d.qa.toFixed(1)}%, IEPC ${d.iepc.toFixed(1)}%, ${d.count} analistas`)
-      .join('\n');
-    const prompt = `Você é um gestor de qualidade sênior. Gere um FECHAMENTO OFICIAL do ciclo ${periodo} em português, com:
-1. Resumo executivo (2 frases)
-2. Destaques positivos (bullet points)
-3. Pontos de atenção (bullet points)
-4. PDIs recomendados para analistas com QA abaixo de 80%
-5. Próximos passos para o ciclo seguinte
-
-Dados do ciclo:
-- QA Médio: ${summary.qa.toFixed(1)}%
-- IEPC Médio: ${summary.iepc.toFixed(1)}%
-- Total NCs: ${summary.ncs}
-- Total Elogios: ${summary.elogios}
-- Analistas avaliados: ${summary.analistas}
-- Performance por squad:\n${squadLines}
-
-Seja objetivo, profissional e orientado a ação.`;
-    sendMessage([{ role: 'user', content: prompt }], { temperature: 0.6, max_tokens: 800 });
-  };
-
-  const handleConfirmClose = async () => {
-    setClosing(true);
-    await onConfirm(aiSummary);
-    setClosing(false);
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
-      <div className="w-full max-w-2xl rounded-2xl overflow-hidden" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.1)' }}>
-        <div className="flex items-center justify-between p-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(239,68,68,0.15)' }}>
-              <Lock size={14} style={{ color: '#EF4444' }} />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-white">Fechar Ciclo — {periodo}</h3>
-              <p className="text-xs" style={{ color: '#94A3B8' }}>Esta ação congela os dados e gera snapshot permanente</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors hover:bg-white/5">
-            <X size={14} style={{ color: '#94A3B8' }} />
-          </button>
-        </div>
-        <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
-          {step === 'confirm' && (
-            <>
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: 'QA Médio', value: `${summary.qa.toFixed(1)}%`, color: getPerformanceClass(summary.qa).color },
-                  { label: 'IEPC Médio', value: `${summary.iepc.toFixed(1)}%`, color: getPerformanceClass(summary.iepc).color },
-                  { label: 'Analistas', value: String(summary.analistas), color: '#38BDF8' },
-                  { label: 'NCs', value: String(summary.ncs), color: summary.ncs > 10 ? '#EF4444' : '#94A3B8' },
-                  { label: 'Elogios', value: String(summary.elogios), color: '#F59E0B' },
-                  { label: 'Squads', value: String(Object.keys(summary.squads).length), color: '#06B6D4' },
-                ].map((item) => (
-                  <div key={item.label} className="p-3 rounded-xl text-center" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                    <p className="text-lg font-bold" style={{ color: item.color }}>{item.value}</p>
-                    <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{item.label}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="p-4 rounded-xl" style={{ backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}>
-                <p className="text-xs font-medium mb-1" style={{ color: '#EF4444' }}>⚠️ Atenção</p>
-                <p className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>Ao fechar o ciclo, os dados serão congelados e não poderão ser editados. Um snapshot será gerado automaticamente com resumo IA e PDIs recomendados.</p>
-              </div>
-              <div className="flex gap-3">
-                <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
-                <button onClick={handleGenerate} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all flex items-center justify-center gap-2" style={{ backgroundColor: '#1E40AF', border: '1px solid rgba(56,189,248,0.2)' }}>
-                  <Sparkles size={14} />Gerar Fechamento IA
-                </button>
-              </div>
-            </>
-          )}
-          {step === 'generating' && (
-            <div className="flex flex-col items-center justify-center py-12">
-              <div className="w-10 h-10 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mb-4" />
-              <p className="text-sm font-medium text-white mb-1">Gemini analisando ciclo...</p>
-              <p className="text-xs" style={{ color: '#94A3B8' }}>Gerando resumo executivo, PDIs e próximos passos</p>
-            </div>
-          )}
-          {step === 'done' && (
-            <>
-              <div className="p-4 rounded-xl" style={{ backgroundColor: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)' }}>
-                <div className="flex items-center gap-2 mb-3">
-                  <Sparkles size={13} style={{ color: '#38BDF8' }} />
-                  <span className="text-xs font-semibold" style={{ color: '#38BDF8' }}>Fechamento IA — Gemini</span>
-                </div>
-                <p className="text-xs leading-relaxed whitespace-pre-wrap" style={{ color: 'rgba(255,255,255,0.75)' }}>{aiSummary}</p>
-              </div>
-              <div className="flex gap-3">
-                <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
-                <button onClick={handleConfirmClose} disabled={closing} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all flex items-center justify-center gap-2 disabled:opacity-60" style={{ backgroundColor: '#DC2626', border: '1px solid rgba(239,68,68,0.3)' }}>
-                  {closing ? <RefreshCw size={13} className="animate-spin" /> : <Lock size={13} />}
-                  {closing ? 'Fechando...' : 'Confirmar Fechamento'}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function HomeExecutiveView() {
   const [importOpen, setImportOpen] = useState(false);
-  const { session, userRole, userSquad, userSquads, isAdminMaster, getTeamFilter, canImportModule, canCloseCycle: canCloseCyclePerm } = useSystemAuth();
+  const { session, userRole, userSquad, userSquads, isAdminMaster, getTeamFilter, canImportModule } = useSystemAuth();
   const [history, setHistory] = useState<PeriodSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [allPeriodos, setAllPeriodos] = useState<string[]>([]);
-  const [closeCycleOpen, setCloseCycleOpen] = useState(false);
-  const [closeCycleSuccess, setCloseCycleSuccess] = useState(false);
   const [drilldownCiclo, setDrilldownCiclo] = useState<string | null>(null);
   const [pilarModal, setPilarModal] = useState<'QA' | 'IEPC' | 'NC' | null>(null);
 
@@ -995,7 +861,6 @@ export default function HomeExecutiveView() {
     session?.cargo === 'Coordenador Geral' ||
     userRole === 'Admin' || userRole === 'Auditor' || userRole === 'Coordenador Geral';
 
-  const canCloseCycle = isAdminMaster || canCloseCyclePerm() || userRole === 'Admin' || userRole === 'Auditor' || userRole === 'Coordenador Geral' || session?.cargo === 'Administrador';
 
   const filterByRole = useCallback((scores: any[]) => {
     // Use the new getTeamFilter from context
@@ -1174,34 +1039,6 @@ export default function HomeExecutiveView() {
     document.addEventListener('click', handler);
     return () => document.removeEventListener('click', handler);
   }, [filterOpen]);
-
-  const handleCloseCycle = async (aiSummary: string) => {
-    const lastPeriodo = history[history.length - 1]?.periodo;
-    if (!lastPeriodo) return;
-    try {
-      const supabase = createClient();
-      if (!supabase) return;
-      await supabase.from('import_cycles').update({ is_closed: true, closed_at: new Date().toISOString(), is_current: false }).eq('periodo', lastPeriodo);
-      const last = history[history.length - 1];
-      await supabase.from('cycle_summaries').upsert({
-        periodo: lastPeriodo,
-        total_analistas: last.analistas,
-        qa_media: last.qa,
-        iepc_media: last.iepc,
-        total_ncs: last.ncs,
-        total_elogios: last.elogios,
-        squad_breakdown: last.squads,
-        insights: { ai_summary: aiSummary },
-        closed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'periodo' });
-      setCloseCycleSuccess(true);
-      setTimeout(() => setCloseCycleSuccess(false), 4000);
-      loadData();
-    } catch (err) {
-      console.error('Erro ao fechar ciclo:', err);
-    }
-  };
 
   const filteredHistory = history.filter((h) => {
     if (filterCiclo !== 'todos' && h.periodo !== filterCiclo) return false;
@@ -1387,13 +1224,6 @@ export default function HomeExecutiveView() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#0A1628' }}>
-      {closeCycleSuccess && (
-        <div className="fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium text-white" style={{ backgroundColor: '#166534', border: '1px solid rgba(34,197,94,0.3)' }}>
-          <CheckCircle size={14} style={{ color: '#22C55E' }} />
-          Ciclo fechado com sucesso! Snapshot gerado.
-        </div>
-      )}
-
       <div className="p-5 max-w-screen-2xl mx-auto">
         {/* ── Top Bar ── */}
         <div className="flex items-center justify-between mb-5">
@@ -1503,11 +1333,6 @@ export default function HomeExecutiveView() {
             {canImport && (
               <button onClick={() => setImportOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ backgroundColor: '#1E40AF', border: '1px solid rgba(56,189,248,0.2)' }}>
                 Importar
-              </button>
-            )}
-            {canCloseCycle && lastPeriod && (
-              <button onClick={() => setCloseCycleOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.25)' }}>
-                <Lock size={11} />Fechar Ciclo
               </button>
             )}
           </div>
@@ -1980,15 +1805,6 @@ export default function HomeExecutiveView() {
       </div>
 
       {canImport && <ImportModal isOpen={importOpen} onClose={() => setImportOpen(false)} />}
-
-      {closeCycleOpen && lastPeriod && (
-        <CloseCycleModal
-          periodo={lastPeriod.periodo}
-          summary={lastPeriod}
-          onClose={() => setCloseCycleOpen(false)}
-          onConfirm={handleCloseCycle}
-        />
-      )}
 
       {pilarModal && (
         <PilarModal
