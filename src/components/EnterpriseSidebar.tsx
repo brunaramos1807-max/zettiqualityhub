@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { LayoutDashboard, BarChart3, ClipboardCheck, Upload, AlertTriangle, Award, History, FileText, Settings, ChevronLeft, ChevronRight, LogOut, Activity, UserSquare2, Zap, MessageSquare, GitBranch, Users, ChevronDown, ScrollText, ShieldAlert, BookOpen, Brain,  } from 'lucide-react';
+import { LayoutDashboard, BarChart3, ClipboardCheck, Upload, AlertTriangle, Award, History, FileText, Settings, ChevronLeft, ChevronRight, LogOut, Activity, UserSquare2, Zap, MessageSquare, GitBranch, Users, ChevronDown, ScrollText, ShieldAlert, BookOpen, Brain, RefreshCw } from 'lucide-react';
 
 interface NavItem {
   id: string;

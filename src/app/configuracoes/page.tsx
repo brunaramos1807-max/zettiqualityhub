@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import { createClient } from '@/lib/supabase/client';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
-import { Users, Briefcase, Lock, Plus, Edit2, Trash2, X, Save, CheckCircle, Loader2, UserCheck, Clock, AlertTriangle, RefreshCw, Key, Database, Copy, ToggleLeft, ToggleRight, Search, Upload, History, Trash, Link, Activity, Eye, FileText, Presentation, ChevronDown, ChevronRight, Globe, UserX, Layers, BarChart3, ShieldCheck, SlidersHorizontal, Camera, Send, Shuffle, ShieldAlert } from 'lucide-react';
+import { Users, Briefcase, Lock, Plus, Edit2, Trash2, X, Save, CheckCircle, Loader2, UserCheck, Clock, AlertTriangle, RefreshCw, Key, Database, Copy, ToggleLeft, ToggleRight, Search, Upload, History, Trash, Activity, Eye, FileText, ChevronDown, ChevronRight, Globe, UserX, Layers, BarChart3, ShieldCheck, SlidersHorizontal, Camera, Send, Shuffle, ShieldAlert } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
