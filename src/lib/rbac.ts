@@ -6,10 +6,15 @@ import { createClient } from '@/lib/supabase/client';
 
 export interface RBACPermissions {
   can_view: boolean;
+  can_create: boolean;
   can_edit: boolean;
   can_delete: boolean;
   can_import: boolean;
   can_export: boolean;
+  can_send: boolean;
+  can_sync: boolean;
+  can_manage_permissions: boolean;
+  can_cancel: boolean;
   can_generate_link: boolean;
   can_present: boolean;
   can_close_cycle: boolean;
@@ -26,11 +31,16 @@ export interface UserScopePermission {
 }
 
 const DEFAULT_PERMISSIONS: RBACPermissions = {
-  can_view: true,   // fallback: visualizar = true
+  can_view: true,   // fallback conservador legado para não quebrar telas nesta fase
+  can_create: false,
   can_edit: false,
   can_delete: false,
   can_import: false,
   can_export: false,
+  can_send: false,
+  can_sync: false,
+  can_manage_permissions: false,
+  can_cancel: false,
   can_generate_link: false,
   can_present: false,
   can_close_cycle: false,
@@ -52,7 +62,7 @@ export async function loadUserPermissions(userId: string, moduleName: string): P
 
   const { data } = await supabase
     .from('user_permissions')
-    .select('can_view, can_edit, can_delete, can_import, can_export, can_generate_link, can_present, can_close_cycle, can_reopen_cycle, can_approve, can_admin')
+    .select('can_view, can_create, can_edit, can_delete, can_import, can_export, can_send, can_sync, can_manage_permissions, can_cancel, can_generate_link, can_present, can_close_cycle, can_reopen_cycle, can_approve, can_admin')
     .eq('user_profile_id', userId)
     .eq('module_name', moduleName)
     .maybeSingle();
@@ -60,10 +70,15 @@ export async function loadUserPermissions(userId: string, moduleName: string): P
   const perms: RBACPermissions = data
     ? {
         can_view: data.can_view ?? true,
+        can_create: (data as any).can_create ?? false,
         can_edit: data.can_edit ?? false,
         can_delete: data.can_delete ?? false,
         can_import: data.can_import ?? false,
         can_export: data.can_export ?? false,
+        can_send: (data as any).can_send ?? false,
+        can_sync: (data as any).can_sync ?? false,
+        can_manage_permissions: (data as any).can_manage_permissions ?? false,
+        can_cancel: (data as any).can_cancel ?? false,
         can_generate_link: (data as any).can_generate_link ?? false,
         can_present: (data as any).can_present ?? false,
         can_close_cycle: data.can_close_cycle ?? false,
@@ -113,6 +128,10 @@ export function canAccess(perms: RBACPermissions): boolean {
   return perms.can_view;
 }
 
+export function canCreate(perms: RBACPermissions): boolean {
+  return perms.can_create;
+}
+
 export function canEdit(perms: RBACPermissions): boolean {
   return perms.can_edit;
 }
@@ -127,6 +146,22 @@ export function canImport(perms: RBACPermissions): boolean {
 
 export function canExport(perms: RBACPermissions): boolean {
   return perms.can_export;
+}
+
+export function canSend(perms: RBACPermissions): boolean {
+  return perms.can_send;
+}
+
+export function canSync(perms: RBACPermissions): boolean {
+  return perms.can_sync;
+}
+
+export function canManagePermissions(perms: RBACPermissions): boolean {
+  return perms.can_manage_permissions;
+}
+
+export function canCancel(perms: RBACPermissions): boolean {
+  return perms.can_cancel;
 }
 
 export function canGeneratePublicLink(perms: RBACPermissions): boolean {
@@ -151,6 +186,10 @@ export function canApprove(perms: RBACPermissions): boolean {
 
 export function isAdmin(perms: RBACPermissions): boolean {
   return perms.can_admin;
+}
+
+export function hasActionPermission(perms: RBACPermissions, action: keyof RBACPermissions): boolean {
+  return Boolean(perms[action]);
 }
 
 // ─── Clear cache (call on logout) ────────────────────────────────────────────

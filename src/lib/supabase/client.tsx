@@ -1,15 +1,17 @@
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
-let client: ReturnType<typeof createSupabaseClient> | null = null;
+type AnySupabaseClient = any;
 
-export function createClient() {
+let client: AnySupabaseClient | null = null;
+
+export function createClient(): AnySupabaseClient {
   if (client) return client;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) {
     console.error('Supabase env vars missing: NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY');
-    return null;
+    return null as AnySupabaseClient;
   }
-  client = createSupabaseClient(url, key);
+  client = createSupabaseClient(url, key) as AnySupabaseClient;
   return client;
 }
