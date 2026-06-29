@@ -35,6 +35,7 @@ const NAV_SECTIONS: NavSection[] = [
     color: '#818CF8',
     items: [
       { id: 'ciclo-atual', label: 'Ciclo Atual', href: '/ciclo-atual', icon: <Activity size={14} /> },
+      { id: 'ciclos', label: 'Gestão de Ciclos', href: '/ciclos', icon: <RefreshCw size={14} /> },
       { id: 'auditoria', label: 'Auditoria', href: '/auditoria', icon: <ClipboardCheck size={14} /> },
     ],
   },
