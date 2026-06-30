@@ -1,25 +1,15 @@
 import React, { Suspense } from 'react';
 import type { Metadata, Viewport } from 'next';
-import { DM_Sans, Playfair_Display } from 'next/font/google';
 import { Toaster } from 'sonner';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { SystemAuthProvider } from '@/contexts/SystemAuthContext';
 import GoogleAnalytics from '@/components/GoogleAnalytics';
 import '../styles/tailwind.css';
 
-const dmSans = DM_Sans({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-dm-sans',
-  display: 'swap',
-});
-
-const playfairDisplay = Playfair_Display({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-playfair',
-  display: 'swap',
-});
+const fontVariables = {
+  '--font-dm-sans': 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
+  '--font-playfair': 'Georgia, Times New Roman, serif',
+} as React.CSSProperties;
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -47,8 +37,8 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="pt-BR" className={`${dmSans.variable} ${playfairDisplay.variable}`}>
-      <body className={dmSans.className}>
+    <html lang="pt-BR" style={fontVariables}>
+      <body className="font-sans">
         <AuthProvider>
           <SystemAuthProvider>
             <Suspense fallback={null}>

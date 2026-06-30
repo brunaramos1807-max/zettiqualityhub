@@ -1,6 +1,5 @@
 'use client';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import ImportModal from '@/components/ImportModal';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
 import {
   fetchCycleScores,
@@ -16,13 +15,12 @@ import { getActiveCycle } from '@/lib/services/supabaseDataService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,  } from 'recharts';
 import {
   TrendingUp, TrendingDown, AlertTriangle, Star, Users, BarChart2, Activity,
-  RefreshCw, ChevronRight, Sparkles, Lock, CheckCircle, X, Filter, Calendar,
+  RefreshCw, ChevronRight, CheckCircle, X, Filter, Calendar,
   ChevronDown, Info, Target, Zap,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useChat } from '@/lib/hooks/useChat';
-import { createClient } from '@/lib/supabase/client';
 import { DrilldownPanel } from '@/components/DrilldownNavigation';
+import { buildExecutiveInsights } from '@/lib/services/executiveInsightsService';
 
 // ─── Official pillar weights ──────────────────────────────────────────────────
 const QA_PILLAR_WEIGHTS = { p1: 22, p2: 34, p3: 18, p4: 14, p5: 12 };
@@ -105,303 +103,6 @@ function calcTrend(values: number[]): 'up' | 'down' | 'stable' {
   if (diff > 0.5) return 'up';
   if (diff < -0.5) return 'down';
   return 'stable';
-}
-
-// ─── Operational Highlights Block — REDESIGNED ────────────────────────────────
-interface OperationalHighlightsProps {
-  lastPeriod: PeriodSummary | undefined;
-  history: PeriodSummary[];
-}
-
-function OperationalHighlights({ lastPeriod, history }: OperationalHighlightsProps) {
-  const [analysts, setAnalysts] = useState<any[]>([]);
-  const [ncRecords, setNcRecords] = useState<any[]>([]);
-
-  useEffect(() => {
-    if (!lastPeriod) return;
-    import('@/lib/services/dataService').then(({ fetchCycleScores, fetchNCRecords }) => {
-      Promise.all([
-        fetchCycleScores(lastPeriod.periodo),
-        fetchNCRecords(),
-      ]).then(([scores, ncs]) => {
-        setAnalysts(scores || []);
-        setNcRecords((ncs || []).filter((n: any) => n.periodo === lastPeriod.periodo));
-      }).catch(() => {});
-    });
-  }, [lastPeriod?.periodo]);
-
-  if (!lastPeriod) return null;
-
-  const total = analysts.length;
-  const qaAbove90 = analysts.filter((a) => (a.nota_final_qa || 0) >= 90);
-  const iepcAbove90 = analysts.filter((a) => (a.iepc_total || 0) >= 90);
-  const qaAbove80 = analysts.filter((a) => (a.nota_final_qa || 0) >= 80);
-  const qaBelow70 = analysts.filter((a) => (a.nota_final_qa || 0) < 70);
-
-  // Pilar QA com menor aderência
-  const QA_PILAR_NAMES: Record<string, string> = {
-    p1: 'Gestão do Fluxo e Rastreabilidade',
-    p2: 'Gestão da Tratativa da Demanda',
-    p3: 'Análise e Assertividade Técnica',
-    p4: 'Qualidade da Comunicação',
-    p5: 'Conduta Relacional',
-  };
-  const QA_PILAR_MAX: Record<string, number> = { p1: 22, p2: 34, p3: 18, p4: 14, p5: 12 };
-  const QA_PILAR_CODES: Record<string, string> = { p1: 'P1', p2: 'P2', p3: 'P3', p4: 'P4', p5: 'P5' };
-
-  const IEPC_PILAR_NAMES: Record<string, string> = {
-    e1: 'Resolução Percebida',
-    e2: 'Compreensão e Segurança Percebida',
-    e3: 'Esforço Percebido pelo Cliente',
-    e4: 'Tempo e Fluidez',
-    e5: 'Experiência Relacional',
-  };
-  const IEPC_PILAR_MAX: Record<string, number> = { e1: 30, e2: 20, e3: 20, e4: 15, e5: 15 };
-  const IEPC_PILAR_CODES: Record<string, string> = { e1: 'E1', e2: 'E2', e3: 'E3', e4: 'E4', e5: 'E5' };
-
-  let worstQAPilar: { code: string; name: string; pct: number } | null = null;
-  let worstIEPCPilar: { code: string; name: string; pct: number } | null = null;
-
-  if (analysts.length > 0) {
-    const qaKeys = ['p1', 'p2', 'p3', 'p4', 'p5'];
-    const iepcKeys = ['e1', 'e2', 'e3', 'e4', 'e5'];
-
-    let minQAPct = Infinity;
-    qaKeys.forEach((k) => {
-      const avg = analysts.reduce((s, a) => s + (a[k] || 0), 0) / analysts.length;
-      const pct = Math.round((avg / QA_PILAR_MAX[k]) * 100);
-      if (pct < minQAPct) {
-        minQAPct = pct;
-        worstQAPilar = { code: QA_PILAR_CODES[k], name: QA_PILAR_NAMES[k], pct };
-      }
-    });
-
-    let minIEPCPct = Infinity;
-    iepcKeys.forEach((k) => {
-      const avg = analysts.reduce((s, a) => s + (a[k] || 0), 0) / analysts.length;
-      const pct = Math.round((avg / IEPC_PILAR_MAX[k]) * 100);
-      if (pct < minIEPCPct) {
-        minIEPCPct = pct;
-        worstIEPCPilar = { code: IEPC_PILAR_CODES[k], name: IEPC_PILAR_NAMES[k], pct };
-      }
-    });
-  }
-
-  // NC mais recorrente
-  let mostFrequentNC: { code: string; desc: string; count: number } | null = null;
-  if (ncRecords.length > 0) {
-    const ncCount: Record<string, number> = {};
-    ncRecords.forEach((nc: any) => {
-      const raw = nc.tipo_nc || nc.tipo || '';
-      const upper = raw.toUpperCase().trim();
-      let code = raw.trim();
-      if (upper.includes('NC-1') || upper.includes('NC1') || upper.includes('POSTURA') || upper.includes('ÉTICA') || upper.includes('ETICA')) code = 'NC-1';
-      else if (upper.includes('NC-2') || upper.includes('NC2') || upper.includes('ACURAC') || upper.includes('TÉCNIC') || upper.includes('TECNIC')) code = 'NC-2';
-      else if (upper.includes('NC-3') || upper.includes('NC3') || upper.includes('REGISTRO') || upper.includes('RASTREAB')) code = 'NC-3';
-      else if (upper.includes('NC-4') || upper.includes('NC4') || upper.includes('FLUXO') || upper.includes('OPERAC')) code = 'NC-4';
-      else if (upper.includes('NC-5') || upper.includes('NC5') || upper.includes('SEGURANÇA') || upper.includes('SEGURANCA') || upper.includes('INFORMA')) code = 'NC-5';
-      ncCount[code] = (ncCount[code] || 0) + 1;
-    });
-    const NC_DESC: Record<string, string> = {
-      'NC-1': 'Postura e Ética',
-      'NC-2': 'Acuracidade Técnica',
-      'NC-3': 'Registro e Rastreabilidade',
-      'NC-4': 'Fluxo Operacional',
-      'NC-5': 'Segurança da Informação',
-    };
-    const sorted = Object.entries(ncCount).sort((a, b) => b[1] - a[1]);
-    if (sorted.length > 0) {
-      const [topCode, topCount] = sorted[0];
-      mostFrequentNC = { code: topCode, desc: NC_DESC[topCode] || topCode, count: topCount };
-    }
-  }
-
-  // Squads afetadas por analistas críticos
-  const affectedSquads = Array.from(new Set(qaBelow70.map((a) => a.squad).filter(Boolean)));
-
-  const pctSaudavel = total > 0 ? Math.round((qaAbove80.length / total) * 100) : 0;
-
-  return (
-    <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#0D1829', border: '1px solid rgba(255,255,255,0.08)' }}>
-      {/* Header */}
-      <div className="px-5 py-3.5 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'linear-gradient(90deg, rgba(245,158,11,0.08) 0%, transparent 60%)' }}>
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.25)' }}>
-            <Star size={13} style={{ color: '#F59E0B' }} />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-white">Destaques Operacionais</h3>
-            <p className="text-[10px]" style={{ color: '#64748B' }}>Análise executiva do ciclo · Governança e Risco</p>
-          </div>
-          <span className="text-xs px-2 py-0.5 rounded-full font-semibold ml-1" style={{ backgroundColor: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.2)' }}>
-            {lastPeriod.periodo}
-          </span>
-        </div>
-        <span className="text-xs font-medium" style={{ color: '#475569' }}>
-          {total > 0 ? `${total} analistas avaliados` : 'Aguardando dados'}
-        </span>
-      </div>
-
-      {total === 0 ? (
-        <div className="p-6 text-center text-xs" style={{ color: '#475569' }}>Carregando dados do ciclo...</div>
-      ) : (
-        <div className="p-4 grid grid-cols-4 gap-3">
-
-          {/* CARD 1 — Excelência QA */}
-          <div className="rounded-xl p-4" style={{ backgroundColor: '#0A1F14', border: '1px solid rgba(16,185,129,0.25)' }}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.25)' }}>
-                🏆
-              </div>
-              <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.2)' }}>
-                QA ≥ 90
-              </span>
-            </div>
-            <p className="text-3xl font-black mb-0.5" style={{ color: '#10b981' }}>{qaAbove90.length}</p>
-            <p className="text-xs font-bold text-white mb-1">Excelência QA</p>
-            <p className="text-[10px] leading-relaxed mb-3" style={{ color: '#6EE7B7' }}>
-              {qaAbove90.length > 0
-                ? `${qaAbove90.length} de ${total} analistas acima da meta de excelência`
-                : 'Nenhum analista atingiu excelência neste ciclo'}
-            </p>
-            {qaAbove90.length > 0 && (
-              <div className="space-y-1">
-                {qaAbove90.slice(0, 3).map((a) => (
-                  <div key={a.analista} className="flex items-center justify-between">
-                    <span className="text-[10px] truncate" style={{ color: 'rgba(255,255,255,0.5)', maxWidth: '70%' }}>{a.analista}</span>
-                    <span className="text-[10px] font-bold" style={{ color: '#10b981' }}>{(a.nota_final_qa || 0).toFixed(1)}</span>
-                  </div>
-                ))}
-                {qaAbove90.length > 3 && (
-                  <p className="text-[10px]" style={{ color: '#6EE7B7' }}>+{qaAbove90.length - 3} outros</p>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* CARD 2 — Excelência IEPC */}
-          <div className="rounded-xl p-4" style={{ backgroundColor: '#071B1F', border: '1px solid rgba(6,182,212,0.25)' }}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.25)' }}>
-                ⭐
-              </div>
-              <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(6,182,212,0.12)', color: '#06B6D4', border: '1px solid rgba(6,182,212,0.2)' }}>
-                IEPC ≥ 90
-              </span>
-            </div>
-            <p className="text-3xl font-black mb-0.5" style={{ color: '#06B6D4' }}>{iepcAbove90.length}</p>
-            <p className="text-xs font-bold text-white mb-1">Excelência IEPC</p>
-            <p className="text-[10px] leading-relaxed mb-3" style={{ color: '#67E8F9' }}>
-              {iepcAbove90.length > 0
-                ? `${iepcAbove90.length} analistas com impacto percebido pelo cliente acima de 90%`
-                : 'Nenhum analista atingiu excelência IEPC neste ciclo'}
-            </p>
-            {iepcAbove90.length > 0 && (
-              <div className="space-y-1">
-                {iepcAbove90.slice(0, 3).map((a) => (
-                  <div key={a.analista} className="flex items-center justify-between">
-                    <span className="text-[10px] truncate" style={{ color: 'rgba(255,255,255,0.5)', maxWidth: '70%' }}>{a.analista}</span>
-                    <span className="text-[10px] font-bold" style={{ color: '#06B6D4' }}>{(a.iepc_total || 0).toFixed(1)}%</span>
-                  </div>
-                ))}
-                {iepcAbove90.length > 3 && (
-                  <p className="text-[10px]" style={{ color: '#67E8F9' }}>+{iepcAbove90.length - 3} outros</p>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* CARD 3 — Performance Saudável */}
-          <div className="rounded-xl p-4" style={{ backgroundColor: '#1A1500', border: '1px solid rgba(250,204,21,0.25)' }}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: 'rgba(250,204,21,0.12)', border: '1px solid rgba(250,204,21,0.2)' }}>
-                📈
-              </div>
-              <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(250,204,21,0.1)', color: '#facc15', border: '1px solid rgba(250,204,21,0.2)' }}>
-                QA ≥ 80
-              </span>
-            </div>
-            <p className="text-3xl font-black mb-0.5" style={{ color: '#facc15' }}>{qaAbove80.length}</p>
-            <p className="text-xs font-bold text-white mb-1">Performance Saudável</p>
-            <p className="text-[10px] leading-relaxed mb-3" style={{ color: '#FDE68A' }}>
-              {qaAbove80.length} de {total} analistas — {pctSaudavel}% da operação saudável
-            </p>
-            {/* Mini progress bar */}
-            <div className="w-full h-2 rounded-full mb-2" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
-              <div className="h-2 rounded-full transition-all" style={{ width: `${pctSaudavel}%`, backgroundColor: '#facc15' }} />
-            </div>
-            <p className="text-[10px]" style={{ color: '#FDE68A' }}>
-              {pctSaudavel >= 80 ? '✓ Operação estável' : pctSaudavel >= 60 ? '⚠ Atenção requerida' : '⚠ Risco operacional'}
-            </p>
-          </div>
-
-          {/* CARD 4 — Risco Operacional (2x2 grid) */}
-          <div className="rounded-xl p-4" style={{ backgroundColor: '#1A0A0A', border: '1px solid rgba(239,68,68,0.25)' }}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.25)' }}>
-                ⚠️
-              </div>
-              <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}>
-                Risco
-              </span>
-            </div>
-            <p className="text-xs font-bold text-white mb-2">Risco Operacional</p>
-
-            {/* 2x2 grid */}
-            <div className="grid grid-cols-2 gap-1.5">
-              {/* 1. Analistas Críticos */}
-              <div className="rounded-lg p-2" style={{ backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.15)' }}>
-                <p className="text-[9px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#ef4444' }}>Críticos QA&lt;70</p>
-                <p className="text-lg font-black" style={{ color: '#ef4444' }}>{qaBelow70.length}</p>
-                {affectedSquads.length > 0 && (
-                  <p className="text-[9px] mt-0.5 truncate" style={{ color: 'rgba(239,68,68,0.6)' }}>
-                    {affectedSquads.slice(0, 2).join(', ')}{affectedSquads.length > 2 ? '…' : ''}
-                  </p>
-                )}
-              </div>
-
-              {/* 2. Pilar QA menor aderência */}
-              <div className="rounded-lg p-2" style={{ backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.15)' }}>
-                <p className="text-[9px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#f59e0b' }}>Pilar QA Crítico</p>
-                {worstQAPilar ? (
-                  <>
-                    <p className="text-xs font-bold" style={{ color: '#f59e0b' }}>{worstQAPilar.code}</p>
-                    <p className="text-[9px] truncate" style={{ color: 'rgba(245,158,11,0.7)' }}>{worstQAPilar.name.split(' ').slice(0, 3).join(' ')}</p>
-                    <p className="text-[9px] font-bold mt-0.5" style={{ color: '#f59e0b' }}>{worstQAPilar.pct}%</p>
-                  </>
-                ) : <p className="text-[9px]" style={{ color: '#475569' }}>—</p>}
-              </div>
-
-              {/* 3. Pilar IEPC menor aderência */}
-              <div className="rounded-lg p-2" style={{ backgroundColor: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.15)' }}>
-                <p className="text-[9px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#8b5cf6' }}>Pilar IEPC Crítico</p>
-                {worstIEPCPilar ? (
-                  <>
-                    <p className="text-xs font-bold" style={{ color: '#8b5cf6' }}>{worstIEPCPilar.code}</p>
-                    <p className="text-[9px] truncate" style={{ color: 'rgba(139,92,246,0.7)' }}>{worstIEPCPilar.name.split(' ').slice(0, 3).join(' ')}</p>
-                    <p className="text-[9px] font-bold mt-0.5" style={{ color: '#8b5cf6' }}>{worstIEPCPilar.pct}%</p>
-                  </>
-                ) : <p className="text-[9px]" style={{ color: '#475569' }}>—</p>}
-              </div>
-
-              {/* 4. NC mais recorrente */}
-              <div className="rounded-lg p-2" style={{ backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.12)' }}>
-                <p className="text-[9px] font-semibold uppercase tracking-wide mb-1" style={{ color: '#ef4444' }}>NC Recorrente</p>
-                {mostFrequentNC ? (
-                  <>
-                    <p className="text-xs font-bold" style={{ color: '#ef4444' }}>{mostFrequentNC.code}</p>
-                    <p className="text-[9px] truncate" style={{ color: 'rgba(239,68,68,0.6)' }}>{mostFrequentNC.desc.split(' ').slice(0, 3).join(' ')}</p>
-                    <p className="text-[9px] font-bold mt-0.5" style={{ color: '#ef4444' }}>{mostFrequentNC.count} ocorrências</p>
-                  </>
-                ) : <p className="text-[9px]" style={{ color: '#475569' }}>Sem NCs</p>}
-              </div>
-            </div>
-          </div>
-
-        </div>
-      )}
-    </div>
-  );
 }
 
 function getHeatColor(val: number): string {
@@ -833,145 +534,12 @@ function PilarModal({ type, onClose, qaPillars, iepcPillars, ncData, totalNCs, p
   );
 }
 
-// ─── Close Cycle Modal ────────────────────────────────────────────────────────
-interface CloseCycleModalProps {
-  periodo: string;
-  summary: PeriodSummary;
-  onClose: () => void;
-  onConfirm: (aiSummary: string) => Promise<void>;
-}
-
-function CloseCycleModal({ periodo, summary, onClose, onConfirm }: CloseCycleModalProps) {
-  const [step, setStep] = useState<'confirm' | 'generating' | 'done'>('confirm');
-  const [aiSummary, setAiSummary] = useState('');
-  const [closing, setClosing] = useState(false);
-  const { response, isLoading, sendMessage } = useChat('GEMINI', 'gemini/gemini-2.5-flash', false);
-
-  useEffect(() => {
-    if (response && !isLoading && step === 'generating') {
-      setAiSummary(response);
-      setStep('done');
-    }
-  }, [response, isLoading, step]);
-
-  const handleGenerate = () => {
-    setStep('generating');
-    const squadLines = Object.entries(summary.squads)
-      .map(([sq, d]) => `  - ${sq}: QA ${d.qa.toFixed(1)}%, IEPC ${d.iepc.toFixed(1)}%, ${d.count} analistas`)
-      .join('\n');
-    const prompt = `Você é um gestor de qualidade sênior. Gere um FECHAMENTO OFICIAL do ciclo ${periodo} em português, com:
-1. Resumo executivo (2 frases)
-2. Destaques positivos (bullet points)
-3. Pontos de atenção (bullet points)
-4. PDIs recomendados para analistas com QA abaixo de 80%
-5. Próximos passos para o ciclo seguinte
-
-Dados do ciclo:
-- QA Médio: ${summary.qa.toFixed(1)}%
-- IEPC Médio: ${summary.iepc.toFixed(1)}%
-- Total NCs: ${summary.ncs}
-- Total Elogios: ${summary.elogios}
-- Analistas avaliados: ${summary.analistas}
-- Performance por squad:\n${squadLines}
-
-Seja objetivo, profissional e orientado a ação.`;
-    sendMessage([{ role: 'user', content: prompt }], { temperature: 0.6, max_tokens: 800 });
-  };
-
-  const handleConfirmClose = async () => {
-    setClosing(true);
-    await onConfirm(aiSummary);
-    setClosing(false);
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
-      <div className="w-full max-w-2xl rounded-2xl overflow-hidden" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.1)' }}>
-        <div className="flex items-center justify-between p-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(239,68,68,0.15)' }}>
-              <Lock size={14} style={{ color: '#EF4444' }} />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-white">Fechar Ciclo — {periodo}</h3>
-              <p className="text-xs" style={{ color: '#94A3B8' }}>Esta ação congela os dados e gera snapshot permanente</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors hover:bg-white/5">
-            <X size={14} style={{ color: '#94A3B8' }} />
-          </button>
-        </div>
-        <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
-          {step === 'confirm' && (
-            <>
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: 'QA Médio', value: `${summary.qa.toFixed(1)}%`, color: getPerformanceClass(summary.qa).color },
-                  { label: 'IEPC Médio', value: `${summary.iepc.toFixed(1)}%`, color: getPerformanceClass(summary.iepc).color },
-                  { label: 'Analistas', value: String(summary.analistas), color: '#38BDF8' },
-                  { label: 'NCs', value: String(summary.ncs), color: summary.ncs > 10 ? '#EF4444' : '#94A3B8' },
-                  { label: 'Elogios', value: String(summary.elogios), color: '#F59E0B' },
-                  { label: 'Squads', value: String(Object.keys(summary.squads).length), color: '#06B6D4' },
-                ].map((item) => (
-                  <div key={item.label} className="p-3 rounded-xl text-center" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                    <p className="text-lg font-bold" style={{ color: item.color }}>{item.value}</p>
-                    <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{item.label}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="p-4 rounded-xl" style={{ backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}>
-                <p className="text-xs font-medium mb-1" style={{ color: '#EF4444' }}>⚠️ Atenção</p>
-                <p className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>Ao fechar o ciclo, os dados serão congelados e não poderão ser editados. Um snapshot será gerado automaticamente com resumo IA e PDIs recomendados.</p>
-              </div>
-              <div className="flex gap-3">
-                <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
-                <button onClick={handleGenerate} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all flex items-center justify-center gap-2" style={{ backgroundColor: '#1E40AF', border: '1px solid rgba(56,189,248,0.2)' }}>
-                  <Sparkles size={14} />Gerar Fechamento IA
-                </button>
-              </div>
-            </>
-          )}
-          {step === 'generating' && (
-            <div className="flex flex-col items-center justify-center py-12">
-              <div className="w-10 h-10 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mb-4" />
-              <p className="text-sm font-medium text-white mb-1">Gemini analisando ciclo...</p>
-              <p className="text-xs" style={{ color: '#94A3B8' }}>Gerando resumo executivo, PDIs e próximos passos</p>
-            </div>
-          )}
-          {step === 'done' && (
-            <>
-              <div className="p-4 rounded-xl" style={{ backgroundColor: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)' }}>
-                <div className="flex items-center gap-2 mb-3">
-                  <Sparkles size={13} style={{ color: '#38BDF8' }} />
-                  <span className="text-xs font-semibold" style={{ color: '#38BDF8' }}>Fechamento IA — Gemini</span>
-                </div>
-                <p className="text-xs leading-relaxed whitespace-pre-wrap" style={{ color: 'rgba(255,255,255,0.75)' }}>{aiSummary}</p>
-              </div>
-              <div className="flex gap-3">
-                <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
-                <button onClick={handleConfirmClose} disabled={closing} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all flex items-center justify-center gap-2 disabled:opacity-60" style={{ backgroundColor: '#DC2626', border: '1px solid rgba(239,68,68,0.3)' }}>
-                  {closing ? <RefreshCw size={13} className="animate-spin" /> : <Lock size={13} />}
-                  {closing ? 'Fechando...' : 'Confirmar Fechamento'}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function HomeExecutiveView() {
-  const [importOpen, setImportOpen] = useState(false);
-  const { session, userRole, userSquad, userSquads, isAdminMaster, getTeamFilter, canImportModule, canCloseCycle: canCloseCyclePerm } = useSystemAuth();
+  const { getTeamFilter } = useSystemAuth();
   const [history, setHistory] = useState<PeriodSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [allPeriodos, setAllPeriodos] = useState<string[]>([]);
-  const [closeCycleOpen, setCloseCycleOpen] = useState(false);
-  const [closeCycleSuccess, setCloseCycleSuccess] = useState(false);
   const [drilldownCiclo, setDrilldownCiclo] = useState<string | null>(null);
   const [pilarModal, setPilarModal] = useState<'QA' | 'IEPC' | 'NC' | null>(null);
 
@@ -986,16 +554,7 @@ export default function HomeExecutiveView() {
     return `${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
   });
 
-  const canImport = isAdminMaster ||
-    canImportModule('importacoes') ||
-    session?.permissoes?.permissao_editar ||
-    session?.permissoes?.acesso_total ||
-    session?.cargo === 'Administrador' ||
-    session?.cargo === 'Coordenador' ||
-    session?.cargo === 'Coordenador Geral' ||
-    userRole === 'Admin' || userRole === 'Auditor' || userRole === 'Coordenador Geral';
 
-  const canCloseCycle = isAdminMaster || canCloseCyclePerm() || userRole === 'Admin' || userRole === 'Auditor' || userRole === 'Coordenador Geral' || session?.cargo === 'Administrador';
 
   const filterByRole = useCallback((scores: any[]) => {
     // Use the new getTeamFilter from context
@@ -1175,34 +734,6 @@ export default function HomeExecutiveView() {
     return () => document.removeEventListener('click', handler);
   }, [filterOpen]);
 
-  const handleCloseCycle = async (aiSummary: string) => {
-    const lastPeriodo = history[history.length - 1]?.periodo;
-    if (!lastPeriodo) return;
-    try {
-      const supabase = createClient();
-      if (!supabase) return;
-      await supabase.from('import_cycles').update({ is_closed: true, closed_at: new Date().toISOString(), is_current: false }).eq('periodo', lastPeriodo);
-      const last = history[history.length - 1];
-      await supabase.from('cycle_summaries').upsert({
-        periodo: lastPeriodo,
-        total_analistas: last.analistas,
-        qa_media: last.qa,
-        iepc_media: last.iepc,
-        total_ncs: last.ncs,
-        total_elogios: last.elogios,
-        squad_breakdown: last.squads,
-        insights: { ai_summary: aiSummary },
-        closed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'periodo' });
-      setCloseCycleSuccess(true);
-      setTimeout(() => setCloseCycleSuccess(false), 4000);
-      loadData();
-    } catch (err) {
-      console.error('Erro ao fechar ciclo:', err);
-    }
-  };
-
   const filteredHistory = history.filter((h) => {
     if (filterCiclo !== 'todos' && h.periodo !== filterCiclo) return false;
     return true;
@@ -1285,7 +816,7 @@ export default function HomeExecutiveView() {
   const ncDelta = lastPeriod && prevPeriod ? (lastPeriod.ncs - prevPeriod.ncs) : null;
   const elogioDelta = lastPeriod && prevPeriod ? (lastPeriod.elogios - prevPeriod.elogios) : null;
 
-  const evolutionData = filteredHistory.map(h => ({ periodo: h.periodo, qa: h.qa, iepc: h.iepc }));
+  const evolutionData = filteredHistory.map(h => ({ periodo: h.periodo, qa: h.qa, iepc: h.iepc, ncs: h.ncs, elogios: h.elogios }));
   const qaSparkline = evolutionData.map(d => d.qa);
   const iepcSparkline = evolutionData.map(d => d.iepc);
 
@@ -1376,8 +907,8 @@ export default function HomeExecutiveView() {
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
     return (
-      <div className="rounded-xl p-3 text-xs shadow-xl" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.1)' }}>
-        <p className="font-semibold text-white mb-2">{label}</p>
+      <div className="rounded-xl p-3 text-xs shadow-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid rgba(15,23,42,0.08)' }}>
+        <p className="font-semibold mb-2" style={{ color: '#0F172A' }}>{label}</p>
         {payload.map((p: any) => (
           <p key={p.dataKey} style={{ color: p.color }}>{p.name}: {p.value?.toFixed ? p.value.toFixed(1) : p.value}</p>
         ))}
@@ -1385,21 +916,49 @@ export default function HomeExecutiveView() {
     );
   };
 
-  return (
-    <div className="min-h-screen" style={{ backgroundColor: '#0A1628' }}>
-      {closeCycleSuccess && (
-        <div className="fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium text-white" style={{ backgroundColor: '#166534', border: '1px solid rgba(34,197,94,0.3)' }}>
-          <CheckCircle size={14} style={{ color: '#22C55E' }} />
-          Ciclo fechado com sucesso! Snapshot gerado.
-        </div>
-      )}
+  const formatDelta = (delta: number | null, suffix = '') => {
+    if (delta === null) return 'Sem comparativo';
+    if (delta === 0) return `Estável${suffix}`;
+    return `${delta > 0 ? '+' : ''}${delta.toFixed(1)}${suffix}`;
+  };
 
-      <div className="p-5 max-w-screen-2xl mx-auto">
+  const strongestSquad = squadRanking[0];
+  const weakestSquad = squadRanking[squadRanking.length - 1];
+  const strongestCoordinator = coordRanking[0];
+  const weakestQaPillar = qaStrategicPillars.slice().sort((a, b) => a.pct - b.pct)[0];
+  const weakestIepcPillar = iepcStrategicPillars.slice().sort((a, b) => a.pct - b.pct)[0];
+  const executiveInsights = buildExecutiveInsights({
+    periodo: lastPeriod?.periodo,
+    qa: qaMedia,
+    iepc: iepcMedia,
+    ncs: totalNCs,
+    elogios: totalElogios,
+    avaliacoes: totalAvaliacoes,
+    qaDelta,
+    iepcDelta,
+    ncDelta,
+    elogioDelta,
+    strongestSquad,
+    weakestSquad,
+    strongestCoordinator,
+    weakestQaPillar,
+    weakestIepcPillar,
+  });
+  const operationStatus = executiveInsights.health;
+  const executiveDiagnosis = executiveInsights.diagnosis;
+  const positiveHighlights = executiveInsights.positiveHighlights;
+  const attentionPoints = executiveInsights.attentionPoints;
+  const nextActions = executiveInsights.recommendedActions;
+  const governanceAlerts = executiveInsights.governanceAlerts;
+
+  return (
+    <div className="min-h-screen" style={{ backgroundColor: '#F6F8FB' }}>
+      <div className="p-6 max-w-screen-2xl mx-auto">
         {/* ── Top Bar ── */}
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h1 className="text-xl font-bold text-white">Painel Executivo</h1>
-            <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Visão estratégica da qualidade operacional</p>
+            <h1 className="text-2xl font-bold" style={{ color: '#0F172A' }}>Resumo Executivo</h1>
+            <p className="text-sm mt-1" style={{ color: '#64748B' }}>Saúde da operação, evolução, riscos e próximas decisões</p>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
@@ -1495,21 +1054,11 @@ export default function HomeExecutiveView() {
             </div>
             <div className="flex items-center gap-2 text-xs" style={{ color: '#64748B' }}>
               <span>Última atualização</span>
-              <span className="font-medium text-white">{lastUpdate}</span>
+              <span className="font-medium">{lastUpdate}</span>
             </div>
             <button onClick={loadData} className="p-1.5 rounded-lg transition-colors" style={{ color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.08)' }}>
               <RefreshCw size={13} />
             </button>
-            {canImport && (
-              <button onClick={() => setImportOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white" style={{ backgroundColor: '#1E40AF', border: '1px solid rgba(56,189,248,0.2)' }}>
-                Importar
-              </button>
-            )}
-            {canCloseCycle && lastPeriod && (
-              <button onClick={() => setCloseCycleOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.25)' }}>
-                <Lock size={11} />Fechar Ciclo
-              </button>
-            )}
           </div>
         </div>
 
@@ -1525,470 +1074,186 @@ export default function HomeExecutiveView() {
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ backgroundColor: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)' }}>
               <BarChart2 size={28} style={{ color: '#38BDF8' }} />
             </div>
-            <h2 className="text-lg font-bold text-white mb-2">Nenhum dado importado</h2>
+            <h2 className="text-lg font-bold mb-2" style={{ color: '#0F172A' }}>Nenhum dado importado</h2>
             <p className="text-sm mb-6 max-w-sm" style={{ color: '#64748B' }}>
-              O painel executivo ficará disponível após a primeira importação de dados. Clique em "Importar" para começar.
+              O resumo executivo ficará disponível após a entrada de dados operacionais. Use a área correta de importações para alimentar o ciclo.
             </p>
-            {canImport && (
-              <button onClick={() => setImportOpen(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: '#1E40AF', border: '1px solid rgba(56,189,248,0.3)' }}>
-                <Activity size={14} />
-                Importar dados agora
-              </button>
-            )}
+            <Link href="/importacoes" className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold" style={{ backgroundColor: '#E0F2FE', color: '#0369A1', border: '1px solid #BAE6FD' }}>
+              Acessar Importações <ChevronRight size={14} />
+            </Link>
           </div>
         ) : (
-          <div className="space-y-4">
-            {/* ── Row 1: KPI Cards ── */}
-            <div className="grid grid-cols-5 gap-3">
-              {/* QA Médio */}
-              <div className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: `2px solid ${qaClass.border}` }}>
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(56,189,248,0.18)' }}>
-                    <BarChart2 size={14} style={{ color: '#38BDF8' }} />
-                  </div>
-                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>QA MÉDIO</span>
+          <div className="space-y-6">
+            {/* Saúde da Operação */}
+            <section className="rounded-2xl p-6" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', boxShadow: '0 12px 30px rgba(15,23,42,0.06)' }}>
+              <div className="flex items-start justify-between gap-6 mb-5">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#64748B' }}>Saúde da Operação</p>
+                  <h2 className="text-2xl font-bold mt-1" style={{ color: '#0F172A' }}>{operationStatus.label}</h2>
+                  <p className="text-sm mt-1" style={{ color: '#64748B' }}>{operationStatus.summary}</p>
                 </div>
-                <p className="text-4xl font-black mb-2 leading-none" style={{ color: qaClass.color }}>{qaMedia.toFixed(1)}</p>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-1">
-                    {qaDelta !== null && qaDelta >= 0 ? <TrendingUp size={11} style={{ color: '#22C55E' }} /> : <TrendingDown size={11} style={{ color: '#EF4444' }} />}
-                    <span className="text-xs font-medium" style={{ color: qaDelta !== null && qaDelta >= 0 ? '#22C55E' : '#EF4444' }}>
-                      {qaDelta !== null ? `${qaDelta > 0 ? '+' : ''}${qaDelta.toFixed(1)} vs ${prevPeriod?.periodo || 'Ciclo Anterior'}` : 'Sem ciclo anterior'}
-                    </span>
-                  </div>
-                  {qaSparkline.length > 1 && <Sparkline data={qaSparkline} color="#38BDF8" />}
-                </div>
-                <PerformanceBadge score={qaMedia} size="sm" />
-              </div>
-
-              {/* IEPC Médio */}
-              <div className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: `2px solid ${iepcClass.border}` }}>
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(6,182,212,0.18)' }}>
-                    <Star size={14} style={{ color: '#06B6D4' }} />
-                  </div>
-                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>IEPC MÉDIO</span>
-                </div>
-                <p className="text-4xl font-black mb-2 leading-none" style={{ color: iepcClass.color }}>{iepcMedia.toFixed(1)}</p>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-1">
-                    {iepcDelta !== null && iepcDelta >= 0 ? <TrendingUp size={11} style={{ color: '#22C55E' }} /> : <TrendingDown size={11} style={{ color: '#EF4444' }} />}
-                    <span className="text-xs font-medium" style={{ color: iepcDelta !== null && iepcDelta >= 0 ? '#22C55E' : '#EF4444' }}>
-                      {iepcDelta !== null ? `${iepcDelta > 0 ? '+' : ''}${iepcDelta.toFixed(1)} vs ${prevPeriod?.periodo || 'Ciclo Anterior'}` : 'Sem ciclo anterior'}
-                    </span>
-                  </div>
-                  {iepcSparkline.length > 1 && <Sparkline data={iepcSparkline} color="#06B6D4" />}
-                </div>
-                <PerformanceBadge score={iepcMedia} size="sm" />
-              </div>
-
-              {/* NCs */}
-              <div className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '2px solid rgba(239,68,68,0.2)' }}>
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(239,68,68,0.18)' }}>
-                    <AlertTriangle size={14} style={{ color: '#EF4444' }} />
-                  </div>
-                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>NÃO CONFORMIDADES</span>
-                </div>
-                <p className="text-4xl font-black text-white mb-2 leading-none">{totalNCs}</p>
-                <div className="flex items-center gap-1">
-                  {ncDelta !== null && ncDelta <= 0 ? <TrendingDown size={11} style={{ color: '#22C55E' }} /> : <TrendingUp size={11} style={{ color: '#EF4444' }} />}
-                  <span className="text-xs font-medium" style={{ color: ncDelta !== null && ncDelta <= 0 ? '#22C55E' : '#EF4444' }}>
-                    {ncDelta !== null ? `${ncDelta > 0 ? '+' : ''}${ncDelta} vs ${prevPeriod?.periodo || 'Ciclo Anterior'}` : 'Sem ciclo anterior'}
-                  </span>
+                <div className="px-3 py-2 rounded-xl text-sm font-semibold" style={{ color: operationStatus.tone, backgroundColor: operationStatus.bg, border: `1px solid ${operationStatus.border}` }}>
+                  Ciclo {lastPeriod?.periodo || '—'}
                 </div>
               </div>
 
-              {/* Elogios */}
-              <div className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '2px solid rgba(245,158,11,0.2)' }}>
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(245,158,11,0.18)' }}>
-                    <Star size={14} style={{ color: '#F59E0B' }} />
-                  </div>
-                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>ELOGIOS</span>
-                </div>
-                <p className="text-4xl font-black text-white mb-2 leading-none">{totalElogios}</p>
-                <div className="flex items-center gap-1">
-                  {elogioDelta !== null && elogioDelta >= 0 ? <TrendingUp size={11} style={{ color: '#22C55E' }} /> : <TrendingDown size={11} style={{ color: '#EF4444' }} />}
-                  <span className="text-xs font-medium" style={{ color: elogioDelta !== null && elogioDelta >= 0 ? '#22C55E' : '#EF4444' }}>
-                    {elogioDelta !== null ? `${elogioDelta > 0 ? '+' : ''}${elogioDelta} vs ${prevPeriod?.periodo || 'Ciclo Anterior'}` : 'Sem ciclo anterior'}
-                  </span>
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                {[
+                  { label: 'QA médio', value: qaMedia.toFixed(1), delta: formatDelta(qaDelta), status: qaClass.label, color: qaClass.color, icon: <BarChart2 size={16} />, href: '/qa-iepc', interpretation: qaDelta === null ? 'Sem histórico comparativo' : qaDelta >= 0 ? 'Mantém ou melhora o padrão de qualidade' : 'Exige análise dos pilares QA' },
+                  { label: 'IEPC médio', value: iepcMedia.toFixed(1), delta: formatDelta(iepcDelta), status: iepcClass.label, color: iepcClass.color, icon: <Star size={16} />, href: '/qa-iepc', interpretation: iepcDelta === null ? 'Sem histórico comparativo' : iepcDelta >= 0 ? 'Percepção do cliente em evolução' : 'Rever dimensões da experiência' },
+                  { label: 'Não conformidades', value: String(totalNCs), delta: ncDelta === null ? 'Sem comparativo' : ncDelta <= 0 ? `${Math.abs(ncDelta)} a menos` : `+${ncDelta}`, status: totalNCs === 0 ? 'Sem registros' : totalNCs > 10 ? 'Atenção' : 'Monitorar', color: totalNCs > 10 ? '#DC2626' : '#D97706', icon: <AlertTriangle size={16} />, href: '/nao-conformidades', interpretation: totalNCs === 0 ? 'Sem NCs no ciclo' : 'Abrir análise de causa e recorrência' },
+                  { label: 'Reconhecimentos', value: String(totalElogios), delta: elogioDelta === null ? 'Sem comparativo' : elogioDelta >= 0 ? `+${elogioDelta}` : `${elogioDelta}`, status: totalElogios > 0 ? 'Evidência positiva' : 'Sem registros', color: '#059669', icon: <CheckCircle size={16} />, href: '/mural-elogios', interpretation: totalElogios > 0 ? 'Boas práticas para disseminar' : 'Sem destaques registrados' },
+                  { label: 'Avaliações', value: String(totalAvaliacoes), delta: lastPeriod?.periodo || 'Ciclo selecionado', status: 'Base analisada', color: '#2563EB', icon: <Activity size={16} />, href: '/feedback', interpretation: 'Abrir feedbacks e registros do ciclo' },
+                ].map((card) => (
+                  <Link key={card.label} href={card.href} className="rounded-2xl p-5 transition-all hover:-translate-y-0.5 block" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', boxShadow: '0 8px 18px rgba(15,23,42,0.04)' }}>
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#475569' }}>{card.label}</span>
+                      <span className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ color: card.color, backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>{card.icon}</span>
+                    </div>
+                    <p className="text-4xl font-bold tracking-tight" style={{ color: '#0F172A' }}>{card.value}</p>
+                    <div className="flex items-center justify-between mt-3 text-sm">
+                      <span style={{ color: card.color }}>{card.delta}</span>
+                      <span style={{ color: '#64748B' }}>{card.status}</span>
+                    </div>
+                    <p className="text-xs mt-3 leading-relaxed" style={{ color: '#64748B' }}>{card.interpretation}</p>
+                    <p className="text-xs mt-3 font-semibold flex items-center gap-1" style={{ color: '#0369A1' }}>Abrir análise <ChevronRight size={12} /></p>
+                  </Link>
+                ))}
               </div>
+            </section>
 
-              {/* Avaliações */}
-              <div className="rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '2px solid rgba(34,197,94,0.2)' }}>
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(34,197,94,0.18)' }}>
-                    <CheckCircle size={14} style={{ color: '#22C55E' }} />
-                  </div>
-                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>AVALIAÇÕES</span>
+            <Link href={executiveDiagnosis.targetRoute} className="block rounded-2xl p-5 transition-all hover:-translate-y-0.5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #DBEAFE', boxShadow: '0 10px 24px rgba(37,99,235,0.06)' }}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#2563EB' }}>Diagnóstico executivo do ciclo</p>
+                  <h3 className="text-lg font-bold mt-1" style={{ color: '#0F172A' }}>{executiveDiagnosis.title}</h3>
+                  <p className="text-sm mt-2 leading-relaxed" style={{ color: '#475569' }}>{executiveDiagnosis.description}</p>
                 </div>
-                <p className="text-4xl font-black text-white mb-2 leading-none">{totalAvaliacoes}</p>
-                <div className="w-full rounded-full h-2 mt-2" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
-                  <div className="h-2 rounded-full" style={{ width: '100%', backgroundColor: '#22C55E' }} />
-                </div>
-                <p className="text-xs mt-1.5 font-medium" style={{ color: '#22C55E' }}>100% do Ciclo</p>
+                <span className="text-xs font-semibold flex items-center gap-1 whitespace-nowrap" style={{ color: '#0369A1' }}>Ver detalhes <ChevronRight size={12} /></span>
               </div>
-            </div>
+            </Link>
 
-            {/* ── Row 2: Evolution Chart + Cycle Summary ── */}
-            <div className="grid grid-cols-12 gap-4">
-              <div className="col-span-9 rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(56,189,248,0.18)' }}>
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+              {/* Evolução */}
+              <section className="xl:col-span-2 rounded-2xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <Activity size={15} style={{ color: '#38BDF8' }} />
-                      <h3 className="text-sm font-bold text-white">Evolução QA × IEPC</h3>
-                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(56,189,248,0.12)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}>Gráfico Estratégico Principal</span>
-                    </div>
-                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>
-                      {prevPeriod ? `Comparando ${lastPeriod?.periodo} vs ${prevPeriod.periodo}` : 'Tendência histórica'}
-                    </p>
+                    <h3 className="text-base font-bold" style={{ color: '#0F172A' }}>Evolução do Suporte</h3>
+                    <p className="text-sm" style={{ color: '#64748B' }}>Tendência por ciclo de QA, IEPC, NCs e reconhecimentos.</p>
                   </div>
-                  <Link href="/evolucao-geral" className="text-xs flex items-center gap-1" style={{ color: '#38BDF8' }}>
-                    Ver mais <ChevronRight size={11} />
-                  </Link>
+                  <Link href="/cycle-dashboard" className="text-sm flex items-center gap-1" style={{ color: '#0369A1' }}>Analytics <ChevronRight size={14} /></Link>
                 </div>
-                <ResponsiveContainer width="100%" height={240}>
-                  <LineChart data={evolutionData} margin={{ top: 20, right: 20, left: -20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                    <XAxis dataKey="periodo" tick={{ fill: '#64748B', fontSize: 10 }} />
-                    <YAxis domain={[60, 100]} tick={{ fill: '#64748B', fontSize: 10 }} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Line type="monotone" dataKey="qa" name="QA Médio" stroke="#38BDF8" strokeWidth={2.5} dot={<CustomDot />} activeDot={{ r: 5 }} />
-                    <Line type="monotone" dataKey="iepc" name="IEPC Médio" stroke="#06B6D4" strokeWidth={2.5} dot={<CustomDot />} activeDot={{ r: 5 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-                <div className="flex items-center gap-6 mt-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-0.5 rounded" style={{ backgroundColor: '#38BDF8' }} />
-                    <span className="text-xs" style={{ color: '#64748B' }}>QA Médio</span>
-                    <span className="text-sm font-bold" style={{ color: qaClass.color }}>{qaMedia.toFixed(1)}</span>
-                    <PerformanceBadge score={qaMedia} size="xs" />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-0.5 rounded" style={{ backgroundColor: '#06B6D4' }} />
-                    <span className="text-xs" style={{ color: '#64748B' }}>IEPC Médio</span>
-                    <span className="text-sm font-bold" style={{ color: iepcClass.color }}>{iepcMedia.toFixed(1)}</span>
-                    <PerformanceBadge score={iepcMedia} size="xs" />
-                  </div>
-                  {prevPeriod && (
-                    <div className="ml-auto flex items-center gap-2 text-xs px-3 py-1 rounded-lg" style={{ backgroundColor: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.15)' }}>
-                      <span style={{ color: '#64748B' }}>Comparando:</span>
-                      <span className="font-semibold" style={{ color: '#38BDF8' }}>{lastPeriod?.periodo}</span>
-                      <span style={{ color: '#64748B' }}>vs</span>
-                      <span className="font-semibold" style={{ color: '#94A3B8' }}>{prevPeriod.periodo}</span>
-                    </div>
-                  )}
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={evolutionData.slice(-8)} margin={{ top: 12, right: 16, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                      <XAxis dataKey="periodo" stroke="#64748B" fontSize={11} />
+                      <YAxis yAxisId="score" stroke="#64748B" fontSize={11} domain={[0, 100]} />
+                      <YAxis yAxisId="count" orientation="right" stroke="#94A3B8" fontSize={11} allowDecimals={false} />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Line yAxisId="score" type="monotone" dataKey="qa" name="QA" stroke="#2563EB" strokeWidth={2.5} dot={<CustomDot />} />
+                      <Line yAxisId="score" type="monotone" dataKey="iepc" name="IEPC" stroke="#0891B2" strokeWidth={2.5} dot={<CustomDot />} />
+                      <Line yAxisId="count" type="monotone" dataKey="ncs" name="NCs" stroke="#DC2626" strokeWidth={2} dot={false} />
+                      <Line yAxisId="count" type="monotone" dataKey="elogios" name="Reconhecimentos" stroke="#059669" strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
                 </div>
-              </div>
+              </section>
 
-              {/* Cycle Summary */}
-              <div className="col-span-3 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)' }}>
-                <h3 className="text-sm font-bold text-white mb-3">Resumo do Ciclo Atual</h3>
-                <div className="space-y-2.5">
-                  {[
-                    { label: 'Período', value: lastPeriod ? lastPeriod.periodo : '—' },
-                    { label: 'Ciclo anterior', value: prevPeriod ? prevPeriod.periodo : 'N/A' },
-                    { label: 'Avaliações realizadas', value: String(totalAvaliacoes) },
-                    { label: 'Analistas avaliados', value: String(totalAnalistas) },
-                    { label: 'Squads', value: String(squadRanking.length) },
-                    { label: 'Coordenadores', value: String(coordRanking.length) },
-                  ].map((row) => (
-                    <div key={row.label}>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs" style={{ color: '#64748B' }}>{row.label}</span>
-                        <span className="text-xs font-semibold text-white">{row.value}</span>
+              {/* Decisão */}
+              <section className="rounded-2xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+                <h3 className="text-base font-bold" style={{ color: '#0F172A' }}>Decisão recomendada agora</h3>
+                <p className="text-sm mt-1 mb-4" style={{ color: '#64748B' }}>Leitura objetiva para priorização da gestão.</p>
+                <div className="space-y-3">
+                  {(nextActions.length > 0 ? nextActions.slice(0, 5) : [{ title: 'Dados insuficientes', description: 'Dados insuficientes para recomendação automática neste ciclo.', targetRoute: '/cycle-dashboard', priority: 'baixa' }]).map((action, index) => (
+                    <Link key={index} href={action.targetRoute} className="block rounded-xl p-3 transition-colors" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold" style={{ color: '#0F172A' }}>{action.title}</p>
+                          <p className="text-xs mt-1" style={{ color: '#64748B' }}>{action.description}</p>
+                        </div>
+                        <span className="text-[10px] uppercase font-bold" style={{ color: action.priority === 'alta' ? '#DC2626' : action.priority === 'media' ? '#D97706' : '#64748B' }}>{action.priority}</span>
                       </div>
-                    </div>
+                    </Link>
                   ))}
                 </div>
-                <div className="mt-4 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-                  <p className="text-xs font-bold mb-2" style={{ color: '#94A3B8' }}>Classificação de Performance</p>
-                  {[
-                    { label: 'Excelência', range: '≥ 90', color: '#10b981' },
-                    { label: 'Performance', range: '80–89', color: '#facc15' },
-                    { label: 'Operacional', range: '70–79', color: '#f59e0b' },
-                    { label: 'Crítico', range: '< 70', color: '#ef4444' },
-                  ].map(c => (
-                    <div key={c.label} className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
-                        <span className="text-xs" style={{ color: '#94A3B8' }}>{c.label}</span>
-                      </div>
-                      <span className="text-xs font-medium" style={{ color: '#64748B' }}>{c.range}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              </section>
             </div>
 
-            {/* ── Row 3: Mapa Estratégico QA + IEPC ── */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* Mapa Estratégico QA */}
-              <div
-                className="rounded-xl p-5 cursor-pointer transition-all hover:border-sky-500/40"
-                style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(56,189,248,0.2)' }}
-                onClick={() => setPilarModal('QA')}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Target size={14} style={{ color: '#38BDF8' }} />
-                      <h3 className="text-sm font-bold text-white">Mapa Estratégico QA</h3>
-                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(56,189,248,0.12)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}>Distribuição Estratégica</span>
-                    </div>
-                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Peso oficial dos pilares · Total: 100 pts</p>
-                  </div>
-                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: '#94A3B8' }}>
-                    <Info size={10} />
-                    <span>Ver detalhes</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div style={{ flex: '0 0 55%' }}>
-                    <StrategicRadarChart data={qaStrategicPillars} type="QA" maxScale={40} />
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    {qaStrategicPillars.map((p) => (
-                      <div key={p.subject} className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
-                        <span className="text-xs flex-1 truncate" style={{ color: '#94A3B8' }}>{p.subject}</span>
-                        <span className="text-xs font-bold" style={{ color: p.color }}>{p.weight}%</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Mapa Estratégico IEPC */}
-              <div
-                className="rounded-xl p-5 cursor-pointer transition-all hover:border-cyan-500/40"
-                style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(6,182,212,0.2)' }}
-                onClick={() => setPilarModal('IEPC')}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Zap size={14} style={{ color: '#06B6D4' }} />
-                      <h3 className="text-sm font-bold text-white">Mapa Estratégico IEPC</h3>
-                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(6,182,212,0.12)', color: '#06B6D4', border: '1px solid rgba(6,182,212,0.2)' }}>Distribuição Estratégica</span>
-                    </div>
-                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>Peso oficial dos pilares · Total: 100 pts</p>
-                  </div>
-                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: '#94A3B8' }}>
-                    <Info size={10} />
-                    <span>Ver detalhes</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div style={{ flex: '0 0 55%' }}>
-                    <StrategicRadarChart data={iepcStrategicPillars} type="IEPC" maxScale={35} />
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    {iepcStrategicPillars.map((p) => (
-                      <div key={p.subject} className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }} />
-                        <span className="text-xs flex-1 truncate" style={{ color: '#94A3B8' }}>{p.subject}</span>
-                        <span className="text-xs font-bold" style={{ color: p.color }}>{p.weight}%</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* ── Row 4: Destaques Operacionais ── */}
-            <OperationalHighlights lastPeriod={lastPeriod} history={filteredHistory} />
-
-            {/* ── Row 5: Squad Ranking + Coordinator Ranking + Heatmap ── */}
-            <div className="grid grid-cols-12 gap-4">
-              <div className="col-span-4 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)' }}>
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 className="text-sm font-bold text-white">Ranking de Squads</h3>
-                    <p className="text-xs" style={{ color: '#64748B' }}>Por QA Médio</p>
-                  </div>
-                  <Link href="/cycle-dashboard" className="text-xs flex items-center gap-1" style={{ color: '#38BDF8' }}>
-                    Ver ranking completo <ChevronRight size={11} />
-                  </Link>
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+              {/* Positivos */}
+              <section className="rounded-2xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #DCFCE7' }}>
+                <div className="flex items-center gap-2 mb-4">
+                  <TrendingUp size={16} style={{ color: '#059669' }} />
+                  <h3 className="text-base font-bold" style={{ color: '#0F172A' }}>Destaques positivos do ciclo</h3>
                 </div>
                 <div className="space-y-3">
-                  {squadRanking.slice(0, 7).map((item, i) => {
-                    const cls = getPerformanceClass(item.qa);
-                    return (
-                      <div key={item.squad} className="flex items-center gap-3">
-                        <span className="text-xs w-4 text-center font-medium" style={{ color: '#64748B' }}>{i + 1}</span>
-                        <span className="text-xs flex-1 truncate text-white">{item.squad}</span>
-                        <div className="flex items-center gap-2">
-                          <div className="w-20 rounded-full h-1.5" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
-                            <div className="h-1.5 rounded-full" style={{ width: `${(item.qa / 100) * 100}%`, backgroundColor: cls.color }} />
-                          </div>
-                          <span className="text-xs font-bold w-8 text-right" style={{ color: cls.color }}>{item.qa.toFixed(1)}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="col-span-4 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)' }}>
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 className="text-sm font-bold text-white">Ranking de Coordenadores</h3>
-                    <p className="text-xs" style={{ color: '#64748B' }}>Por QA Médio</p>
-                  </div>
-                  <Link href="/cycle-dashboard" className="text-xs flex items-center gap-1" style={{ color: '#38BDF8' }}>
-                    Ver ranking completo <ChevronRight size={11} />
-                  </Link>
-                </div>
-                <div className="space-y-3">
-                  {coordRanking.slice(0, 5).map((item, i) => {
-                    const cls = getPerformanceClass(item.qa);
-                    return (
-                      <div key={item.coord} className="flex items-center gap-3">
-                        <span className="text-xs w-4 text-center font-medium" style={{ color: '#64748B' }}>{i + 1}</span>
-                        <span className="text-xs flex-1 truncate text-white">{item.coord}</span>
-                        <div className="flex items-center gap-2">
-                          <div className="w-20 rounded-full h-1.5" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
-                            <div className="h-1.5 rounded-full" style={{ width: `${(item.qa / 100) * 100}%`, backgroundColor: cls.color }} />
-                          </div>
-                          <span className="text-xs font-bold w-8 text-right" style={{ color: cls.color }}>{item.qa.toFixed(1)}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="col-span-4 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)' }}>
-                <div className="mb-3">
-                  <h3 className="text-sm font-bold text-white">Heatmap QA Médio</h3>
-                  <p className="text-xs" style={{ color: '#64748B' }}>Por Squad × Pilares QA</p>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr>
-                        <th className="text-left pb-2 pr-2 font-medium" style={{ color: '#64748B', fontSize: 9 }}>Squad</th>
-                        {['P1 Fluxo', 'P2 Trat.', 'P3 Anál.', 'P4 Com.', 'P5 Cond.'].map(m => (
-                          <th key={m} className="pb-2 px-1 font-medium text-center" style={{ color: '#64748B', fontSize: 9 }}>{m}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {squadRanking.length > 0 ? squadRanking.map((row) => (
-                        <tr key={row.squad}>
-                          <td className="pr-2 py-0.5 text-white truncate" style={{ fontSize: 9, maxWidth: 70 }}>{row.squad}</td>
-                          {[row.qa, row.qa, row.qa, row.qa, row.qa].map((val, i) => (
-                            <td key={i} className="px-1 py-0.5 text-center rounded" style={{ fontSize: 9 }}>
-                              <span className="px-1 py-0.5 rounded" style={{ backgroundColor: getHeatBg(val), color: getHeatColor(val), fontWeight: 600 }}>{val.toFixed(0)}</span>
-                            </td>
-                          ))}
-                        </tr>
-                      )) : (
-                        <tr><td colSpan={6} className="py-4 text-center text-xs" style={{ color: '#64748B' }}>Sem dados importados</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="flex items-center gap-2 mt-2 flex-wrap">
-                  {[{ color: '#ef4444', bg: 'rgba(239,68,68,0.18)', label: '< 70' }, { color: '#f59e0b', bg: 'rgba(245,158,11,0.18)', label: '70–79' }, { color: '#facc15', bg: 'rgba(250,204,21,0.12)', label: '80–89' }, { color: '#10b981', bg: 'rgba(16,185,129,0.18)', label: '≥ 90' }].map(l => (
-                    <div key={l.label} className="flex items-center gap-1">
-                      <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: l.bg, border: `1px solid ${l.color}` }} />
-                      <span style={{ fontSize: 9, color: '#64748B' }}>{l.label}</span>
-                    </div>
+                  {(positiveHighlights.length > 0 ? positiveHighlights.slice(0, 5) : [{ title: 'Sem destaque automático', description: 'Sem destaque positivo automático com os dados atuais.', targetRoute: '/cycle-dashboard' }]).map((item, index) => (
+                    <Link key={index} href={item.targetRoute} className="block rounded-xl p-3" style={{ backgroundColor: '#F0FDF4', border: '1px solid #DCFCE7' }}>
+                      <p className="text-sm font-semibold" style={{ color: '#166534' }}>{item.title}</p>
+                      <p className="text-xs mt-1" style={{ color: '#15803D' }}>{item.description}</p>
+                    </Link>
                   ))}
                 </div>
-              </div>
+              </section>
+
+              {/* Atenção */}
+              <section className="rounded-2xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #FEF3C7' }}>
+                <div className="flex items-center gap-2 mb-4">
+                  <AlertTriangle size={16} style={{ color: '#D97706' }} />
+                  <h3 className="text-base font-bold" style={{ color: '#0F172A' }}>Pontos de atenção</h3>
+                </div>
+                <div className="space-y-3">
+                  {(attentionPoints.length > 0 ? attentionPoints.slice(0, 5) : [{ title: 'Sem risco relevante', description: 'Nenhum risco automático relevante identificado neste ciclo.', targetRoute: '/cycle-dashboard' }]).map((item, index) => (
+                    <Link key={index} href={item.targetRoute} className="block rounded-xl p-3" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FEF3C7' }}>
+                      <p className="text-sm font-semibold" style={{ color: '#92400E' }}>{item.title}</p>
+                      <p className="text-xs mt-1" style={{ color: '#A16207' }}>{item.description}</p>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+
+              {/* Governança */}
+              <section className="rounded-2xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #DBEAFE' }}>
+                <div className="flex items-center gap-2 mb-4">
+                  <Info size={16} style={{ color: '#2563EB' }} />
+                  <h3 className="text-base font-bold" style={{ color: '#0F172A' }}>Alertas de governança</h3>
+                </div>
+                <div className="space-y-3">
+                  {governanceAlerts.map((alert, index) => (
+                    <Link key={index} href={alert.targetRoute} className="block rounded-xl p-3" style={{ backgroundColor: '#EFF6FF', border: '1px solid #DBEAFE' }}>
+                      <p className="text-sm font-semibold" style={{ color: '#1E40AF' }}>{alert.title}</p>
+                      <p className="text-xs mt-1" style={{ color: '#2563EB' }}>{alert.description}</p>
+                    </Link>
+                  ))}
+                </div>
+              </section>
             </div>
 
-            {/* ── Row 6: NC Donut + Risk Alerts ── */}
-            <div className="grid grid-cols-12 gap-4">
-              {/* NC Donut — Distribuição de Não Conformidades */}
-              <div
-                className="col-span-5 rounded-xl p-4 cursor-pointer transition-all hover:border-red-500/30"
-                style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)' }}
-                onClick={() => setPilarModal('NC')}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle size={13} style={{ color: '#EF4444' }} />
-                      <h3 className="text-sm font-bold text-white">Distribuição de Não Conformidades</h3>
-                    </div>
-                    <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>NCs por Categoria · Total no ciclo: {totalNCs}</p>
-                  </div>
-                  <Link href="/nao-conformidades" className="text-xs flex items-center gap-1" style={{ color: '#38BDF8' }} onClick={e => e.stopPropagation()}>
-                    Ver mais <ChevronRight size={11} />
-                  </Link>
+            <section className="rounded-2xl p-5" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0' }}>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-base font-bold" style={{ color: '#0F172A' }}>Squads em foco</h3>
+                  <p className="text-sm" style={{ color: '#64748B' }}>Leitura rápida para coordenação e qualidade.</p>
                 </div>
-                <NCDonutChart ncData={ncDistribution} total={totalNCs} />
+                <Link href="/cycle-dashboard" className="text-sm flex items-center gap-1" style={{ color: '#0369A1' }}>Ver detalhamento <ChevronRight size={14} /></Link>
               </div>
-
-              {/* Risk Alerts */}
-              <div className="col-span-7 rounded-xl p-4" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)' }}>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-bold text-white">Alertas e Indicadores de Risco</h3>
-                  <Link href="/nao-conformidades" className="text-xs flex items-center gap-1" style={{ color: '#38BDF8' }}>
-                    Ver todos <ChevronRight size={11} />
-                  </Link>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex items-start gap-3 p-3 rounded-xl" style={{ backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(239,68,68,0.15)' }}>
-                      <AlertTriangle size={14} style={{ color: '#EF4444' }} />
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                {(squadRanking.length > 0 ? squadRanking.slice(0, 4) : [{ squad: 'Sem squad no ciclo', qa: 0 }]).map((item) => {
+                  const cls = getPerformanceClass(item.qa);
+                  return (
+                    <div key={item.squad} className="rounded-xl p-4" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                      <p className="text-sm font-semibold truncate" style={{ color: '#0F172A' }}>{item.squad}</p>
+                      <p className="text-2xl font-bold mt-2" style={{ color: cls.color }}>{item.qa.toFixed(1)}</p>
+                      <p className="text-xs mt-1" style={{ color: '#64748B' }}>{cls.label}</p>
                     </div>
-                    <div>
-                      <p className="text-sm font-bold text-white">{totalNCs > 0 ? `${totalNCs} NCs registradas` : 'Sem NCs registradas'}</p>
-                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Acompanhe os casos críticos</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3 p-3 rounded-xl" style={{ backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(245,158,11,0.15)' }}>
-                      <RefreshCw size={14} style={{ color: '#F59E0B' }} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-white">{ncDelta !== null ? `${ncDelta > 0 ? '+' : ''}${ncDelta} vs ${prevPeriod?.periodo}` : 'Sem comparativo'}</p>
-                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Variação de NCs no ciclo</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3 p-3 rounded-xl" style={{ backgroundColor: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.2)' }}>
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(56,189,248,0.15)' }}>
-                      <Target size={14} style={{ color: '#38BDF8' }} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-white">QA: {qaMedia.toFixed(1)} {qaDelta !== null ? (qaDelta >= 0 ? '↑' : '↓') + Math.abs(qaDelta).toFixed(1) : ''}</p>
-                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>vs {prevPeriod?.periodo || 'ciclo anterior'}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3 p-3 rounded-xl" style={{ backgroundColor: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(34,197,94,0.15)' }}>
-                      <TrendingUp size={14} style={{ color: '#22C55E' }} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-white">IEPC: {iepcMedia.toFixed(1)} {iepcDelta !== null ? (iepcDelta >= 0 ? '↑' : '↓') + Math.abs(iepcDelta).toFixed(1) : ''}</p>
-                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>vs {prevPeriod?.periodo || 'ciclo anterior'}</p>
-                    </div>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
-            </div>
+            </section>
           </div>
         )}
       </div>
-
-      {canImport && <ImportModal isOpen={importOpen} onClose={() => setImportOpen(false)} />}
-
-      {closeCycleOpen && lastPeriod && (
-        <CloseCycleModal
-          periodo={lastPeriod.periodo}
-          summary={lastPeriod}
-          onClose={() => setCloseCycleOpen(false)}
-          onConfirm={handleCloseCycle}
-        />
-      )}
 
       {pilarModal && (
         <PilarModal

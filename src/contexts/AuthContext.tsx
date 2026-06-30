@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
+import type { AuthChangeEvent, Session, User } from '@supabase/supabase-js';
 import { createClient } from '../lib/supabase/client';
 
 const AuthContext = createContext<any>({});
@@ -51,7 +52,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [userProfile, setUserProfile] = useState<{ full_name: string; role: string; avatar?: string } | null>(null);
 
   // Derive profile from auth user — no DB call needed for basic display
-  const deriveProfile = (authUser: any) => {
+  const deriveProfile = (authUser: User | null) => {
     if (!authUser) { setUserProfile(null); return; }
     const email: string = authUser.email || '';
     const metaName: string = authUser.user_metadata?.full_name || '';
@@ -68,7 +69,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
 
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session } }: { data: { session: Session | null } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
@@ -78,7 +79,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // Listen for auth changes
     const {
       data: { subscription }
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event: AuthChangeEvent, session: Session | null) => {
       // On sign-in, verify whitelist
       if (_event === 'SIGNED_IN' && session?.user) {
         const allowed = await isEmailWhitelisted(supabase, session.user.email || '');
