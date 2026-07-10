@@ -542,7 +542,69 @@ function classifyNCRecord(nc: NCRecord): Classification {
 
 ---
 
-## 14. NOTAS DE CORREÇÃO (Revisão de Screenshots)
+## 14. CORREÇÕES APLICADAS À TELA DE LOGIN
+
+### 14.1 Terminologia: "SQUADS" → "EQUIPES"
+**Status**: ✅ Corrigido
+
+- Removido rótulo "SQUADS" da tela de login
+- Substituído por "EQUIPES"
+- Termo técnico `squad` mantido internamente em URLs para compatibilidade
+- Alterado em: `SystemLoginScreen.tsx` linha 49
+
+### 14.2 Números Estáticos Removidos
+**Status**: ✅ Corrigido
+
+| Indicador | Situação Anterior | Situação Agora | Justificativa |
+|---|---|---|---|
+| "20+ indicadores" | Exibido como widget | Removido | Sem origem validada de dados |
+| "4 equipes" | Exibido como widget | Removido + relabel para "EQUIPES" | Sem origem validada de dados |
+| "32+ analistas" | Exibido como widget | Removido | Sem origem validada de dados |
+
+**Nota**: Valores removidos são demonstrativos (marketing), não dados reais. Podem ser restaurados após validação de origem em Supabase.
+
+### 14.3 Melhoria de Contraste
+**Status**: ✅ Corrigido
+
+| Elemento | Contraste Anterior | Contraste Novo | Aumento |
+|---|---|---|---|
+| "MONITORAMENTO EXECUTIVO" | rgba(...0.5) | rgba(...0.65) | +30% |
+| Descrição (headline) | rgba(...0.45) | rgba(...0.60) | +33% |
+| Sublabel stats | rgba(...0.3) | rgba(...0.45) | +50% |
+| "Acesso corporativo seguro" | rgba(...0.2) | rgba(...0.35) | +75% |
+| Badge labels | rgba(...0.25) | rgba(...0.40) | +60% |
+| Footer notes | rgba(...0.15) | rgba(...0.35) | +133% |
+| Links rodapé | rgba(...0.2) | rgba(...0.35) | +75% |
+
+### 14.4 Ajuste de Composição em 1920×1080
+**Status**: ✅ Corrigido
+
+- Aumentado `max-w-[360px]` para `max-w-[400px]` no card de login
+- Adicionado `2xl:max-w-[420px]` para telas muito grandes
+- Resultado: card de login melhor balanceado em monitores grandes
+- Espaço não mais excessivamente vazio
+
+### 14.5 Validação de Links do Rodapé
+**Status**: ✅ Confirmado Funcional
+
+| Link | Rota | Status |
+|---|---|---|
+| Política de Privacidade | `/privacidade` | ✅ Existe |
+| Termos de Uso | `/termos` | ✅ Existe |
+| Suporte | `/suporte` | ✅ Existe |
+
+Todos os links funcionais, não usar `href="#"`
+
+### 14.6 Build & Validação
+**Status**: ✅ Passado
+
+- `type-check`: exit code 0 (0 erros TypeScript)
+- `build`: exit code 0 (compilação bem-sucedida)
+- Screenshots: 3/3 capturados com sucesso
+
+---
+
+## 15. NOTAS DE CORREÇÃO (Revisão de Screenshots)
 
 **Validação Recebida**: Screenshots iniciais capturavam "Verificando sessão..." (inválido)
 

@@ -44,10 +44,12 @@ export default function SystemLoginScreen() {
     setGoogleLoading(false);
   };
 
+  // Nota: valores de estatísticas removidos até validação de origem real
+  // "20+ indicadores", "4 equipes", "32+ analistas" eram demonstrativos
   const stats = [
-    { value: '20+', label: 'INDICADORES', sublabel: 'Estratégicos' },
-    { value: '4', label: 'SQUADS', sublabel: 'Operacionais' },
-    { value: '32+', label: 'ANALISTAS', sublabel: 'Monitorados' },
+    { label: 'INDICADORES', sublabel: 'Estratégicos' },
+    { label: 'EQUIPES', sublabel: 'Operacionais' },
+    { label: 'ANALISTAS', sublabel: 'Monitorados' },
   ];
 
   return (
@@ -123,7 +125,7 @@ export default function SystemLoginScreen() {
             </div>
             <div>
               <p className="text-sm font-bold text-white tracking-[0.18em]">QUALIVISÃO</p>
-              <p className="text-xs tracking-[0.12em]" style={{ color: 'rgba(56,189,248,0.5)', fontSize: '0.65rem' }}>
+              <p className="text-xs tracking-[0.12em]" style={{ color: 'rgba(56,189,248,0.65)', fontSize: '0.65rem' }}>
                 MONITORAMENTO EXECUTIVO
               </p>
             </div>
@@ -154,7 +156,7 @@ export default function SystemLoginScreen() {
             <p
               className="leading-relaxed max-w-sm"
               style={{
-                color: 'rgba(248,250,252,0.45)',
+                color: 'rgba(248,250,252,0.60)',
                 fontSize: '0.9rem',
                 lineHeight: '1.7',
               }}
@@ -185,23 +187,12 @@ export default function SystemLoginScreen() {
                 }}
               >
                 <p
-                  className="font-bold mb-1"
-                  style={{
-                    fontSize: '1.75rem',
-                    color: '#F8FAFC',
-                    letterSpacing: '-0.02em',
-                    lineHeight: 1,
-                  }}
-                >
-                  {stat.value}
-                </p>
-                <p
                   className="font-semibold tracking-widest"
                   style={{ color: '#38BDF8', fontSize: '0.6rem', letterSpacing: '0.12em' }}
                 >
                   {stat.label}
                 </p>
-                <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem', marginTop: '2px' }}>
+                <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem', marginTop: '4px' }}>
                   {stat.sublabel}
                 </p>
               </div>
@@ -234,7 +225,7 @@ export default function SystemLoginScreen() {
           }}
         />
 
-        <div className="relative z-10 w-full max-w-[360px]">
+        <div className="relative z-10 w-full max-w-[400px] 2xl:max-w-[420px]">
           {/* Mobile logo */}
           <div className="flex items-center gap-3 mb-10 lg:hidden">
             <div
@@ -372,7 +363,7 @@ export default function SystemLoginScreen() {
               {/* Divider */}
               <div className="flex items-center gap-3 my-6">
                 <div className="flex-1 h-px" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }} />
-                <span className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>Acesso corporativo seguro</span>
+                <span className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>Acesso corporativo seguro</span>
                 <div className="flex-1 h-px" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }} />
               </div>
 
@@ -385,7 +376,7 @@ export default function SystemLoginScreen() {
                 ].map((badge) => (
                   <div key={badge.label} className="flex items-center gap-1.5">
                     <span style={{ fontSize: '0.7rem' }}>{badge.icon}</span>
-                    <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.7rem' }}>{badge.label}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.40)', fontSize: '0.7rem' }}>{badge.label}</span>
                   </div>
                 ))}
               </div>
@@ -393,22 +384,22 @@ export default function SystemLoginScreen() {
           </div>
 
           {/* Footer note */}
-          <p className="text-center text-xs mt-6" style={{ color: 'rgba(255,255,255,0.15)', letterSpacing: '0.03em' }}>
+          <p className="text-center text-xs mt-6" style={{ color: 'rgba(255,255,255,0.35)', letterSpacing: '0.03em' }}>
             Acesso restrito · Usuários autorizados apenas
           </p>
-          <p className="text-center text-xs mt-1" style={{ color: 'rgba(255,255,255,0.1)' }}>
+          <p className="text-center text-xs mt-1" style={{ color: 'rgba(255,255,255,0.25)' }}>
             QUALIVISÃO Enterprise · Powered by Supabase + Gemini AI
           </p>
           <div className="flex items-center justify-center gap-3 mt-3">
-            <a href="/privacidade" className="text-xs transition-colors hover:opacity-80" style={{ color: 'rgba(255,255,255,0.2)' }}>
+            <a href="/privacidade" className="text-xs transition-colors hover:opacity-80" style={{ color: 'rgba(255,255,255,0.35)' }}>
               Política de Privacidade
             </a>
-            <span style={{ color: 'rgba(255,255,255,0.1)' }}>·</span>
-            <a href="/termos" className="text-xs transition-colors hover:opacity-80" style={{ color: 'rgba(255,255,255,0.2)' }}>
+            <span style={{ color: 'rgba(255,255,255,0.2)' }}>·</span>
+            <a href="/termos" className="text-xs transition-colors hover:opacity-80" style={{ color: 'rgba(255,255,255,0.35)' }}>
               Termos de Uso
             </a>
-            <span style={{ color: 'rgba(255,255,255,0.1)' }}>·</span>
-            <a href="/suporte" className="text-xs transition-colors hover:opacity-80" style={{ color: 'rgba(255,255,255,0.2)' }}>
+            <span style={{ color: 'rgba(255,255,255,0.2)' }}>·</span>
+            <a href="/suporte" className="text-xs transition-colors hover:opacity-80" style={{ color: 'rgba(255,255,255,0.35)' }}>
               Suporte
             </a>
           </div>
