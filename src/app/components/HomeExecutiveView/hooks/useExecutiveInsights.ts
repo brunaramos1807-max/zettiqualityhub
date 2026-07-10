@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { ExecutiveMetrics, calcTrend, getTrendPercent } from './useExecutiveData';
+import { EXECUTIVE_TARGETS } from '../config/targets';
 
 export interface Insight {
   id: string;
@@ -58,11 +59,11 @@ export function useExecutiveInsights(
       });
     }
 
-    // 2. QA Above Target (85)
-    if (current.qaAvg >= 85) {
+    // 2. QA Above Target
+    if (current.qaAvg >= EXECUTIVE_TARGETS.QA.target) {
       positiveHighlights.push({
         id: 'qa-above-target',
-        text: `QA acima da meta (≥85)`,
+        text: `QA acima da meta (≥${EXECUTIVE_TARGETS.QA.target})`,
         context: `Resultado: ${current.qaAvg} pontos`,
         icon: INSIGHT_ICONS.target,
         metric: { value: current.qaAvg, unit: 'pontos' },
@@ -85,10 +86,10 @@ export function useExecutiveInsights(
     }
 
     // 4. IEPC Above Target
-    if (current.iepcAvg >= 85) {
+    if (current.iepcAvg >= EXECUTIVE_TARGETS.IEPC.target) {
       positiveHighlights.push({
         id: 'iepc-above-target',
-        text: `IEPC acima da meta (≥85)`,
+        text: `IEPC acima da meta (≥${EXECUTIVE_TARGETS.IEPC.target})`,
         context: `Resultado: ${current.iepcAvg} pontos`,
         icon: INSIGHT_ICONS.target,
         metric: { value: current.iepcAvg, unit: 'pontos' },
@@ -96,18 +97,18 @@ export function useExecutiveInsights(
     }
 
     // 5. Reduced NCs
-    if (current.validNCs <= 5) {
+    if (current.validNCs <= EXECUTIVE_TARGETS.NC.low) {
       positiveHighlights.push({
         id: 'low-ncs',
         text: `Baixa ocorrência de NCs`,
-        context: `${current.validNCs} ocorrência${current.validNCs !== 1 ? 's' : ''} (válida${current.validNCs !== 1 ? 's' : ''})`,
+        context: `${current.validNCs} ocorrência${current.validNCs !== 1 ? 's' : ''} registrada${current.validNCs !== 1 ? 's' : ''}`,
         icon: INSIGHT_ICONS.checkCircle,
         metric: { value: current.validNCs },
       });
     }
 
     // 6. High Recognition
-    if (current.totalElogios >= 10) {
+    if (current.totalElogios >= EXECUTIVE_TARGETS.RECOGNITION.high) {
       positiveHighlights.push({
         id: 'high-recognition',
         text: `Nível elevado de reconhecimentos`,
@@ -117,15 +118,15 @@ export function useExecutiveInsights(
       });
     }
 
-    // 7. Consistent Performance (all teams above 70 QA)
+    // 7. Consistent Performance (all teams above threshold)
     if (
       current.equipes.length > 0 &&
-      current.equipes.every((eq) => eq.qaAvg >= 70)
+      current.equipes.every((eq) => eq.qaAvg >= EXECUTIVE_TARGETS.TEAMS.consistentThreshold)
     ) {
       positiveHighlights.push({
         id: 'consistent-performance',
         text: `Desempenho consistente entre equipes`,
-        context: `Todas as ${current.equipes.length} equipe${current.equipes.length !== 1 ? 's' : ''} ≥70 pontos`,
+        context: `Todas as ${current.equipes.length} equipe${current.equipes.length !== 1 ? 's' : ''} ≥${EXECUTIVE_TARGETS.TEAMS.consistentThreshold} pontos`,
         icon: INSIGHT_ICONS.consistent,
       });
     }
@@ -136,42 +137,42 @@ export function useExecutiveInsights(
     // ─── EVOLUTION OPPORTUNITIES ────────────────────────────────────────────
 
     // 1. QA Below Target
-    if (current.qaAvg < 85 && current.qaAvg >= 70) {
-      const gap = (85 - current.qaAvg).toFixed(1);
+    if (current.qaAvg < EXECUTIVE_TARGETS.QA.target && current.qaAvg >= EXECUTIVE_TARGETS.QA.operational) {
+      const gap = (EXECUTIVE_TARGETS.QA.target - current.qaAvg).toFixed(1);
       evolutionOpportunities.push({
         id: 'qa-gap',
         text: `QA pode evoluir para atingir meta`,
-        context: `Faltam ${gap} pontos para 85`,
+        context: `Faltam ${gap} pontos para ${EXECUTIVE_TARGETS.QA.target}`,
         icon: INSIGHT_ICONS.upTrend,
         metric: { value: current.qaAvg, unit: 'pontos' },
       });
     }
 
     // 2. QA Critical
-    if (current.qaAvg < 70) {
+    if (current.qaAvg < EXECUTIVE_TARGETS.QA.critical) {
       evolutionOpportunities.push({
         id: 'qa-critical',
         text: `QA requer ação imediata`,
-        context: `Resultado: ${current.qaAvg} (crítico <70)`,
+        context: `Resultado: ${current.qaAvg} (crítico <${EXECUTIVE_TARGETS.QA.critical})`,
         icon: INSIGHT_ICONS.alert,
         metric: { value: current.qaAvg, unit: 'pontos' },
       });
     }
 
     // 3. IEPC Below Target
-    if (current.iepcAvg < 85 && current.iepcAvg >= 70) {
-      const gap = (85 - current.iepcAvg).toFixed(1);
+    if (current.iepcAvg < EXECUTIVE_TARGETS.IEPC.target && current.iepcAvg >= EXECUTIVE_TARGETS.IEPC.operational) {
+      const gap = (EXECUTIVE_TARGETS.IEPC.target - current.iepcAvg).toFixed(1);
       evolutionOpportunities.push({
         id: 'iepc-gap',
         text: `IEPC pode evoluir para atingir meta`,
-        context: `Faltam ${gap} pontos para 85`,
+        context: `Faltam ${gap} pontos para ${EXECUTIVE_TARGETS.IEPC.target}`,
         icon: INSIGHT_ICONS.upTrend,
         metric: { value: current.iepcAvg, unit: 'pontos' },
       });
     }
 
     // 4. High NCs
-    if (current.validNCs > 15) {
+    if (current.validNCs > EXECUTIVE_TARGETS.NC.moderate) {
       evolutionOpportunities.push({
         id: 'high-ncs',
         text: `Elevada ocorrência de não conformidades`,

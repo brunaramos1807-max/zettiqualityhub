@@ -101,7 +101,7 @@ export function HomeExecutiveView({
             </select>
           </div>
 
-          {/* Squad Filter */}
+          {/* Equipe Filter */}
           {currentData.data.equipes.length > 0 && (
             <div className="flex items-center gap-2">
               <Users size={18} className="text-slate-500" />
@@ -109,6 +109,7 @@ export function HomeExecutiveView({
                 value={squad || ''}
                 onChange={(e) => setSquad(e.target.value || null)}
                 className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                title="Filtrar por equipe"
               >
                 <option value="">Todas as Equipes</option>
                 {currentData.data.equipes.map((team) => (

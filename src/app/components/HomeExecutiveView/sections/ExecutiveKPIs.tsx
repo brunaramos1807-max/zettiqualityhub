@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { ExecutiveMetrics, getPerformanceClass, calcTrend, getTrendPercent } from '../hooks/useExecutiveData';
 import { MetricCard } from '../components/MetricCard';
+import { EXECUTIVE_TARGETS } from '../config/targets';
 
 interface ExecutiveKPIsProps {
   data: ExecutiveMetrics;
@@ -50,16 +51,16 @@ export function ExecutiveKPIs({ data }: ExecutiveKPIsProps) {
       <MetricCard
         label="Não Conformidades"
         value={data.validNCs}
-        unit={`de ${data.totalNCs}`}
+        unit="registros"
         performance={
-          data.validNCs <= 5
+          data.validNCs <= EXECUTIVE_TARGETS.NC.low
             ? {
                 label: 'Baixa',
                 color: '#10b981',
                 bg: 'rgba(16,185,129,0.12)',
                 border: 'rgba(16,185,129,0.3)',
               }
-            : data.validNCs <= 15
+            : data.validNCs <= EXECUTIVE_TARGETS.NC.moderate
               ? {
                   label: 'Moderada',
                   color: '#f59e0b',
@@ -82,14 +83,14 @@ export function ExecutiveKPIs({ data }: ExecutiveKPIsProps) {
         value={data.totalElogios}
         unit="elogios"
         performance={
-          data.totalElogios >= 10
+          data.totalElogios >= EXECUTIVE_TARGETS.RECOGNITION.high
             ? {
                 label: 'Elevado',
                 color: '#8b5cf6',
                 bg: 'rgba(139,92,246,0.12)',
                 border: 'rgba(139,92,246,0.3)',
               }
-            : data.totalElogios >= 5
+            : data.totalElogios >= EXECUTIVE_TARGETS.RECOGNITION.good
               ? {
                   label: 'Bom',
                   color: '#06b6d4',

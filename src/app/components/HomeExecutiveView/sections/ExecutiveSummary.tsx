@@ -1,5 +1,6 @@
 import React from 'react';
 import { ExecutiveMetrics } from '../hooks/useExecutiveData';
+import { EXECUTIVE_TARGETS } from '../config/targets';
 
 interface ExecutiveSummaryProps {
   data: ExecutiveMetrics;
@@ -10,25 +11,25 @@ export function ExecutiveSummary({ data }: ExecutiveSummaryProps) {
     const parts: string[] = [];
 
     // QA summary
-    if (data.qaAvg >= 85) {
+    if (data.qaAvg >= EXECUTIVE_TARGETS.QA.target) {
       parts.push('desempenho de QA acima da meta');
-    } else if (data.qaAvg >= 70) {
+    } else if (data.qaAvg >= EXECUTIVE_TARGETS.QA.operational) {
       parts.push('desempenho de QA operacional');
     } else {
       parts.push('desempenho de QA crítico');
     }
 
     // IEPC summary
-    if (data.iepcAvg >= 85) {
+    if (data.iepcAvg >= EXECUTIVE_TARGETS.IEPC.target) {
       parts.push('satisfação do cliente elevada');
-    } else if (data.iepcAvg >= 70) {
+    } else if (data.iepcAvg >= EXECUTIVE_TARGETS.IEPC.operational) {
       parts.push('satisfação do cliente operacional');
     }
 
     // NC summary
-    if (data.validNCs <= 5) {
+    if (data.validNCs <= EXECUTIVE_TARGETS.NC.low) {
       parts.push('baixa incidência de não conformidades');
-    } else if (data.validNCs <= 15) {
+    } else if (data.validNCs <= EXECUTIVE_TARGETS.NC.moderate) {
       parts.push('moderada incidência de não conformidades');
     } else {
       parts.push('alta incidência de não conformidades');
@@ -36,7 +37,7 @@ export function ExecutiveSummary({ data }: ExecutiveSummaryProps) {
 
     // Teams summary
     if (data.teamsCount > 0) {
-      const teamsAboveTarget = data.equipes.filter((e) => e.qaAvg >= 85)
+      const teamsAboveTarget = data.equipes.filter((e) => e.qaAvg >= EXECUTIVE_TARGETS.QA.target)
         .length;
       if (teamsAboveTarget === data.teamsCount) {
         parts.push('todas as equipes acima da meta');

@@ -49,21 +49,51 @@ export interface ExecutiveDataState {
 const QA_PILLAR_WEIGHTS = { p1: 22, p2: 34, p3: 18, p4: 14, p5: 12 };
 const IEPC_PILLAR_WEIGHTS = { e1: 30, e2: 20, e3: 20, e4: 15, e5: 15 };
 
+// ─── Classification ────────────────────────────────────────────────────────
+
+type NCClassification = 'legacy_valid' | 'current_valid' | 'divergent_import' | 'unknown';
+
+function classifyNCRecord(nc: any): NCClassification {
+  // Legado válido: pontos_deduzidos = -20
+  if (nc.pontos_deduzidos === -20) return 'legacy_valid';
+
+  // Divergente (import): pontos_deduzidos = -1
+  if (nc.pontos_deduzidos === -1) return 'divergent_import';
+
+  // Atual válido: pontos_deduzidos = null e tipo reconhecido
+  if (nc.pontos_deduzidos === null || nc.pontos_deduzidos === 0) {
+    const normalized = normalizeNCType(nc.tipo_nc);
+    if (isValidNCType(normalized)) return 'current_valid';
+  }
+
+  // Desconhecido
+  return 'unknown';
+}
+
 // ─── Normalization ──────────────────────────────────────────────────────────
 
 function normalizeNCType(raw: string): string {
   if (!raw) return 'Outros';
   const upper = raw.toUpperCase().trim();
+
+  // Verificar códigos literais primeiro
   if (upper.includes('NC-1') || upper.includes('POSTURA') || upper.includes('ÉTICA') || upper.includes('ETICA')) return 'NC-1';
   if (upper.includes('NC-2') || upper.includes('ACURAC') || upper.includes('TÉCNIC') || upper.includes('TECNIC')) return 'NC-2';
   if (upper.includes('NC-3') || upper.includes('REGISTRO') || upper.includes('RASTREAB')) return 'NC-3';
   if (upper.includes('NC-4') || upper.includes('FLUXO') || upper.includes('OPERAC')) return 'NC-4';
   if (upper.includes('NC-5') || upper.includes('SEGURANÇA') || upper.includes('SEGURANCA') || upper.includes('INFORMA')) return 'NC-5';
+
+  // Categorias descritivas encontradas em 02/2026
+  if (upper.includes('DESINTERESSE') || upper.includes('FALHA DE PROATIVIDADE')) return 'Desinteresse';
+  if (upper.includes('NEGLIGÊNCIA') || upper.includes('NEGLIGENCIA')) return 'Negligência';
+  if (upper.includes('ORIENTAÇÃO INCORRETA') || upper.includes('ORIENTACAO INCORRETA') || upper.includes('ENCAMINHAMENTO INDEVIDO')) return 'Orientação Incorreta';
+  if (upper.includes('ERRO CRÍTICO') || upper.includes('ERRO CRITICO')) return 'Erro Crítico';
+
   return 'Outros';
 }
 
 function isValidNCType(type: string): boolean {
-  return ['NC-1', 'NC-2', 'NC-3', 'NC-4', 'NC-5'].includes(type);
+  return ['NC-1', 'NC-2', 'NC-3', 'NC-4', 'NC-5', 'Desinteresse', 'Negligência', 'Orientação Incorreta', 'Erro Crítico'].includes(type);
 }
 
 // ─── Classification ────────────────────────────────────────────────────────
@@ -141,13 +171,23 @@ export function useExecutiveData(periodo: string): ExecutiveDataState {
         if (eq) eq.elogioCount += 1;
       });
 
-      // Separate valid NCs (NC-1~5) from divergent (-1 records)
-      const validNCs = ncs.filter(
-        (nc) => isValidNCType(normalizeNCType(nc.tipo_nc))
-      );
-      const divergentNCs = ncs.filter(
-        (nc) => !isValidNCType(normalizeNCType(nc.tipo_nc))
-      );
+      // Classify NCs into categories: legacy_valid, current_valid, divergent_import, unknown
+      const ncsByClassification = new Map<NCClassification, any[]>();
+      ncs.forEach((nc) => {
+        const classification = classifyNCRecord(nc);
+        if (!ncsByClassification.has(classification)) {
+          ncsByClassification.set(classification, []);
+        }
+        ncsByClassification.get(classification)!.push(nc);
+      });
+
+      // For display: combine legacy_valid + current_valid (actual conformance records)
+      // Exclude: divergent_import (-1) and unknown
+      const validNCs = [
+        ...(ncsByClassification.get('legacy_valid') || []),
+        ...(ncsByClassification.get('current_valid') || []),
+      ];
+      const divergentNCs = ncsByClassification.get('divergent_import') || [];
 
       // NC distribution (valid only)
       const ncByTypeMap = new Map<string, number>();
@@ -252,8 +292,8 @@ function getPreviousPeriodo(periodo: string): string {
 export function calcTrend(
   current: number,
   previous?: number
-): 'up' | 'down' | 'stable' {
-  if (!previous) return 'stable';
+): 'up' | 'down' | 'stable' | 'unavailable' {
+  if (previous === undefined || previous === null) return 'unavailable';
   const diff = current - previous;
   if (Math.abs(diff) < 0.5) return 'stable';
   return diff > 0 ? 'up' : 'down';

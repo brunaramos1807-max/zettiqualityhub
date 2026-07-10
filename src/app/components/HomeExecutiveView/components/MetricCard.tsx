@@ -11,7 +11,7 @@ interface MetricCardProps {
     bg: string;
     border: string;
   };
-  trend?: 'up' | 'down' | 'stable';
+  trend?: 'up' | 'down' | 'stable' | 'unavailable';
   trendPercent?: number;
   icon?: React.ReactNode;
   onClick?: () => void;
@@ -67,7 +67,7 @@ export function MetricCard({
           </span>
         )}
 
-        {trend && (
+        {trend && trend !== 'unavailable' && (
           <div className="flex items-center gap-1 ml-auto">
             {trend === 'up' && (
               <TrendingUp size={16} className="text-green-600" />
