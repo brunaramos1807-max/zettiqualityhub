@@ -44,13 +44,6 @@ export default function SystemLoginScreen() {
     setGoogleLoading(false);
   };
 
-  // Nota: valores de estatísticas removidos até validação de origem real
-  // "20+ indicadores", "4 equipes", "32+ analistas" eram demonstrativos
-  const stats = [
-    { label: 'INDICADORES', sublabel: 'Estratégicos' },
-    { label: 'EQUIPES', sublabel: 'Operacionais' },
-    { label: 'ANALISTAS', sublabel: 'Monitorados' },
-  ];
 
   return (
     <div
@@ -165,42 +158,8 @@ export default function SystemLoginScreen() {
             </p>
           </div>
 
-          {/* Stat widgets */}
-          <div className="grid grid-cols-3 gap-3 mt-auto">
-            {stats.map((stat) => (
-              <div
-                key={stat.label}
-                className="group relative p-5 rounded-2xl cursor-default transition-all duration-300"
-                style={{
-                  backgroundColor: 'rgba(15,27,49,0.6)',
-                  border: '1px solid rgba(56,189,248,0.1)',
-                  backdropFilter: 'blur(12px)',
-                  boxShadow: '0 4px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.04)',
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.border = '1px solid rgba(56,189,248,0.25)';
-                  (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 32px rgba(0,0,0,0.4), 0 0 20px rgba(56,189,248,0.08), inset 0 1px 0 rgba(255,255,255,0.06)';
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.border = '1px solid rgba(56,189,248,0.1)';
-                  (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.04)';
-                }}
-              >
-                <p
-                  className="font-semibold tracking-widest"
-                  style={{ color: '#38BDF8', fontSize: '0.6rem', letterSpacing: '0.12em' }}
-                >
-                  {stat.label}
-                </p>
-                <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem', marginTop: '4px' }}>
-                  {stat.sublabel}
-                </p>
-              </div>
-            ))}
-          </div>
-
           {/* Footer */}
-          <p className="mt-8 text-xs" style={{ color: 'rgba(255,255,255,0.15)', letterSpacing: '0.04em' }}>
+          <p className="mt-auto pt-8 text-xs" style={{ color: 'rgba(255,255,255,0.35)', letterSpacing: '0.04em' }}>
             © 2026 Qualivisão · Plataforma Enterprise de Governança Operacional
           </p>
         </div>
@@ -363,7 +322,7 @@ export default function SystemLoginScreen() {
               {/* Divider */}
               <div className="flex items-center gap-3 my-6">
                 <div className="flex-1 h-px" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }} />
-                <span className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>Acesso corporativo seguro</span>
+                <span className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>Acesso corporativo seguro</span>
                 <div className="flex-1 h-px" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }} />
               </div>
 
@@ -376,7 +335,7 @@ export default function SystemLoginScreen() {
                 ].map((badge) => (
                   <div key={badge.label} className="flex items-center gap-1.5">
                     <span style={{ fontSize: '0.7rem' }}>{badge.icon}</span>
-                    <span style={{ color: 'rgba(255,255,255,0.40)', fontSize: '0.7rem' }}>{badge.label}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.7rem' }}>{badge.label}</span>
                   </div>
                 ))}
               </div>
@@ -384,22 +343,22 @@ export default function SystemLoginScreen() {
           </div>
 
           {/* Footer note */}
-          <p className="text-center text-xs mt-6" style={{ color: 'rgba(255,255,255,0.35)', letterSpacing: '0.03em' }}>
+          <p className="text-center text-xs mt-6" style={{ color: 'rgba(255,255,255,0.55)', letterSpacing: '0.03em' }}>
             Acesso restrito · Usuários autorizados apenas
           </p>
-          <p className="text-center text-xs mt-1" style={{ color: 'rgba(255,255,255,0.25)' }}>
+          <p className="text-center text-xs mt-1" style={{ color: 'rgba(255,255,255,0.45)' }}>
             QUALIVISÃO Enterprise · Powered by Supabase + Gemini AI
           </p>
           <div className="flex items-center justify-center gap-3 mt-3">
-            <a href="/privacidade" className="text-xs transition-colors hover:opacity-80" style={{ color: 'rgba(255,255,255,0.35)' }}>
+            <a href="/privacidade" className="text-xs transition-colors hover:opacity-80" style={{ color: 'rgba(255,255,255,0.55)' }}>
               Política de Privacidade
             </a>
-            <span style={{ color: 'rgba(255,255,255,0.2)' }}>·</span>
-            <a href="/termos" className="text-xs transition-colors hover:opacity-80" style={{ color: 'rgba(255,255,255,0.35)' }}>
+            <span style={{ color: 'rgba(255,255,255,0.3)' }}>·</span>
+            <a href="/termos" className="text-xs transition-colors hover:opacity-80" style={{ color: 'rgba(255,255,255,0.55)' }}>
               Termos de Uso
             </a>
-            <span style={{ color: 'rgba(255,255,255,0.2)' }}>·</span>
-            <a href="/suporte" className="text-xs transition-colors hover:opacity-80" style={{ color: 'rgba(255,255,255,0.35)' }}>
+            <span style={{ color: 'rgba(255,255,255,0.3)' }}>·</span>
+            <a href="/suporte" className="text-xs transition-colors hover:opacity-80" style={{ color: 'rgba(255,255,255,0.55)' }}>
               Suporte
             </a>
           </div>
