@@ -97,14 +97,15 @@ export default function SystemLoginScreen() {
           }}
         />
 
-        {/* Content */}
-        <div className="relative z-10 flex flex-col h-full p-12 xl:p-16">
-          {/* Logo - Official Brand Asset */}
-          <div className="mb-auto">
+        {/* Content - Brand-focused hierarchy */}
+        <div className="relative z-10 flex flex-col h-full p-8 xl:p-12 justify-center items-start">
+          {/* Logo - Large, centered brand asset */}
+          <div className="mb-8 w-full flex justify-start">
             <svg
-              className="h-12 w-auto"
+              className="w-96 xl:w-[420px] h-auto"
               viewBox="0 0 900 180"
               xmlns="http://www.w3.org/2000/svg"
+              style={{ maxWidth: 'clamp(320px, 100%, 420px)' }}
             >
               <g transform="translate(18 20)">
                 <circle cx="56" cy="56" r="41" fill="none" stroke="#E6F1EE" strokeWidth="12" strokeLinecap="round" strokeDasharray="222 70" transform="rotate(-48 56 56)"/>
@@ -118,34 +119,35 @@ export default function SystemLoginScreen() {
             </svg>
           </div>
 
-          {/* Main headline */}
-          <div className="mt-16 mb-10">
+          {/* Headline - smaller, positioned below brand */}
+          <div className="mb-12">
             <h1
-              className="font-bold leading-[1.1] mb-6"
+              className="font-bold leading-[1.2] mb-4"
               style={{
-                fontSize: 'clamp(2.4rem, 3.5vw, 3.2rem)',
+                fontSize: 'clamp(1.5rem, 2.2vw, 1.8rem)',
                 color: '#F8FAFC',
-                letterSpacing: '-0.02em',
+                letterSpacing: '-0.01em',
               }}
             >
               Visão{' '}
               <span
                 style={{
                   color: 'var(--brand-accent)',
-                  textShadow: '0 0 30px rgba(15, 160, 141, 0.35)',
+                  textShadow: '0 0 20px rgba(15, 160, 141, 0.3)',
                 }}
               >
-                Executiva
+                executiva
               </span>
               <br />
-              para Alta Performance
+              para alta performance
             </h1>
             <p
-              className="leading-relaxed max-w-sm"
+              className="leading-relaxed"
               style={{
-                color: 'rgba(248,250,252,0.60)',
-                fontSize: '0.9rem',
-                lineHeight: '1.7',
+                color: 'rgba(248,250,252,0.55)',
+                fontSize: '0.85rem',
+                lineHeight: '1.6',
+                maxWidth: '480px',
               }}
             >
               Centralize indicadores, equipes e resultados em uma plataforma única de gestão e inteligência operacional.
@@ -153,7 +155,7 @@ export default function SystemLoginScreen() {
           </div>
 
           {/* Footer */}
-          <p className="mt-auto pt-8 text-xs" style={{ color: 'rgba(255,255,255,0.35)', letterSpacing: '0.04em' }}>
+          <p className="mt-auto pt-12 text-xs" style={{ color: 'rgba(255,255,255,0.3)', letterSpacing: '0.03em' }}>
             © 2026 Qualivisão · Plataforma Enterprise de Governança Operacional
           </p>
         </div>
@@ -178,13 +180,14 @@ export default function SystemLoginScreen() {
           }}
         />
 
-        <div className="relative z-10 w-full max-w-[400px] 2xl:max-w-[420px]">
-          {/* Mobile logo - Official Brand Asset */}
-          <div className="mb-10 lg:hidden">
+        <div className="relative z-10 w-full max-w-[400px] 2xl:max-w-[420px] flex flex-col lg:block">
+          {/* Mobile logo - Large centered brand asset */}
+          <div className="mb-6 lg:hidden flex justify-center w-full">
             <svg
-              className="h-10 w-auto"
+              className="w-56 h-auto"
               viewBox="0 0 900 180"
               xmlns="http://www.w3.org/2000/svg"
+              style={{ maxWidth: 'clamp(180px, 100%, 220px)' }}
             >
               <g transform="translate(18 20)">
                 <circle cx="56" cy="56" r="41" fill="none" stroke="#E6F1EE" strokeWidth="12" strokeLinecap="round" strokeDasharray="222 70" transform="rotate(-48 56 56)"/>
