@@ -1,0 +1,73 @@
+/**
+ * QualiVisão Brand Design Tokens v1
+ *
+ * Define as cores e variáveis de marca oficiais.
+ * Não editar códigos hexadecimais diretamente nos componentes.
+ * Sempre referenciar estas variáveis CSS custom properties.
+ */
+
+:root {
+  /* Navy - Cor Primária Corporativa */
+  --brand-primary: #0B1D2D;
+  --brand-primary-dark: #081621;
+  --brand-primary-light: #0F2940;
+
+  /* Navy Secundário - Tons de Suporte */
+  --brand-secondary: #183B50;
+  --brand-secondary-dark: #132E40;
+  --brand-secondary-light: #1F4A62;
+
+  /* Teal - Cor de Acento/Destaque */
+  --brand-accent: #0FA08D;
+  --brand-accent-dark: #0A7A6B;
+  --brand-accent-light: #1FC5AF;
+
+  /* Superfícies e Texto */
+  --brand-on-dark: #E6F1EE;
+  --brand-surface: #F5F7F6;
+  --brand-surface-variant: #E9ECE9;
+
+  /* Aliases Semânticas */
+  --color-brand-primary-navy: var(--brand-primary);
+  --color-brand-secondary-navy: var(--brand-secondary);
+  --color-brand-accent-teal: var(--brand-accent);
+  --color-text-on-dark: var(--brand-on-dark);
+  --color-background-light: var(--brand-surface);
+
+  /* Estados */
+  --brand-success: #10B981;
+  --brand-warning: #F59E0B;
+  --brand-error: #EF4444;
+  --brand-info: #3B82F6;
+}
+
+/* Dark Mode - Se necessário no futuro */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background-light: var(--brand-primary);
+    --color-text-on-dark: var(--brand-on-dark);
+  }
+}
+
+/**
+ * Uso dos Tokens
+ *
+ * Exemplos de aplicação:
+ *
+ * Header/Navbar:
+ *   background-color: var(--brand-primary);
+ *   color: var(--brand-on-dark);
+ *
+ * Botão Primário:
+ *   background-color: var(--brand-accent);
+ *   color: white;
+ *
+ * Links e Ênfase:
+ *   color: var(--brand-accent);
+ *
+ * Bordas/Divisores:
+ *   border-color: var(--brand-secondary);
+ *
+ * Ícones:
+ *   fill: var(--brand-accent);
+ */
