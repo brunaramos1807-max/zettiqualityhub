@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
+import Image from 'next/image';
 import AppImage from '@/components/ui/AppImage';
 import { createClient } from '@/lib/supabase/client';
 
@@ -98,30 +99,23 @@ export default function SystemLoginScreen() {
 
         {/* Content */}
         <div className="relative z-10 flex flex-col h-full p-12 xl:p-16">
-          {/* Logo */}
-          <div className="flex items-center gap-4 mb-auto">
-            <div
-              className="w-11 h-11 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center"
-              style={{
-                backgroundColor: 'var(--brand-primary)',
-                border: `1px solid var(--brand-accent)`,
-                boxShadow: '0 0 20px rgba(15, 160, 141, 0.2)',
-              }}
+          {/* Logo - Official Brand Asset */}
+          <div className="mb-auto">
+            <svg
+              className="h-12 w-auto"
+              viewBox="0 0 900 180"
+              xmlns="http://www.w3.org/2000/svg"
             >
-              <svg width="44" height="44" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+              <g transform="translate(18 20)">
                 <circle cx="56" cy="56" r="41" fill="none" stroke="#E6F1EE" strokeWidth="12" strokeLinecap="round" strokeDasharray="222 70" transform="rotate(-48 56 56)"/>
                 <rect x="29" y="58" width="9" height="23" rx="2" fill="#E6F1EE"/>
                 <rect x="43" y="47" width="9" height="34" rx="2" fill="#0FA08D"/>
                 <rect x="57" y="34" width="9" height="47" rx="2" fill="#E6F1EE"/>
                 <path d="M66 72 L100 107 L86 108 L59 80 Z" fill="#0FA08D"/>
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-bold text-white tracking-[0.18em]">QUALIVISÃO</p>
-              <p className="text-xs tracking-[0.12em]" style={{ color: 'var(--brand-accent)', fontSize: '0.65rem' }}>
-                INTELIGÊNCIA E PERFORMANCE
-              </p>
-            </div>
+              </g>
+              <text x="140" y="96" fill="#E6F1EE" fontFamily="Inter, Arial, sans-serif" fontSize="72" fontWeight="650">ualiVisão</text>
+              <text x="148" y="136" fill="#0FA08D" fontFamily="Inter, Arial, sans-serif" fontSize="24" fontWeight="500" letterSpacing="3">INTELIGÊNCIA E PERFORMANCE</text>
+            </svg>
           </div>
 
           {/* Main headline */}
@@ -185,24 +179,23 @@ export default function SystemLoginScreen() {
         />
 
         <div className="relative z-10 w-full max-w-[400px] 2xl:max-w-[420px]">
-          {/* Mobile logo */}
-          <div className="flex items-center gap-3 mb-10 lg:hidden">
-            <div
-              className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0"
-              style={{ backgroundColor: 'var(--brand-primary)', border: `1px solid var(--brand-accent)` }}
+          {/* Mobile logo - Official Brand Asset */}
+          <div className="mb-10 lg:hidden">
+            <svg
+              className="h-10 w-auto"
+              viewBox="0 0 900 180"
+              xmlns="http://www.w3.org/2000/svg"
             >
-              <svg width="40" height="40" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+              <g transform="translate(18 20)">
                 <circle cx="56" cy="56" r="41" fill="none" stroke="#E6F1EE" strokeWidth="12" strokeLinecap="round" strokeDasharray="222 70" transform="rotate(-48 56 56)"/>
                 <rect x="29" y="58" width="9" height="23" rx="2" fill="#E6F1EE"/>
                 <rect x="43" y="47" width="9" height="34" rx="2" fill="#0FA08D"/>
                 <rect x="57" y="34" width="9" height="47" rx="2" fill="#E6F1EE"/>
                 <path d="M66 72 L100 107 L86 108 L59 80 Z" fill="#0FA08D"/>
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-bold text-white tracking-widest">QUALIVISÃO</p>
-              <p className="text-xs" style={{ color: 'var(--brand-accent)' }}>Inteligência e Performance</p>
-            </div>
+              </g>
+              <text x="140" y="96" fill="#E6F1EE" fontFamily="Inter, Arial, sans-serif" fontSize="72" fontWeight="650">ualiVisão</text>
+              <text x="148" y="136" fill="#0FA08D" fontFamily="Inter, Arial, sans-serif" fontSize="24" fontWeight="500" letterSpacing="3">INTELIGÊNCIA E PERFORMANCE</text>
+            </svg>
           </div>
 
           {/* Login card */}
