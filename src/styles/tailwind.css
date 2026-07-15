@@ -4,6 +4,9 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
 
+/* QualiVisão Brand Design Tokens v1 */
+@import './theme/brand-tokens.css';
+
 :root {
   --background: #0A0F1E;
   --foreground: #F1F5F9;
