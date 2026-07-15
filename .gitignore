@@ -35,3 +35,9 @@ jest-test-results.json
 
 # Optional: if using TurboRepo or monorepo
 turbo/
+
+# App directory symlink
+app
+
+# Temporary scripts
+capture-screenshots.js
