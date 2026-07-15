@@ -103,23 +103,23 @@ export default function SystemLoginScreen() {
             <div
               className="w-11 h-11 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center"
               style={{
-                backgroundColor: 'rgba(56,189,248,0.12)',
-                border: '1px solid rgba(56,189,248,0.25)',
-                boxShadow: '0 0 20px rgba(56,189,248,0.15)',
+                backgroundColor: 'var(--brand-primary)',
+                border: `1px solid var(--brand-accent)`,
+                boxShadow: '0 0 20px rgba(15, 160, 141, 0.2)',
               }}
             >
-              <AppImage
-                src="/assets/images/ChatGPT_Image_18_de_mai._de_2026_16_36_10-1779133005009.png"
-                alt="QualiVisão logo"
-                width={44}
-                height={44}
-                className="w-full h-full object-cover"
-              />
+              <svg width="44" height="44" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="56" cy="56" r="41" fill="none" stroke="#E6F1EE" strokeWidth="12" strokeLinecap="round" strokeDasharray="222 70" transform="rotate(-48 56 56)"/>
+                <rect x="29" y="58" width="9" height="23" rx="2" fill="#E6F1EE"/>
+                <rect x="43" y="47" width="9" height="34" rx="2" fill="#0FA08D"/>
+                <rect x="57" y="34" width="9" height="47" rx="2" fill="#E6F1EE"/>
+                <path d="M66 72 L100 107 L86 108 L59 80 Z" fill="#0FA08D"/>
+              </svg>
             </div>
             <div>
               <p className="text-sm font-bold text-white tracking-[0.18em]">QUALIVISÃO</p>
-              <p className="text-xs tracking-[0.12em]" style={{ color: 'rgba(56,189,248,0.65)', fontSize: '0.65rem' }}>
-                MONITORAMENTO EXECUTIVO
+              <p className="text-xs tracking-[0.12em]" style={{ color: 'var(--brand-accent)', fontSize: '0.65rem' }}>
+                INTELIGÊNCIA E PERFORMANCE
               </p>
             </div>
           </div>
@@ -134,17 +134,17 @@ export default function SystemLoginScreen() {
                 letterSpacing: '-0.02em',
               }}
             >
-              Gestão da{' '}
+              Visão{' '}
               <span
                 style={{
-                  color: '#38BDF8',
-                  textShadow: '0 0 30px rgba(56,189,248,0.35)',
+                  color: 'var(--brand-accent)',
+                  textShadow: '0 0 30px rgba(15, 160, 141, 0.35)',
                 }}
               >
-                Qualidade
+                Executiva
               </span>
               <br />
-              Operacional
+              para Alta Performance
             </h1>
             <p
               className="leading-relaxed max-w-sm"
@@ -154,7 +154,7 @@ export default function SystemLoginScreen() {
                 lineHeight: '1.7',
               }}
             >
-              Plataforma enterprise de indicadores estratégicos, dashboards executivos e inteligência gerencial para tomada de decisão.
+              Centralize indicadores, equipes e resultados em uma plataforma única de gestão e inteligência operacional.
             </p>
           </div>
 
@@ -189,19 +189,19 @@ export default function SystemLoginScreen() {
           <div className="flex items-center gap-3 mb-10 lg:hidden">
             <div
               className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0"
-              style={{ backgroundColor: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.2)' }}
+              style={{ backgroundColor: 'var(--brand-primary)', border: `1px solid var(--brand-accent)` }}
             >
-              <AppImage
-                src="/assets/images/ChatGPT_Image_18_de_mai._de_2026_16_36_10-1779133005009.png"
-                alt="QualiVisão logo"
-                width={40}
-                height={40}
-                className="w-full h-full object-cover"
-              />
+              <svg width="40" height="40" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="56" cy="56" r="41" fill="none" stroke="#E6F1EE" strokeWidth="12" strokeLinecap="round" strokeDasharray="222 70" transform="rotate(-48 56 56)"/>
+                <rect x="29" y="58" width="9" height="23" rx="2" fill="#E6F1EE"/>
+                <rect x="43" y="47" width="9" height="34" rx="2" fill="#0FA08D"/>
+                <rect x="57" y="34" width="9" height="47" rx="2" fill="#E6F1EE"/>
+                <path d="M66 72 L100 107 L86 108 L59 80 Z" fill="#0FA08D"/>
+              </svg>
             </div>
             <div>
               <p className="text-sm font-bold text-white tracking-widest">QUALIVISÃO</p>
-              <p className="text-xs" style={{ color: 'rgba(56,189,248,0.5)' }}>Enterprise Platform</p>
+              <p className="text-xs" style={{ color: 'var(--brand-accent)' }}>Inteligência e Performance</p>
             </div>
           </div>
 
@@ -229,22 +229,22 @@ export default function SystemLoginScreen() {
                 <div
                   className="w-14 h-14 rounded-2xl flex items-center justify-center mb-5"
                   style={{
-                    backgroundColor: 'rgba(56,189,248,0.08)',
-                    border: '1px solid rgba(56,189,248,0.2)',
-                    boxShadow: '0 0 24px rgba(56,189,248,0.1)',
+                    backgroundColor: 'rgba(15, 160, 141, 0.08)',
+                    border: `1px solid var(--brand-accent)`,
+                    boxShadow: '0 0 24px rgba(15, 160, 141, 0.1)',
                   }}
                 >
                   <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
                     <path
                       d="M12 1.5L3.75 5.25v5.25c0 5.25 3.563 10.163 8.25 11.25 4.688-1.088 8.25-6 8.25-11.25V5.25L12 1.5z"
-                      fill="rgba(56,189,248,0.15)"
-                      stroke="#38BDF8"
+                      fill="rgba(15, 160, 141, 0.15)"
+                      stroke="var(--brand-accent)"
                       strokeWidth="1.5"
                       strokeLinejoin="round"
                     />
                     <path
                       d="M9 12l2 2 4-4"
-                      stroke="#38BDF8"
+                      stroke="var(--brand-accent)"
                       strokeWidth="1.5"
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -255,10 +255,10 @@ export default function SystemLoginScreen() {
                   className="font-bold text-white text-center mb-1.5"
                   style={{ fontSize: '1.25rem', letterSpacing: '-0.01em' }}
                 >
-                  Acesso à Plataforma
+                  Acesse o QualiVisão
                 </h2>
                 <p className="text-center text-sm" style={{ color: 'rgba(255,255,255,0.38)', lineHeight: 1.5 }}>
-                  Entre com suas credenciais corporativas para continuar
+                  Entre no seu ambiente corporativo
                 </p>
               </div>
 
@@ -322,22 +322,8 @@ export default function SystemLoginScreen() {
               {/* Divider */}
               <div className="flex items-center gap-3 my-6">
                 <div className="flex-1 h-px" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }} />
-                <span className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>Acesso corporativo seguro</span>
+                <span className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>Acesso seguro para usuários autorizados</span>
                 <div className="flex-1 h-px" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }} />
-              </div>
-
-              {/* Security badges */}
-              <div className="flex items-center justify-center gap-4">
-                {[
-                  { icon: '🔒', label: 'OAuth 2.0' },
-                  { icon: '🛡️', label: 'Supabase Auth' },
-                  { icon: '✓', label: 'RBAC' },
-                ].map((badge) => (
-                  <div key={badge.label} className="flex items-center gap-1.5">
-                    <span style={{ fontSize: '0.7rem' }}>{badge.icon}</span>
-                    <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.7rem' }}>{badge.label}</span>
-                  </div>
-                ))}
               </div>
             </div>
           </div>
@@ -345,9 +331,6 @@ export default function SystemLoginScreen() {
           {/* Footer note */}
           <p className="text-center text-xs mt-6" style={{ color: 'rgba(255,255,255,0.55)', letterSpacing: '0.03em' }}>
             Acesso restrito · Usuários autorizados apenas
-          </p>
-          <p className="text-center text-xs mt-1" style={{ color: 'rgba(255,255,255,0.45)' }}>
-            QUALIVISÃO Enterprise · Powered by Supabase + Gemini AI
           </p>
           <div className="flex items-center justify-center gap-3 mt-3">
             <a href="/privacidade" className="text-xs transition-colors hover:opacity-80" style={{ color: 'rgba(255,255,255,0.55)' }}>
