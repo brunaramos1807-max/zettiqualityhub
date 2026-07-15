@@ -35,3 +35,6 @@ jest-test-results.json
 
 # Optional: if using TurboRepo or monorepo
 turbo/app
+
+# App directory symlink (src/app is the real app directory)
+app
