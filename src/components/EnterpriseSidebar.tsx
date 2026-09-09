@@ -26,93 +26,71 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'EXECUTIVO',
     color: '#38BDF8',
     items: [
-      { id: 'painel', label: 'Painel Executivo', href: '/', icon: <LayoutDashboard size={14} /> },
-      { id: 'evolucao', label: 'Evolução', href: '/evolucao-geral', icon: <TrendingUp size={14} /> },
-      { id: 'analytics', label: 'Analytics', href: '/cycle-dashboard', icon: <BarChart3 size={14} /> },
+      { id: 'cockpit', label: 'Cockpit Executivo', href: '/', icon: <LayoutDashboard size={14} /> },
+      { id: 'evolucao', label: 'Evolução & Tendências', href: '/evolucao-geral', icon: <TrendingUp size={14} /> },
     ],
   },
   {
-    title: 'OPERAÇÃO',
+    title: 'OPERAÇÕES',
     color: '#A78BFA',
     items: [
-      { id: 'ciclo-atual', label: 'Ciclo Atual', href: '/ciclo-atual', icon: <Activity size={14} /> },
-      { id: 'ciclos', label: 'Gestão de Ciclos', href: '/ciclos', icon: <RefreshCw size={14} /> },
-      { id: 'auditoria', label: 'Auditoria', href: '/auditoria', icon: <ClipboardCheck size={14} /> },
-      { id: 'suporte', label: 'Organograma', href: '/suporte', icon: <Users size={14} /> },
+      { id: 'ciclos', label: 'Governança de Ciclos', href: '/ciclos', icon: <RefreshCw size={14} /> },
+      { id: 'auditoria', label: 'Auditoria & Amostragem', href: '/auditoria', icon: <ClipboardCheck size={14} /> },
+      { id: 'estrutura', label: 'Estrutura Operacional', href: '/suporte', icon: <Users size={14} /> },
     ],
   },
   {
-    title: 'QUALIDADE',
+    title: 'MEDIÇÃO',
     color: '#22C55E',
     items: [
-      { id: 'qa-iepc', label: 'QA & IEPC 360°', href: '/qa-iepc', icon: <Zap size={14} /> },
+      { id: 'qa-iepc', label: 'QA & IEPC Oficial', href: '/qa-iepc', icon: <Zap size={14} /> },
       { id: 'ncs', label: 'Não Conformidades', href: '/nao-conformidades', icon: <AlertTriangle size={14} /> },
-      { id: 'elogios', label: 'Elogios', href: '/mural-elogios', icon: <Star size={14} /> },
+      { id: 'calibragem', label: 'Calibragem de Métodos', href: '/calibragem', icon: <Activity size={14} /> },
     ],
   },
   {
-    title: 'DESENVOLVIMENTO HUMANO',
+    title: 'ANÁLISE & GESTÃO',
     color: '#FB923C',
     items: [
-      { id: 'feedback', label: 'Feedback', href: '/feedback', icon: <MessageSquare size={14} /> },
-      { id: 'feedback-pdi', label: 'Plano de Desenvolvimento', href: '/feedback/pdi', icon: <GitBranch size={14} /> },
-      { id: 'gestao', label: 'Gestão de Pessoas', href: '/gestao', icon: <Users size={14} /> },
-      { id: 'advertencias', label: 'Advertências', href: '/advertencias', icon: <ShieldAlert size={14} /> },
+      { id: 'historico', label: 'Histórico & Séries', href: '/historico', icon: <History size={14} /> },
+      { id: 'documentos', label: 'Conhecimento & POPs', href: '/documentos', icon: <FileText size={14} /> },
     ],
   },
   {
-    title: 'GOVERNANÇA',
-    color: '#94A3B8',
-    items: [
-      { id: 'documentos', label: 'Documentos', href: '/documentos', icon: <FileText size={14} /> },
-      { id: 'historico', label: 'Histórico', href: '/historico', icon: <History size={14} /> },
-    ],
-  },
-  {
-    title: 'ADMIN',
+    title: 'ADMINISTRAÇÃO',
     color: '#64748B',
     items: [
-      { id: 'configuracoes', label: 'Configurações', href: '/configuracoes', icon: <Settings size={14} />, adminOnly: true },
-      { id: 'analistas', label: 'Analistas', href: '/analistas', icon: <UserSquare2 size={14} /> },
-      { id: 'integracoes', label: 'Integrações', href: '/configuracoes', icon: <Plug size={14} />, adminOnly: true },
-      { id: 'importacoes', label: 'Importações', href: '/importacoes', icon: <Upload size={14} /> },
-      { id: 'admin-diagnostico', label: 'Logs & Diagnóstico', href: '/admin-diagnostico', icon: <ScrollText size={14} />, adminOnly: true },
+      { id: 'importacoes', label: 'Ingestão de Dados', href: '/importacoes', icon: <Upload size={14} /> },
+      { id: 'configuracoes', label: 'Configurações do SaaS', href: '/configuracoes', icon: <Settings size={14} />, adminOnly: true },
+      { id: 'admin-diagnostico', label: 'Saúde da Plataforma', href: '/admin-diagnostico', icon: <ScrollText size={14} />, adminOnly: true },
     ],
   },
 ];
 
 function getActiveSection(pathname: string): string {
   if (pathname === '/' || pathname.startsWith('/evolucao-geral') || pathname.startsWith('/cycle-dashboard')) return 'EXECUTIVO';
-  if (pathname.startsWith('/ciclo-atual') || pathname.startsWith('/ciclos') || pathname.startsWith('/auditoria')) return 'OPERAÇÃO';
-  if (pathname.startsWith('/qa-iepc') || pathname.startsWith('/nao-conformidades') || pathname.startsWith('/mural-elogios')) return 'QUALIDADE';
-  if (pathname.startsWith('/feedback') || pathname.startsWith('/gestao') || pathname.startsWith('/advertencias')) return 'DESENVOLVIMENTO HUMANO';
-  if (pathname.startsWith('/documentos') || pathname.startsWith('/historico')) return 'GOVERNANÇA';
-  if (pathname.startsWith('/configuracoes') || pathname.startsWith('/analistas') || pathname.startsWith('/importacoes') || pathname.startsWith('/admin-diagnostico')) return 'ADMIN';
+  if (pathname.startsWith('/ciclo-atual') || pathname.startsWith('/ciclos') || pathname.startsWith('/auditoria') || pathname.startsWith('/suporte')) return 'OPERAÇÕES';
+  if (pathname.startsWith('/qa-iepc') || pathname.startsWith('/nao-conformidades') || pathname.startsWith('/calibragem')) return 'MEDIÇÃO';
+  if (pathname.startsWith('/documentos') || pathname.startsWith('/historico')) return 'ANÁLISE & GESTÃO';
+  if (pathname.startsWith('/configuracoes') || pathname.startsWith('/importacoes') || pathname.startsWith('/admin-diagnostico')) return 'ADMINISTRAÇÃO';
   return 'EXECUTIVO';
 }
 
 function getActiveId(pathname: string): string {
-  if (pathname === '/') return 'painel';
+  if (pathname === '/') return 'cockpit';
   if (pathname.startsWith('/evolucao-geral')) return 'evolucao';
-  if (pathname.startsWith('/cycle-dashboard')) return 'analytics';
-  if (pathname.startsWith('/ciclo-atual')) return 'ciclo-atual';
   if (pathname.startsWith('/ciclos')) return 'ciclos';
   if (pathname.startsWith('/auditoria')) return 'auditoria';
-  if (pathname.startsWith('/suporte')) return 'suporte';
+  if (pathname.startsWith('/suporte')) return 'estrutura';
   if (pathname.startsWith('/qa-iepc')) return 'qa-iepc';
   if (pathname.startsWith('/nao-conformidades')) return 'ncs';
-  if (pathname.startsWith('/mural-elogios')) return 'elogios';
-  if (pathname.startsWith('/feedback/pdi')) return 'feedback-pdi';
-  if (pathname.startsWith('/feedback')) return 'feedback';
-  if (pathname.startsWith('/gestao')) return 'gestao';
-  if (pathname.startsWith('/advertencias')) return 'advertencias';
+  if (pathname.startsWith('/calibragem')) return 'calibragem';
   if (pathname.startsWith('/documentos')) return 'documentos';
   if (pathname.startsWith('/historico')) return 'historico';
-  if (pathname.startsWith('/analistas')) return 'analistas';
   if (pathname.startsWith('/admin-diagnostico')) return 'admin-diagnostico';
   if (pathname.startsWith('/configuracoes')) return 'configuracoes';
   if (pathname.startsWith('/importacoes')) return 'importacoes';
-  return 'painel';
+  return 'cockpit';
 }
 
 function getInitials(name: string): string {
@@ -204,7 +182,7 @@ export default function EnterpriseSidebar({ collapsed = false, onToggle }: Enter
                 marginTop: '1px',
               }}
             >
-              People Analytics
+              Gestão da Qualidade
             </p>
           </div>
         )}

@@ -186,3 +186,5 @@ function getPreviousPeriodo(periodo: string): string {
 
   return `${String(m).padStart(2, '0')}/${y}`;
 }
+
+export default HomeExecutiveView;
