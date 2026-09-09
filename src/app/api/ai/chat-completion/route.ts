@@ -11,13 +11,10 @@ export async function POST(request: NextRequest) {
       message: 'AI Assistant layer ready for quality analysis and diagnostic insights.',
       insights: [
         'Análise baseada em dados reais e evidências empíricas.',
-        'Utilize o Diagrama de Ishikawa e 5 Porquês para aprofundamento causal.'
-      ]
+        'Utilize o Diagrama de Ishikawa e 5 Porquês para aprofundamento causal.',
+      ],
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: 'Erro ao processar requisição de IA' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Erro ao processar requisição de IA' }, { status: 500 });
   }
 }

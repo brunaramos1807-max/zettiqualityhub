@@ -39,13 +39,15 @@ export const EventoNCSchema = z.object({
 });
 
 export const AvaliacaoIngestaoSchema = z.object({
-  periodo: z.string().regex(/^(\d{2}\/\d{4}|\d{4}-\d{2})$/, 'Período deve estar no formato MM/YYYY ou YYYY-MM'),
+  periodo: z
+    .string()
+    .regex(/^(\d{2}\/\d{4}|\d{4}-\d{2})$/, 'Período deve estar no formato MM/YYYY ou YYYY-MM'),
   equipe_nome: z.string().min(1, 'Nome da equipe é obrigatório'),
   analista_identificador: z.string().min(1, 'Identificador da pessoa é obrigatório'),
   analista_nome: z.string().min(1, 'Nome da pessoa avaliada é obrigatório'),
   coordenador_nome: z.string().optional().nullable(),
   auditor_nome: z.string().optional().nullable(),
-  
+
   // Notas oficiais
   nota_final_qa: numericCoerce,
   indice_iepc: numericCoerce,
@@ -64,7 +66,9 @@ export const AvaliacaoIngestaoSchema = z.object({
 export const LoteIngestaoSchema = z.object({
   origem: z.string().min(1),
   versao_schema: z.string().default('v1.0'),
-  avaliacoes: z.array(AvaliacaoIngestaoSchema).min(1, 'O lote deve conter pelo menos uma avaliação'),
+  avaliacoes: z
+    .array(AvaliacaoIngestaoSchema)
+    .min(1, 'O lote deve conter pelo menos uma avaliação'),
 });
 
 export type AvaliacaoIngestaoInput = z.infer<typeof AvaliacaoIngestaoSchema>;

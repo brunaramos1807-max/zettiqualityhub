@@ -2,11 +2,37 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import type { AuthChangeEvent, Session, User } from '@supabase/supabase-js';
-import { getCurrentSession, loginUser, logoutUser, seedDefaultAdmin, type SessionData, ADMIN_PERMISSIONS, DEFAULT_PERMISSIONS,  } from '@/lib/authSystem';
+import {
+  getCurrentSession,
+  loginUser,
+  logoutUser,
+  seedDefaultAdmin,
+  type SessionData,
+  ADMIN_PERMISSIONS,
+  DEFAULT_PERMISSIONS,
+} from '@/lib/authSystem';
 import { createClient } from '@/lib/supabase/client';
 
 export type UserRole =
-  | 'admin' | 'qualidade' | 'coordenador' | 'diretoria' | 'gestor' | 'analista' | 'Admin' |'Coordenador' |'Diretoria' |'Gestor' |'Coordenador Geral' |'Auditor' |'Analista' |'QA' |'Supervisor' |'Gerente' |'Analista Qualidade' |'Coordenadora Qualidade' |'Visualizador';
+  | 'admin'
+  | 'qualidade'
+  | 'coordenador'
+  | 'diretoria'
+  | 'gestor'
+  | 'analista'
+  | 'Admin'
+  | 'Coordenador'
+  | 'Diretoria'
+  | 'Gestor'
+  | 'Coordenador Geral'
+  | 'Auditor'
+  | 'Analista'
+  | 'QA'
+  | 'Supervisor'
+  | 'Gerente'
+  | 'Analista Qualidade'
+  | 'Coordenadora Qualidade'
+  | 'Visualizador';
 
 export interface ModulePermission {
   module_name: string;
@@ -87,7 +113,15 @@ const ADMIN_EMAILS = ['brunaramos1807@gmail.com', 'bruna.silva@zetti.tech', 'adm
 const ADMIN_ROLES: string[] = ['admin', 'Admin', 'Administrador'];
 
 // Roles that are coordinator-level
-const COORDINATOR_ROLES: string[] = ['coordenador', 'qualidade', 'Coordenador', 'Coordenador Geral', 'Coordenadora Qualidade', 'QA', 'Auditor'];
+const COORDINATOR_ROLES: string[] = [
+  'coordenador',
+  'qualidade',
+  'Coordenador',
+  'Coordenador Geral',
+  'Coordenadora Qualidade',
+  'QA',
+  'Auditor',
+];
 
 // Roles that are gestor-level (read-only broad access)
 const GESTOR_ROLES: string[] = ['gestor', 'diretoria', 'Gestor', 'Gerente', 'Diretoria'];
@@ -152,7 +186,9 @@ function clearProfileCache(): void {
   try {
     sessionStorage.removeItem(PROFILE_CACHE_KEY);
     sessionStorage.removeItem(PERMS_CACHE_KEY);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 async function fetchFullUserProfile(userId: string, email: string): Promise<UserProfileData> {
@@ -161,8 +197,13 @@ async function fetchFullUserProfile(userId: string, email: string): Promise<User
   if (cached) return cached;
 
   const empty: UserProfileData = {
-    role: null, squad: null, squads: [], cargo_id: null,
-    cargo_nome: null, is_admin_master: false, full_name: null,
+    role: null,
+    squad: null,
+    squads: [],
+    cargo_id: null,
+    cargo_nome: null,
+    is_admin_master: false,
+    full_name: null,
   };
   try {
     const supabase = createClient();
@@ -170,16 +211,36 @@ async function fetchFullUserProfile(userId: string, email: string): Promise<User
 
     // Run all three queries in parallel: by UUID, by email in user_profiles, and pre_registered_users
     const [profileByIdResult, profileByEmailResult, preRegResult] = await Promise.all([
-      supabase.from('user_profiles').select('role, squad, squads, equipes, cargo_id, full_name').eq('id', userId).maybeSingle(),
-      supabase.from('user_profiles').select('role, squad, squads, equipes, cargo_id, full_name').eq('email', email.toLowerCase()).maybeSingle(),
-      supabase.from('pre_registered_users').select('role, squad, squads, cargo_id, full_name, is_active').eq('email', email.toLowerCase()).maybeSingle(),
+      supabase
+        .from('user_profiles')
+        .select('role, squad, squads, equipes, cargo_id, full_name')
+        .eq('id', userId)
+        .maybeSingle(),
+      supabase
+        .from('user_profiles')
+        .select('role, squad, squads, equipes, cargo_id, full_name')
+        .eq('email', email.toLowerCase())
+        .maybeSingle(),
+      supabase
+        .from('pre_registered_users')
+        .select('role, squad, squads, cargo_id, full_name, is_active')
+        .eq('email', email.toLowerCase())
+        .maybeSingle(),
     ]);
 
     // Priority: profile by UUID > profile by email > pre_registered_users
     const source = profileByIdResult.data || profileByEmailResult.data || preRegResult.data;
     if (!source) {
       if (ADMIN_EMAILS.includes(email.toLowerCase())) {
-        const result: UserProfileData = { role: 'Admin', squad: null, squads: [], cargo_id: null, cargo_nome: 'Admin Master', is_admin_master: true, full_name: null };
+        const result: UserProfileData = {
+          role: 'Admin',
+          squad: null,
+          squads: [],
+          cargo_id: null,
+          cargo_nome: 'Admin Master',
+          is_admin_master: true,
+          full_name: null,
+        };
         writeCache(cacheKey, result);
         return result;
       }
@@ -188,9 +249,12 @@ async function fetchFullUserProfile(userId: string, email: string): Promise<User
 
     const role = (source.role as UserRole) || null;
     const squad = source.squad || null;
-    const squads: string[] = Array.isArray(source.squads) && source.squads.length > 0
-      ? source.squads
-      : squad ? [squad] : [];
+    const squads: string[] =
+      Array.isArray(source.squads) && source.squads.length > 0
+        ? source.squads
+        : squad
+          ? [squad]
+          : [];
     const cargo_id = source.cargo_id || null;
 
     // Fetch cargo details only if needed
@@ -211,7 +275,15 @@ async function fetchFullUserProfile(userId: string, email: string): Promise<User
     if (ADMIN_EMAILS.includes(email.toLowerCase())) is_admin_master = true;
     if (ADMIN_ROLES.includes(role || '')) is_admin_master = true;
 
-    const result: UserProfileData = { role, squad, squads, cargo_id, cargo_nome, is_admin_master, full_name: source.full_name || null };
+    const result: UserProfileData = {
+      role,
+      squad,
+      squads,
+      cargo_id,
+      cargo_nome,
+      is_admin_master,
+      full_name: source.full_name || null,
+    };
     writeCache(cacheKey, result);
     return result;
   } catch {
@@ -240,20 +312,48 @@ async function fetchModulePermissions(userId: string): Promise<ModulePermission[
 }
 
 // Build default permissions based on role
-function buildDefaultPermissions(role: UserRole | null, isAdminMaster: boolean): ModulePermission[] {
+function buildDefaultPermissions(
+  role: UserRole | null,
+  isAdminMaster: boolean
+): ModulePermission[] {
   const ALL_MODULES = [
-    'painel_executivo','evolucao','analytics','ciclo_atual','ciclos',
-    'auditoria','importacoes','nao_conformidades','elogios','pdis',
-    'calibragem','historico','logs','documentos_iso','gestao',
-    'configuracoes','analistas','feedback',
+    'painel_executivo',
+    'evolucao',
+    'analytics',
+    'ciclo_atual',
+    'ciclos',
+    'auditoria',
+    'importacoes',
+    'nao_conformidades',
+    'elogios',
+    'pdis',
+    'calibragem',
+    'historico',
+    'logs',
+    'documentos_iso',
+    'gestao',
+    'configuracoes',
+    'analistas',
+    'feedback',
   ];
 
   if (isAdminMaster || ADMIN_ROLES.includes(role || '')) {
     return ALL_MODULES.map((m) => ({
       module_name: m,
-      can_view: true, can_create: true, can_edit: true, can_delete: true, can_import: true,
-      can_export: true, can_send: true, can_sync: true, can_manage_permissions: true, can_cancel: true, can_close_cycle: true, can_reopen_cycle: true,
-      can_approve: true, can_admin: true,
+      can_view: true,
+      can_create: true,
+      can_edit: true,
+      can_delete: true,
+      can_import: true,
+      can_export: true,
+      can_send: true,
+      can_sync: true,
+      can_manage_permissions: true,
+      can_cancel: true,
+      can_close_cycle: true,
+      can_reopen_cycle: true,
+      can_approve: true,
+      can_admin: true,
     }));
   }
 
@@ -264,12 +364,15 @@ function buildDefaultPermissions(role: UserRole | null, isAdminMaster: boolean):
       can_create: false,
       can_edit: !['configuracoes'].includes(m),
       can_delete: false,
-      can_import: ['importacoes','ciclo_atual','auditoria'].includes(m),
+      can_import: ['importacoes', 'ciclo_atual', 'auditoria'].includes(m),
       can_export: true,
-      can_send: false, can_sync: false, can_manage_permissions: false, can_cancel: false,
-      can_close_cycle: ['ciclos','ciclo_atual','importacoes'].includes(m),
+      can_send: false,
+      can_sync: false,
+      can_manage_permissions: false,
+      can_cancel: false,
+      can_close_cycle: ['ciclos', 'ciclo_atual', 'importacoes'].includes(m),
       can_reopen_cycle: false,
-      can_approve: ['pdis','nao_conformidades','calibragem'].includes(m),
+      can_approve: ['pdis', 'nao_conformidades', 'calibragem'].includes(m),
       can_admin: false,
     }));
   }
@@ -283,7 +386,10 @@ function buildDefaultPermissions(role: UserRole | null, isAdminMaster: boolean):
       can_delete: false,
       can_import: false,
       can_export: true,
-      can_send: false, can_sync: false, can_manage_permissions: false, can_cancel: false,
+      can_send: false,
+      can_sync: false,
+      can_manage_permissions: false,
+      can_cancel: false,
       can_close_cycle: false,
       can_reopen_cycle: false,
       can_approve: false,
@@ -294,11 +400,30 @@ function buildDefaultPermissions(role: UserRole | null, isAdminMaster: boolean):
   // Default: minimal access — executive panel + feedback view
   return ALL_MODULES.map((m) => ({
     module_name: m,
-    can_view: ['painel_executivo','evolucao','ciclo_atual','nao_conformidades','elogios','pdis','historico','analytics','feedback'].includes(m),
+    can_view: [
+      'painel_executivo',
+      'evolucao',
+      'ciclo_atual',
+      'nao_conformidades',
+      'elogios',
+      'pdis',
+      'historico',
+      'analytics',
+      'feedback',
+    ].includes(m),
     can_create: false,
-    can_edit: false, can_delete: false, can_import: false,
-    can_export: false, can_send: false, can_sync: false, can_manage_permissions: false, can_cancel: false, can_close_cycle: false, can_reopen_cycle: false,
-    can_approve: false, can_admin: false,
+    can_edit: false,
+    can_delete: false,
+    can_import: false,
+    can_export: false,
+    can_send: false,
+    can_sync: false,
+    can_manage_permissions: false,
+    can_cancel: false,
+    can_close_cycle: false,
+    can_reopen_cycle: false,
+    can_approve: false,
+    can_admin: false,
   }));
 }
 
@@ -314,7 +439,10 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
   const [modulePermissions, setModulePermissions] = useState<ModulePermission[]>([]);
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const isAdmin = isAdminMaster || ADMIN_ROLES.includes(userRole || '') || ADMIN_EMAILS.includes(session?.email?.toLowerCase() || '');
+  const isAdmin =
+    isAdminMaster ||
+    ADMIN_ROLES.includes(userRole || '') ||
+    ADMIN_EMAILS.includes(session?.email?.toLowerCase() || '');
 
   const clearTimer = () => {
     if (inactivityTimer.current) {
@@ -348,7 +476,8 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
         baseSession.nome = profile.full_name;
       }
 
-      const role = profile.role || (ADMIN_EMAILS.includes(email.toLowerCase()) ? 'Admin' : 'Coordenador');
+      const role =
+        profile.role || (ADMIN_EMAILS.includes(email.toLowerCase()) ? 'Admin' : 'Coordenador');
       setUserRole(role as UserRole);
       setUserSquad(profile.squad);
       setUserSquads(profile.squads);
@@ -365,7 +494,7 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
         setModulePermissions(buildDefaultPermissions(role as UserRole, profile.is_admin_master));
       }
     },
-    [],
+    []
   );
 
   const applySupabaseUser = useCallback(
@@ -375,7 +504,7 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
       startInactivityTimer();
       await applyProfile(supaUser.id, supaUser.email || '', derived);
     },
-    [startInactivityTimer, applyProfile],
+    [startInactivityTimer, applyProfile]
   );
 
   // ─── Whitelist check: verify user is pre-registered before granting access ──
@@ -406,7 +535,10 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
       const inProfiles = !!(profileResult.data && profileResult.data.is_active !== false);
 
       if (preRegResult.error) {
-        console.warn('[AUTH] pre_registered_users whitelist check error:', preRegResult.error.message);
+        console.warn(
+          '[AUTH] pre_registered_users whitelist check error:',
+          preRegResult.error.message
+        );
       }
       if (profileResult.error) {
         console.warn('[AUTH] user_profiles whitelist check error:', profileResult.error.message);
@@ -424,7 +556,9 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
     if (!session) return;
     const supabase = createClient();
     if (!supabase) return;
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (user) {
       await applyProfile(user.id, user.email || '', session);
     }
@@ -446,7 +580,9 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
 
       const supabase = createClient();
       if (supabase) {
-        const { data: { session: supaSession } } = await supabase.auth.getSession();
+        const {
+          data: { session: supaSession },
+        } = await supabase.auth.getSession();
         if (supaSession?.user) {
           // ── Whitelist check for existing session ──────────────────────────
           const allowed = await checkWhitelist(supaSession.user.email || '');
@@ -462,24 +598,28 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
           clearTimeout(safetyTimer);
           setLoading(false);
 
-          const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, newSession: Session | null) => {
-            if (event === 'SIGNED_IN' && newSession?.user) {
-              // ── Whitelist check on every sign-in event ───────────────────
-              const ok = await checkWhitelist(newSession.user.email || '');
-              if (!ok) {
-                await supabase.auth.signOut();
-                return;
+          const {
+            data: { subscription },
+          } = supabase.auth.onAuthStateChange(
+            async (event: AuthChangeEvent, newSession: Session | null) => {
+              if (event === 'SIGNED_IN' && newSession?.user) {
+                // ── Whitelist check on every sign-in event ───────────────────
+                const ok = await checkWhitelist(newSession.user.email || '');
+                if (!ok) {
+                  await supabase.auth.signOut();
+                  return;
+                }
+                await applySupabaseUser(newSession.user);
+              } else if (event === 'SIGNED_OUT') {
+                setSession(null);
+                setUserRole(null);
+                setUserSquad(null);
+                setUserSquads([]);
+                setModulePermissions([]);
+                setIsAdminMaster(false);
               }
-              await applySupabaseUser(newSession.user);
-            } else if (event === 'SIGNED_OUT') {
-              setSession(null);
-              setUserRole(null);
-              setUserSquad(null);
-              setUserSquads([]);
-              setModulePermissions([]);
-              setIsAdminMaster(false);
             }
-          });
+          );
           return () => subscription.unsubscribe();
         }
 
@@ -491,17 +631,18 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
 
           // Map local cargo to role
           const cargoToRole: Record<string, UserRole> = {
-            'Administrador': 'Admin',
-            'Coordenador': 'Coordenador',
+            Administrador: 'Admin',
+            Coordenador: 'Coordenador',
             'Coordenador Geral': 'Coordenador Geral',
-            'Gestor': 'Gestor',
-            'Auditor': 'Auditor',
-            'Analista': 'Analista',
+            Gestor: 'Gestor',
+            Auditor: 'Auditor',
+            Analista: 'Analista',
           };
           const derivedRole = (cargoToRole[localSession.cargo] || 'Coordenador') as UserRole;
           setUserRole(derivedRole);
 
-          const isAdminLocal = ADMIN_EMAILS.includes(localSession.email.toLowerCase()) || derivedRole === 'Admin';
+          const isAdminLocal =
+            ADMIN_EMAILS.includes(localSession.email.toLowerCase()) || derivedRole === 'Admin';
           setIsAdminMaster(isAdminLocal);
 
           // Try to enrich from Supabase
@@ -515,7 +656,9 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
               const r = (preReg.role as UserRole) || derivedRole;
               setUserRole(r);
               setUserSquad(preReg.squad || null);
-              setUserSquads(Array.isArray(preReg.squads) ? preReg.squads : (preReg.squad ? [preReg.squad] : []));
+              setUserSquads(
+                Array.isArray(preReg.squads) ? preReg.squads : preReg.squad ? [preReg.squad] : []
+              );
               setUserCargoId(preReg.cargo_id || null);
               setModulePermissions(buildDefaultPermissions(r, isAdminLocal));
             } else {
@@ -532,26 +675,30 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
         }
 
         // Listen for auth state changes (handles Google OAuth redirect)
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, newSession: Session | null) => {
-          if (event === 'SIGNED_IN' && newSession?.user) {
-            // ── Whitelist check ──────────────────────────────────────────────
-            const ok = await checkWhitelist(newSession.user.email || '');
-            if (!ok) {
-              await supabase.auth.signOut();
-              setLoading(false);
-              return;
+        const {
+          data: { subscription },
+        } = supabase.auth.onAuthStateChange(
+          async (event: AuthChangeEvent, newSession: Session | null) => {
+            if (event === 'SIGNED_IN' && newSession?.user) {
+              // ── Whitelist check ──────────────────────────────────────────────
+              const ok = await checkWhitelist(newSession.user.email || '');
+              if (!ok) {
+                await supabase.auth.signOut();
+                setLoading(false);
+                return;
+              }
+              await applySupabaseUser(newSession.user);
+            } else if (event === 'SIGNED_OUT') {
+              setSession(null);
+              setUserRole(null);
+              setUserSquad(null);
+              setUserSquads([]);
+              setModulePermissions([]);
+              setIsAdminMaster(false);
             }
-            await applySupabaseUser(newSession.user);
-          } else if (event === 'SIGNED_OUT') {
-            setSession(null);
-            setUserRole(null);
-            setUserSquad(null);
-            setUserSquads([]);
-            setModulePermissions([]);
-            setIsAdminMaster(false);
+            setLoading(false);
           }
-          setLoading(false);
-        });
+        );
 
         didFinish = true;
         clearTimeout(safetyTimer);
@@ -595,7 +742,11 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
         console.warn('[AUTH] pre_registered_users check error:', preRegErr.message);
         // On DB error, fall through to credential check
       } else if (!preReg || preReg.is_active === false) {
-        return { success: false, error: 'Acesso negado. Usuário não cadastrado no sistema. Entre em contato com o administrador.' };
+        return {
+          success: false,
+          error:
+            'Acesso negado. Usuário não cadastrado no sistema. Entre em contato com o administrador.',
+        };
       }
     }
 
@@ -614,8 +765,11 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
       setSession(result.session);
       startInactivityTimer();
       const cargoToRole: Record<string, UserRole> = {
-        'Administrador': 'Admin', 'Coordenador': 'Coordenador',
-        'Gestor': 'Gestor', 'Auditor': 'Auditor', 'Analista': 'Analista',
+        Administrador: 'Admin',
+        Coordenador: 'Coordenador',
+        Gestor: 'Gestor',
+        Auditor: 'Auditor',
+        Analista: 'Analista',
       };
       const role = (cargoToRole[result.session.cargo] || 'Coordenador') as UserRole;
       setUserRole(role);
@@ -645,43 +799,71 @@ export function SystemAuthProvider({ children }: { children: React.ReactNode }) 
   };
 
   // Permission helpers
-  const canAccessModule = useCallback((module: string): boolean => {
-    if (isAdminMaster || ADMIN_ROLES.includes(userRole || '')) return true;
-    const perm = modulePermissions.find((p) => p.module_name === module);
-    if (perm) return perm.can_view;
-    // Fallback: coordinators and gestors can view most modules
-    if (COORDINATOR_ROLES.includes(userRole || '') || GESTOR_ROLES.includes(userRole || '')) return true;
-    // Minimum fallback: these modules are always accessible to any authenticated user
-    return ['painel_executivo','ciclo_atual','evolucao','nao_conformidades','elogios','pdis','historico','analytics','feedback'].includes(module);
-  }, [isAdminMaster, userRole, modulePermissions]);
+  const canAccessModule = useCallback(
+    (module: string): boolean => {
+      if (isAdminMaster || ADMIN_ROLES.includes(userRole || '')) return true;
+      const perm = modulePermissions.find((p) => p.module_name === module);
+      if (perm) return perm.can_view;
+      // Fallback: coordinators and gestors can view most modules
+      if (COORDINATOR_ROLES.includes(userRole || '') || GESTOR_ROLES.includes(userRole || ''))
+        return true;
+      // Minimum fallback: these modules are always accessible to any authenticated user
+      return [
+        'painel_executivo',
+        'ciclo_atual',
+        'evolucao',
+        'nao_conformidades',
+        'elogios',
+        'pdis',
+        'historico',
+        'analytics',
+        'feedback',
+      ].includes(module);
+    },
+    [isAdminMaster, userRole, modulePermissions]
+  );
 
-  const canEditModule = useCallback((module: string): boolean => {
-    if (isAdminMaster || ADMIN_ROLES.includes(userRole || '')) return true;
-    const perm = modulePermissions.find((p) => p.module_name === module);
-    return perm?.can_edit || false;
-  }, [isAdminMaster, userRole, modulePermissions]);
+  const canEditModule = useCallback(
+    (module: string): boolean => {
+      if (isAdminMaster || ADMIN_ROLES.includes(userRole || '')) return true;
+      const perm = modulePermissions.find((p) => p.module_name === module);
+      return perm?.can_edit || false;
+    },
+    [isAdminMaster, userRole, modulePermissions]
+  );
 
-  const canDeleteModule = useCallback((module: string): boolean => {
-    if (isAdminMaster || ADMIN_ROLES.includes(userRole || '')) return true;
-    const perm = modulePermissions.find((p) => p.module_name === module);
-    return perm?.can_delete || false;
-  }, [isAdminMaster, userRole, modulePermissions]);
+  const canDeleteModule = useCallback(
+    (module: string): boolean => {
+      if (isAdminMaster || ADMIN_ROLES.includes(userRole || '')) return true;
+      const perm = modulePermissions.find((p) => p.module_name === module);
+      return perm?.can_delete || false;
+    },
+    [isAdminMaster, userRole, modulePermissions]
+  );
 
-  const canImportModule = useCallback((module: string): boolean => {
-    if (isAdminMaster || ADMIN_ROLES.includes(userRole || '')) return true;
-    const perm = modulePermissions.find((p) => p.module_name === module);
-    return perm?.can_import || false;
-  }, [isAdminMaster, userRole, modulePermissions]);
+  const canImportModule = useCallback(
+    (module: string): boolean => {
+      if (isAdminMaster || ADMIN_ROLES.includes(userRole || '')) return true;
+      const perm = modulePermissions.find((p) => p.module_name === module);
+      return perm?.can_import || false;
+    },
+    [isAdminMaster, userRole, modulePermissions]
+  );
 
-  const canAdminModule = useCallback((module: string): boolean => {
-    if (isAdminMaster || ADMIN_ROLES.includes(userRole || '')) return true;
-    const perm = modulePermissions.find((p) => p.module_name === module);
-    return perm?.can_admin || false;
-  }, [isAdminMaster, userRole, modulePermissions]);
+  const canAdminModule = useCallback(
+    (module: string): boolean => {
+      if (isAdminMaster || ADMIN_ROLES.includes(userRole || '')) return true;
+      const perm = modulePermissions.find((p) => p.module_name === module);
+      return perm?.can_admin || false;
+    },
+    [isAdminMaster, userRole, modulePermissions]
+  );
 
   const canCloseCycle = useCallback((): boolean => {
     if (isAdminMaster || ADMIN_ROLES.includes(userRole || '')) return true;
-    const perm = modulePermissions.find((p) => p.module_name === 'ciclos' || p.module_name === 'importacoes');
+    const perm = modulePermissions.find(
+      (p) => p.module_name === 'ciclos' || p.module_name === 'importacoes'
+    );
     return perm?.can_close_cycle || false;
   }, [isAdminMaster, userRole, modulePermissions]);
 

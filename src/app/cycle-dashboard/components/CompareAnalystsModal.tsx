@@ -28,63 +28,118 @@ export default function CompareAnalystsModal({ onClose }: Props) {
   const analystA = ANALYSTS.find((a) => a.id === analystAId) || ANALYSTS[0];
   const analystB = ANALYSTS.find((a) => a.id === analystBId) || ANALYSTS[1];
 
-  const AnalystSelect = ({ value, onChange, exclude }: { value: string; onChange: (v: string) => void; exclude: string }) => (
+  const AnalystSelect = ({
+    value,
+    onChange,
+    exclude,
+  }: {
+    value: string;
+    onChange: (v: string) => void;
+    exclude: string;
+  }) => (
     <div className="relative">
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="appearance-none w-full pl-3 pr-8 py-2 text-sm rounded-lg cursor-pointer focus:outline-none"
-        style={{ backgroundColor: '#1C2333', border: '1px solid rgba(255,255,255,0.1)', color: '#FFFFFF' }}
+        style={{
+          backgroundColor: '#1C2333',
+          border: '1px solid rgba(255,255,255,0.1)',
+          color: '#FFFFFF',
+        }}
       >
         {ANALYSTS.filter((a) => a.id !== exclude).map((a) => (
-          <option key={a.id} value={a.id}>{a.name}</option>
+          <option key={a.id} value={a.id}>
+            {a.name}
+          </option>
         ))}
       </select>
-      <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#8B949E' }} />
+      <ChevronDown
+        size={14}
+        className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+        style={{ color: '#8B949E' }}
+      />
     </div>
   );
 
   const AnalystHeader = ({ analyst }: { analyst: Analyst }) => (
-    <div className="text-center p-4 rounded-xl" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-      <div className="w-12 h-12 rounded-xl flex items-center justify-center text-base font-bold mx-auto mb-2"
-        style={{ backgroundColor: '#1E3A5F', color: '#FFFFFF' }}>
-        {analyst.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+    <div
+      className="text-center p-4 rounded-xl"
+      style={{
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        border: '1px solid rgba(255,255,255,0.06)',
+      }}
+    >
+      <div
+        className="w-12 h-12 rounded-xl flex items-center justify-center text-base font-bold mx-auto mb-2"
+        style={{ backgroundColor: '#1E3A5F', color: '#FFFFFF' }}
+      >
+        {analyst.name
+          .split(' ')
+          .map((n) => n[0])
+          .slice(0, 2)
+          .join('')}
       </div>
       <p className="font-display font-bold text-white text-sm">{analyst.name}</p>
-      <p className="text-xs mt-0.5" style={{ color: '#8B949E' }}>{analyst.squad}</p>
+      <p className="text-xs mt-0.5" style={{ color: '#8B949E' }}>
+        {analyst.squad}
+      </p>
       <div className="flex items-center justify-center gap-2 mt-2">
-        <span className="text-lg font-bold metric-value" style={{ color: getScoreColor(analyst.qaScore) }}>
+        <span
+          className="text-lg font-bold metric-value"
+          style={{ color: getScoreColor(analyst.qaScore) }}
+        >
           {analyst.qaScore.toFixed(1)}
         </span>
-        <span className="text-xs" style={{ color: '#8B949E' }}>QA</span>
-        <span className="text-lg font-bold metric-value ml-2" style={{ color: getScoreColor(analyst.iepcScore) }}>
+        <span className="text-xs" style={{ color: '#8B949E' }}>
+          QA
+        </span>
+        <span
+          className="text-lg font-bold metric-value ml-2"
+          style={{ color: getScoreColor(analyst.iepcScore) }}
+        >
           {analyst.iepcScore.toFixed(1)}
         </span>
-        <span className="text-xs" style={{ color: '#8B949E' }}>IEPC</span>
+        <span className="text-xs" style={{ color: '#8B949E' }}>
+          IEPC
+        </span>
       </div>
-      <span className={`text-xs mt-1 inline-block ${getScoreBadgeClass(analyst.qaScore)}`}>{getScoreLabel(analyst.qaScore)}</span>
+      <span className={`text-xs mt-1 inline-block ${getScoreBadgeClass(analyst.qaScore)}`}>
+        {getScoreLabel(analyst.qaScore)}
+      </span>
     </div>
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
+    >
       <div
         className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl"
         style={{ backgroundColor: '#161B22', border: '1px solid rgba(43,79,129,0.3)' }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 sticky top-0 z-10"
-          style={{ backgroundColor: '#161B22', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div
+          className="flex items-center justify-between px-6 py-4 sticky top-0 z-10"
+          style={{ backgroundColor: '#161B22', borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+        >
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg" style={{ backgroundColor: 'rgba(43,79,129,0.2)' }}>
               <GitCompare size={16} style={{ color: '#5B8FD4' }} />
             </div>
             <div>
               <h2 className="font-display text-lg font-bold text-white">Comparar Analistas</h2>
-              <p className="text-xs" style={{ color: '#8B949E' }}>Análise lado a lado por pilar</p>
+              <p className="text-xs" style={{ color: '#8B949E' }}>
+                Análise lado a lado por pilar
+              </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg transition-colors hover:bg-white/10" style={{ color: '#8B949E' }}>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-lg transition-colors hover:bg-white/10"
+            style={{ color: '#8B949E' }}
+          >
             <X size={18} />
           </button>
         </div>
@@ -93,11 +148,15 @@ export default function CompareAnalystsModal({ onClose }: Props) {
           {/* Selectors */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <p className="text-xs font-medium mb-2" style={{ color: '#8B949E' }}>Analista A</p>
+              <p className="text-xs font-medium mb-2" style={{ color: '#8B949E' }}>
+                Analista A
+              </p>
               <AnalystSelect value={analystAId} onChange={setAnalystAId} exclude={analystBId} />
             </div>
             <div>
-              <p className="text-xs font-medium mb-2" style={{ color: '#8B949E' }}>Analista B</p>
+              <p className="text-xs font-medium mb-2" style={{ color: '#8B949E' }}>
+                Analista B
+              </p>
               <AnalystSelect value={analystBId} onChange={setAnalystBId} exclude={analystAId} />
             </div>
           </div>
@@ -123,22 +182,38 @@ export default function CompareAnalystsModal({ onClose }: Props) {
                 const winner = valA > valB ? 'A' : valB > valA ? 'B' : 'tie';
 
                 return (
-                  <div key={`cmp-${p.key}`} className="p-3 rounded-xl" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div
+                    key={`cmp-${p.key}`}
+                    className="p-3 rounded-xl"
+                    style={{
+                      backgroundColor: 'rgba(255,255,255,0.02)',
+                      border: '1px solid rgba(255,255,255,0.05)',
+                    }}
+                  >
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold px-1.5 py-0.5 rounded"
+                        <span
+                          className="text-xs font-bold px-1.5 py-0.5 rounded"
                           style={{
-                            backgroundColor: isIEPC ? 'rgba(234,179,8,0.12)' : 'rgba(43,79,129,0.15)',
+                            backgroundColor: isIEPC
+                              ? 'rgba(234,179,8,0.12)'
+                              : 'rgba(43,79,129,0.15)',
                             color: isIEPC ? '#EAB308' : '#5B8FD4',
-                          }}>
+                          }}
+                        >
                           {p.key.toUpperCase()}
                         </span>
                         <span className="text-xs text-white">{p.label.split(' — ')[1]}</span>
                       </div>
                       {winner !== 'tie' && (
-                        <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                          style={{ backgroundColor: 'rgba(34,197,94,0.12)', color: '#22C55E' }}>
-                          {winner === 'A' ? analystA.name.split(' ')[0] : analystB.name.split(' ')[0]} +{Math.abs(valA - valB)}pts
+                        <span
+                          className="text-xs px-2 py-0.5 rounded-full font-medium"
+                          style={{ backgroundColor: 'rgba(34,197,94,0.12)', color: '#22C55E' }}
+                        >
+                          {winner === 'A'
+                            ? analystA.name.split(' ')[0]
+                            : analystB.name.split(' ')[0]}{' '}
+                          +{Math.abs(valA - valB)}pts
                         </span>
                       )}
                     </div>
@@ -147,20 +222,36 @@ export default function CompareAnalystsModal({ onClose }: Props) {
                       <div>
                         <div className="flex justify-between text-xs mb-1">
                           <span style={{ color: '#8B949E' }}>{analystA.name.split(' ')[0]}</span>
-                          <span className="font-bold metric-value" style={{ color: colorA }}>{valA}/{p.max}</span>
+                          <span className="font-bold metric-value" style={{ color: colorA }}>
+                            {valA}/{p.max}
+                          </span>
                         </div>
-                        <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
-                          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(pctA, 100)}%`, backgroundColor: colorA }} />
+                        <div
+                          className="h-2 rounded-full overflow-hidden"
+                          style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
+                        >
+                          <div
+                            className="h-full rounded-full transition-all duration-700"
+                            style={{ width: `${Math.min(pctA, 100)}%`, backgroundColor: colorA }}
+                          />
                         </div>
                       </div>
                       {/* Analista B bar */}
                       <div>
                         <div className="flex justify-between text-xs mb-1">
                           <span style={{ color: '#8B949E' }}>{analystB.name.split(' ')[0]}</span>
-                          <span className="font-bold metric-value" style={{ color: colorB }}>{valB}/{p.max}</span>
+                          <span className="font-bold metric-value" style={{ color: colorB }}>
+                            {valB}/{p.max}
+                          </span>
                         </div>
-                        <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
-                          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(pctB, 100)}%`, backgroundColor: colorB }} />
+                        <div
+                          className="h-2 rounded-full overflow-hidden"
+                          style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
+                        >
+                          <div
+                            className="h-full rounded-full transition-all duration-700"
+                            style={{ width: `${Math.min(pctB, 100)}%`, backgroundColor: colorB }}
+                          />
                         </div>
                       </div>
                     </div>
@@ -176,16 +267,32 @@ export default function CompareAnalystsModal({ onClose }: Props) {
               { analyst: analystA, other: analystB },
               { analyst: analystB, other: analystA },
             ].map(({ analyst, other }) => {
-              const wins = PILLAR_LABELS.filter((p) => (analyst[p.key] as number) > (other[p.key] as number)).length;
+              const wins = PILLAR_LABELS.filter(
+                (p) => (analyst[p.key] as number) > (other[p.key] as number)
+              ).length;
               const diff = analyst.qaScore - other.qaScore;
               return (
-                <div key={`summary-${analyst.id}`} className="p-4 rounded-xl text-center"
-                  style={{ backgroundColor: 'rgba(43,79,129,0.08)', border: '1px solid rgba(43,79,129,0.2)' }}>
-                  <p className="text-xs font-medium mb-1" style={{ color: '#8B949E' }}>{analyst.name.split(' ')[0]}</p>
+                <div
+                  key={`summary-${analyst.id}`}
+                  className="p-4 rounded-xl text-center"
+                  style={{
+                    backgroundColor: 'rgba(43,79,129,0.08)',
+                    border: '1px solid rgba(43,79,129,0.2)',
+                  }}
+                >
+                  <p className="text-xs font-medium mb-1" style={{ color: '#8B949E' }}>
+                    {analyst.name.split(' ')[0]}
+                  </p>
                   <p className="text-2xl font-bold text-white metric-value">{wins}</p>
-                  <p className="text-xs" style={{ color: '#8B949E' }}>pilares vencidos</p>
-                  <p className="text-xs mt-1 font-medium" style={{ color: diff >= 0 ? '#22C55E' : '#EF4444' }}>
-                    {diff >= 0 ? '+' : ''}{diff.toFixed(2)} pts QA
+                  <p className="text-xs" style={{ color: '#8B949E' }}>
+                    pilares vencidos
+                  </p>
+                  <p
+                    className="text-xs mt-1 font-medium"
+                    style={{ color: diff >= 0 ? '#22C55E' : '#EF4444' }}
+                  >
+                    {diff >= 0 ? '+' : ''}
+                    {diff.toFixed(2)} pts QA
                   </p>
                 </div>
               );

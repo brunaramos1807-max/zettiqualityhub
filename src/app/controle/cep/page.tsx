@@ -1,257 +1,403 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
-import { 
-  ResponsiveContainer, 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ReferenceLine 
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ReferenceLine,
 } from 'recharts';
-import { 
-  Activity, 
-  AlertTriangle, 
-  ShieldCheck, 
-  HelpCircle, 
-  Info, 
-  TrendingUp, 
+import {
+  Activity,
+  AlertTriangle,
+  ShieldCheck,
+  HelpCircle,
+  Info,
+  TrendingUp,
   Calendar,
   Layers,
-  Settings2
+  Settings2,
+  RefreshCw,
+  Filter,
 } from 'lucide-react';
 import Link from 'next/link';
-
-interface PontoCEP {
-  periodo: string;
-  amostra: number;
-  falhas: number;
-  proporcao: number; // p = falhas / amostra
-}
-
-// Dados históricos reais dos últimos 5 ciclos
-const DADOS_HISTORICOS_P: PontoCEP[] = [
-  { periodo: '04/2026', amostra: 95, falhas: 4, proporcao: 0.042 },
-  { periodo: '05/2026', amostra: 110, falhas: 6, proporcao: 0.055 },
-  { periodo: '06/2026', amostra: 105, falhas: 5, proporcao: 0.048 },
-  { periodo: '07/2026', amostra: 98, falhas: 7, proporcao: 0.071 },
-  { periodo: '08/2026', amostra: 107, falhas: 12, proporcao: 0.112 }, // pico detectado no ciclo 08
-];
+import { fetchDadosCartaP } from '@/lib/services/qualityDataService';
+import { PontoCartaControleP } from '@/lib/domain/types';
 
 export default function CEPPage() {
-  const [metodoSelecionado, setMetodoSelecionado] = useState<'carta_p' | 'carta_u'>('carta_p');
-  const [processoFiltro, setProcessoFiltro] = useState('atendimento_geral');
+  const [equipeSelecionada, setEquipeSelecionada] = useState<string>('all');
+  const [pontos, setPontos] = useState<PontoCartaControleP[]>([]);
+  const [pBarGlobal, setPBarGlobal] = useState<number>(0);
+  const [totalAmostras, setTotalAmostras] = useState<number>(0);
+  const [processoEstavel, setProcessoEstavel] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  // Cálculo de limites de controle da Carta p
-  const estatisticasCEP = useMemo(() => {
-    const totalAmostra = DADOS_HISTORICOS_P.reduce((acc, p) => acc + p.amostra, 0);
-    const totalFalhas = DADOS_HISTORICOS_P.reduce((acc, p) => acc + p.falhas, 0);
-    
-    if (totalAmostra === 0) return null;
+  const carregarCEP = async () => {
+    setLoading(true);
+    try {
+      const res = await fetchDadosCartaP(equipeSelecionada);
+      setPontos(res.pontos);
+      setPBarGlobal(res.pBarGlobal);
+      setTotalAmostras(res.totalAmostras);
+      setProcessoEstavel(res.processoEstavel);
+    } catch (err) {
+      console.error('Erro ao carregar dados de CEP:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const pMedio = totalFalhas / totalAmostra;
-    const nMedio = totalAmostra / DADOS_HISTORICOS_P.length;
+  useEffect(() => {
+    carregarCEP();
+  }, [equipeSelecionada]);
 
-    // Desvio-padrão da proporção: sigma_p = sqrt(p * (1 - p) / n)
-    const sigmaP = Math.sqrt((pMedio * (1 - pMedio)) / nMedio);
-    const lsc = Number(Math.min(1, pMedio + 3 * sigmaP).toFixed(3));
-    const lic = Number(Math.max(0, pMedio - 3 * sigmaP).toFixed(3));
-    const lc = Number(pMedio.toFixed(3));
+  // Transformar pontos para plotagem (percentual para leitura humana)
+  const dadosGrafico = useMemo(() => {
+    return pontos.map((p) => ({
+      ciclo: p.ciclo,
+      periodo: p.periodo,
+      amostra: p.tamanho_amostra_n,
+      falhas: p.defeitos_conformidades,
+      pPct: Number((p.proporcao_p * 100).toFixed(2)),
+      clPct: Number((p.linha_central_cl * 100).toFixed(2)),
+      uclPct: Number((p.limite_superior_ucl * 100).toFixed(2)),
+      lclPct: Number((p.limite_inferior_lcl * 100).toFixed(2)),
+      metaPct: p.meta_especificacao ? Number((p.meta_especificacao * 100).toFixed(2)) : 2.0,
+      causaEspecial: p.causa_especial,
+    }));
+  }, [pontos]);
 
-    // Identificar causas especiais
-    const pontosComLimites = DADOS_HISTORICOS_P.map((p) => {
-      const foraLimite = p.proporcao > lsc || p.proporcao < lic;
-      return {
-        ...p,
-        pct: Number((p.proporcao * 100).toFixed(1)),
-        foraLimite,
-        lcPct: Number((lc * 100).toFixed(1)),
-        lscPct: Number((lsc * 100).toFixed(1)),
-        licPct: Number((lic * 100).toFixed(1)),
-      };
-    });
-
-    const pontosForaControle = pontosComLimites.filter((p) => p.foraLimite);
-
-    return {
-      pMedio: Number((pMedio * 100).toFixed(1)),
-      lc,
-      lsc,
-      lic,
-      pontosComLimites,
-      pontosForaControle,
-      estavel: pontosForaControle.length === 0,
-    };
-  }, []);
+  const pontosInstaveis = dadosGrafico.filter((p) => p.causaEspecial);
 
   return (
     <EnterpriseLayout>
       <div className="p-6 max-w-7xl mx-auto space-y-6">
-        
         {/* Banner de Cabeçalho */}
-        <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-slate-900 border border-slate-800 rounded-md">
+        <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-white border border-slate-200 rounded-md shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-md">
+            <div className="p-2 bg-blue-50 border border-blue-100 text-blue-700 rounded-md">
               <Activity size={18} />
             </div>
             <div>
-              <div className="text-xs text-slate-400 font-mono uppercase tracking-wider">Módulo de Controle</div>
-              <h1 className="text-sm font-semibold text-white">Controle Estatístico de Processo (CEP) & Estabilidade</h1>
+              <div className="text-xs text-slate-400 font-mono uppercase tracking-wider">
+                Módulo de Controle
+              </div>
+              <h1 className="text-sm font-bold text-slate-900">
+                Controle Estatístico de Processo (CEP — Carta p)
+              </h1>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-md text-xs text-slate-300">
-              <Settings2 size={14} className="text-slate-400" />
-              <span>Método:</span>
-              <select 
-                value={metodoSelecionado} 
-                onChange={(e) => setMetodoSelecionado(e.target.value as any)}
-                className="bg-transparent text-white font-medium focus:outline-none cursor-pointer"
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs text-slate-700">
+              <Filter size={14} className="text-slate-500" />
+              <span className="font-semibold">Equipe:</span>
+              <select
+                value={equipeSelecionada}
+                onChange={(e) => setEquipeSelecionada(e.target.value)}
+                className="bg-transparent text-slate-900 font-bold focus:outline-none cursor-pointer"
               >
-                <option value="carta_p">Carta p (Proporção de Não-Conformes)</option>
-                <option value="carta_u">Carta u (Taxa de Falhas por Chamado)</option>
+                <option value="all">Todas as Equipes</option>
+                <option value="PDV">PDV</option>
+                <option value="PDV N1">PDV N1</option>
+                <option value="Compras e Estoque">Compras e Estoque</option>
+                <option value="Financeiro Fiscal">Financeiro Fiscal</option>
               </select>
             </div>
+
+            <button
+              onClick={carregarCEP}
+              className="p-2 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-md transition-colors"
+              title="Recarregar dados estatísticos do banco"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            </button>
           </div>
         </div>
 
-        {/* Notificação de Status de Estabilidade */}
-        <div className={`p-4 rounded-md border text-xs flex items-start gap-3 ${
-          estatisticasCEP?.estavel
-            ? 'bg-emerald-950/30 border-emerald-500/30 text-slate-300'
-            : 'bg-rose-950/30 border-rose-500/30 text-slate-300'
-        }`}>
-          {estatisticasCEP?.estavel ? (
-            <ShieldCheck size={18} className="text-emerald-400 flex-shrink-0 mt-0.5" />
-          ) : (
-            <AlertTriangle size={18} className="text-rose-400 flex-shrink-0 mt-0.5" />
-          )}
-          <div>
-            <div className="font-semibold text-white">
-              {estatisticasCEP?.estavel
-                ? 'Processo Sob Controle Estatístico (Apenas Variação Comum)'
-                : 'Sinal de Causa Especial Detectado no Ciclo 08/2026'}
+        {/* Resumo Estatístico do Processo */}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div className="p-4 bg-white border border-slate-200 rounded-md shadow-sm">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+              Linha Central (p̄ Médio)
+            </span>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="text-2xl font-bold font-mono text-blue-700">
+                {(pBarGlobal * 100).toFixed(2)}%
+              </span>
+              <span className="text-xs text-slate-500">não-conformes</span>
             </div>
-            <p className="mt-0.5 text-slate-400">
-              {estatisticasCEP?.estavel
-                ? 'O comportamento da taxa de falhas oscila dentro dos limites calculados de ±3σ. Não há evidência de descontrole estatístico.'
-                : 'A taxa de Não Conformidades no ciclo 08/2026 (11.2%) ultrapassou o Limite Superior de Controle (LSC: 10.4%). Este comportamento indica presença de causa especial, justificando investigação formal.'}
+            <p className="text-[11px] text-slate-400 mt-1">Média ponderada do processo</p>
+          </div>
+
+          <div className="p-4 bg-white border border-slate-200 rounded-md shadow-sm">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+              Estabilidade do Processo
+            </span>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span
+                className={`text-lg font-bold ${processoEstavel ? 'text-emerald-700' : 'text-red-600'}`}
+              >
+                {processoEstavel ? 'SOB CONTROLE' : 'FORA DE CONTROLE'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1">
+              {pontosInstaveis.length === 0
+                ? 'Nenhuma causa especial detectada'
+                : `${pontosInstaveis.length} ciclo(s) além de ±3σ`}
             </p>
           </div>
+
+          <div className="p-4 bg-white border border-slate-200 rounded-md shadow-sm">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+              Meta de Especificação
+            </span>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="text-2xl font-bold font-mono text-slate-800">&le; 2.00%</span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1">Requisito de qualidade do cliente</p>
+          </div>
+
+          <div className="p-4 bg-white border border-slate-200 rounded-md shadow-sm">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+              Volume Amostral Total
+            </span>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="text-2xl font-bold font-mono text-slate-800">{totalAmostras}</span>
+              <span className="text-xs text-slate-500">atendimentos</span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1">Base de cálculo dos limites ±3σ</p>
+          </div>
         </div>
 
-        {/* Gráfico de Carta de Controle p */}
-        <div className="p-5 bg-slate-900 border border-slate-800 rounded-md">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        {/* Carta p (Proporção de Não-Conformes com Limites de Controle ±3-sigma) */}
+        <div className="p-5 bg-white border border-slate-200 rounded-md shadow-sm space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <div>
-              <h3 className="text-sm font-semibold text-white">Carta de Controle p — Taxa de Atendimentos Não-Conformes</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Linha Central (LC = {estatisticasCEP?.lc ? (estatisticasCEP.lc * 100).toFixed(1) : 0}%) com Limites Estatísticos a ±3σ (LSC = {estatisticasCEP?.lsc ? (estatisticasCEP.lsc * 100).toFixed(1) : 0}%)</p>
-            </div>
-            <div className="flex items-center gap-4 text-xs">
-              <span className="flex items-center gap-1.5 text-slate-400">
-                <span className="w-3 h-0.5 bg-rose-500 inline-block" /> LSC (3&sigma;)
-              </span>
-              <span className="flex items-center gap-1.5 text-slate-400">
-                <span className="w-3 h-0.5 bg-slate-400 inline-block" /> LC (Média)
-              </span>
-              <span className="flex items-center gap-1.5 text-blue-400">
-                <span className="w-2.5 h-2.5 bg-blue-500 rounded-sm inline-block" /> Valor Observado
-              </span>
+              <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                Carta p — Proporção de Unidades Defeituosas por Ciclo
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Os Limites de Controle (LSC e LIC em cinza) são calculados matematicamente a partir
+                da variação natural (±3σ). A Linha Verde é a Meta de Especificação.
+              </p>
             </div>
           </div>
 
-          <div className="h-80 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={estatisticasCEP?.pontosComLimites} margin={{ top: 15, right: 30, left: 10, bottom: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                <XAxis dataKey="periodo" stroke="#64748B" fontSize={11} tickLine={false} />
-                <YAxis stroke="#64748B" fontSize={11} tickLine={false} unit="%" domain={[0, 14]} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '6px', fontSize: '12px' }}
-                  formatter={(val: any, name: string) => [`${val}%`, name === 'pct' ? 'Taxa de NC' : name]}
-                />
-                <ReferenceLine 
-                  y={estatisticasCEP?.lsc ? Number((estatisticasCEP.lsc * 100).toFixed(1)) : 10} 
-                  stroke="#EF4444" 
-                  strokeDasharray="4 4" 
-                  label={{ value: `LSC: ${(Number(estatisticasCEP?.lsc || 0) * 100).toFixed(1)}%`, fill: '#EF4444', fontSize: 10, position: 'right' }} 
-                />
-                <ReferenceLine 
-                  y={estatisticasCEP?.lc ? Number((estatisticasCEP.lc * 100).toFixed(1)) : 5} 
-                  stroke="#94A3B8" 
-                  strokeDasharray="2 2" 
-                  label={{ value: `LC: ${(Number(estatisticasCEP?.lc || 0) * 100).toFixed(1)}%`, fill: '#94A3B8', fontSize: 10, position: 'right' }} 
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="pct" 
-                  stroke="#3B82F6" 
-                  strokeWidth={2} 
-                  dot={(props: any) => {
-                    const isFora = props.payload.foraLimite;
-                    return (
-                      <circle 
-                        key={props.key}
-                        cx={props.cx} 
-                        cy={props.cy} 
-                        r={isFora ? 5 : 3.5} 
-                        fill={isFora ? '#EF4444' : '#3B82F6'} 
-                        stroke={isFora ? '#F87171' : '#1D4ED8'} 
-                        strokeWidth={2} 
-                      />
-                    );
-                  }} 
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+          {loading ? (
+            <div className="h-72 flex items-center justify-center text-xs text-slate-400">
+              Calculando parâmetros estatísticos no banco...
+            </div>
+          ) : dadosGrafico.length === 0 ? (
+            <div className="h-72 flex items-center justify-center text-xs text-slate-400">
+              Dados insuficientes para cálculo de CEP no filtro selecionado.
+            </div>
+          ) : (
+            <div className="h-80 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={dadosGrafico}
+                  margin={{ top: 20, right: 30, left: 10, bottom: 20 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                  <XAxis dataKey="ciclo" stroke="#94A3B8" fontSize={11} tickLine={false} />
+                  <YAxis
+                    stroke="#94A3B8"
+                    fontSize={11}
+                    tickLine={false}
+                    unit="%"
+                    label={{
+                      value: 'Proporção Defeituosa (%)',
+                      angle: -90,
+                      position: 'insideLeft',
+                      fill: '#64748B',
+                      fontSize: 11,
+                    }}
+                  />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-slate-900 border border-slate-800 p-3 rounded-md shadow-xl text-xs text-white space-y-1">
+                            <div className="font-bold text-blue-400">{data.ciclo}</div>
+                            <div>
+                              Amostra auditada (n):{' '}
+                              <span className="font-mono">{data.amostra}</span>
+                            </div>
+                            <div>
+                              Falhas/NCs (d):{' '}
+                              <span className="font-mono text-red-400">{data.falhas}</span>
+                            </div>
+                            <div>
+                              Proporção (p):{' '}
+                              <span className="font-mono font-bold text-blue-300">
+                                {data.pPct}%
+                              </span>
+                            </div>
+                            <div className="border-t border-slate-700 pt-1 mt-1 text-[11px] text-slate-400">
+                              <div>LSC (+3σ): {data.uclPct}%</div>
+                              <div>Linha Central (p̄): {data.clPct}%</div>
+                              <div>LIC (-3σ): {data.lclPct}%</div>
+                              <div>Meta Especificação: {data.metaPct}%</div>
+                            </div>
+                            {data.causaEspecial && (
+                              <div className="text-red-400 font-bold text-[10px] mt-1">
+                                ⚠ PONTO FORA DE CONTROLE ESTATÍSTICO
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+
+                  {/* Linha de Especificação (Meta desejada) */}
+                  <ReferenceLine
+                    y={2.0}
+                    stroke="#10B981"
+                    strokeDasharray="4 4"
+                    label={{
+                      value: 'Meta <= 2.0%',
+                      fill: '#10B981',
+                      fontSize: 10,
+                      position: 'right',
+                    }}
+                  />
+
+                  {/* Linha Central (p̄) */}
+                  {dadosGrafico[0] && (
+                    <ReferenceLine
+                      y={dadosGrafico[0].clPct}
+                      stroke="#1E3A8A"
+                      strokeWidth={1.5}
+                      label={{
+                        value: `LC: ${dadosGrafico[0].clPct}%`,
+                        fill: '#1E3A8A',
+                        fontSize: 10,
+                        position: 'left',
+                      }}
+                    />
+                  )}
+
+                  {/* Limite Superior de Controle (LSC) */}
+                  {dadosGrafico[0] && (
+                    <ReferenceLine
+                      y={dadosGrafico[0].uclPct}
+                      stroke="#DC2626"
+                      strokeDasharray="3 3"
+                      label={{
+                        value: `LSC: ${dadosGrafico[0].uclPct}%`,
+                        fill: '#DC2626',
+                        fontSize: 10,
+                        position: 'right',
+                      }}
+                    />
+                  )}
+
+                  {/* Limite Inferior de Controle (LIC) */}
+                  {dadosGrafico[0] && (
+                    <ReferenceLine
+                      y={dadosGrafico[0].lclPct}
+                      stroke="#64748B"
+                      strokeDasharray="3 3"
+                      label={{
+                        value: `LIC: ${dadosGrafico[0].lclPct}%`,
+                        fill: '#64748B',
+                        fontSize: 10,
+                        position: 'right',
+                      }}
+                    />
+                  )}
+
+                  {/* Linha Real do Processo */}
+                  <Line
+                    type="monotone"
+                    dataKey="pPct"
+                    name="Proporção Observada"
+                    stroke="#1D4ED8"
+                    strokeWidth={2.5}
+                    dot={(props: any) => {
+                      const { cx, cy, payload } = props;
+                      const isAlert = payload.causaEspecial;
+                      return (
+                        <circle
+                          key={`dot-${cx}-${cy}`}
+                          cx={cx}
+                          cy={cy}
+                          r={isAlert ? 6 : 4}
+                          fill={isAlert ? '#DC2626' : '#1D4ED8'}
+                          stroke="#FFFFFF"
+                          strokeWidth={2}
+                        />
+                      );
+                    }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
 
-        {/* Tabela de Pontos e Parâmetros Estatísticos */}
-        <div className="bg-slate-900 border border-slate-800 rounded-md overflow-hidden text-xs">
-          <div className="p-4 border-b border-slate-800">
-            <h3 className="text-sm font-semibold text-white">Série Histórica e Auditoria de Pontos Estatísticos</h3>
+        {/* Tabela de Amostras e Regras de Decisão */}
+        <div className="bg-white border border-slate-200 rounded-md overflow-hidden shadow-sm">
+          <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+              Registros Amostrais e Verificação de Causas Especiais
+            </h3>
           </div>
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-slate-950/60 border-b border-slate-800 text-slate-400">
-                <th className="py-2.5 px-4">Período</th>
-                <th className="py-2.5 px-4 text-right">Amostra (n)</th>
-                <th className="py-2.5 px-4 text-right">Não Conformidades (d)</th>
-                <th className="py-2.5 px-4 text-right">Proporção Real (p)</th>
-                <th className="py-2.5 px-4 text-right">Limite Superior (LSC)</th>
-                <th className="py-2.5 px-4 text-center">Diagnóstico do Ponto</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60 text-slate-300">
-              {estatisticasCEP?.pontosComLimites.map((p) => (
-                <tr key={p.periodo} className="hover:bg-slate-800/40">
-                  <td className="py-2.5 px-4 font-mono font-medium text-white">{p.periodo}</td>
-                  <td className="py-2.5 px-4 text-right font-mono text-slate-400">{p.amostra} ch</td>
-                  <td className="py-2.5 px-4 text-right font-mono">{p.falhas}</td>
-                  <td className={`py-2.5 px-4 text-right font-mono font-bold ${p.foraLimite ? 'text-rose-400' : 'text-emerald-400'}`}>
-                    {p.pct}%
-                  </td>
-                  <td className="py-2.5 px-4 text-right font-mono text-slate-400">{p.lscPct}%</td>
-                  <td className="py-2.5 px-4 text-center">
-                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium uppercase ${
-                      p.foraLimite 
-                        ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' 
-                        : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                    }`}>
-                      {p.foraLimite ? 'Causa Especial (Alerta)' : 'Estável'}
-                    </span>
-                  </td>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-4 py-3">Ciclo</th>
+                  <th className="px-4 py-3 text-right">Tamanho da Amostra (n)</th>
+                  <th className="px-4 py-3 text-right">Falhas (d)</th>
+                  <th className="px-4 py-3 text-right font-mono font-bold text-blue-700">
+                    Proporção Observada (p)
+                  </th>
+                  <th className="px-4 py-3 text-right font-mono text-slate-500">LSC (+3σ)</th>
+                  <th className="px-4 py-3 text-right font-mono text-slate-500">LIC (-3σ)</th>
+                  <th className="px-4 py-3 text-center">Diagnóstico Estatístico</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {dadosGrafico.map((p) => (
+                  <tr key={p.ciclo} className="hover:bg-slate-50/70 transition-colors">
+                    <td className="px-4 py-3 font-semibold text-slate-900">{p.ciclo}</td>
+                    <td className="px-4 py-3 text-right font-mono text-slate-700">{p.amostra}</td>
+                    <td className="px-4 py-3 text-right font-mono text-red-600 font-bold">
+                      {p.falhas}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono font-bold text-blue-700">
+                      {p.pPct}%
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-slate-500">{p.uclPct}%</td>
+                    <td className="px-4 py-3 text-right font-mono text-slate-500">{p.lclPct}%</td>
+                    <td className="px-4 py-3 text-center">
+                      {p.causaEspecial ? (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-50 text-red-700 border border-red-200 inline-flex items-center gap-1">
+                          <AlertTriangle size={11} /> Causa Especial Detectada
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
+                          <ShieldCheck size={11} /> Variação Comum (Estável)
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-
       </div>
     </EnterpriseLayout>
   );

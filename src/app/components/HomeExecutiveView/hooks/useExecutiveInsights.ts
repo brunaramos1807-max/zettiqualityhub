@@ -45,10 +45,7 @@ export function useExecutiveInsights(
     // ─── POSITIVE HIGHLIGHTS ────────────────────────────────────────────────
 
     // 1. QA Evolution
-    if (
-      current.prevPeriodQA !== undefined &&
-      current.qaAvg > current.prevPeriodQA
-    ) {
+    if (current.prevPeriodQA !== undefined && current.qaAvg > current.prevPeriodQA) {
       const percent = getTrendPercent(current.qaAvg, current.prevPeriodQA);
       positiveHighlights.push({
         id: 'qa-evolution',
@@ -71,10 +68,7 @@ export function useExecutiveInsights(
     }
 
     // 3. IEPC Evolution
-    if (
-      current.prevPeriodIEPC !== undefined &&
-      current.iepcAvg > current.prevPeriodIEPC
-    ) {
+    if (current.prevPeriodIEPC !== undefined && current.iepcAvg > current.prevPeriodIEPC) {
       const percent = getTrendPercent(current.iepcAvg, current.prevPeriodIEPC);
       positiveHighlights.push({
         id: 'iepc-evolution',
@@ -137,7 +131,10 @@ export function useExecutiveInsights(
     // ─── EVOLUTION OPPORTUNITIES ────────────────────────────────────────────
 
     // 1. QA Below Target
-    if (current.qaAvg < EXECUTIVE_TARGETS.QA.target && current.qaAvg >= EXECUTIVE_TARGETS.QA.operational) {
+    if (
+      current.qaAvg < EXECUTIVE_TARGETS.QA.target &&
+      current.qaAvg >= EXECUTIVE_TARGETS.QA.operational
+    ) {
       const gap = (EXECUTIVE_TARGETS.QA.target - current.qaAvg).toFixed(1);
       evolutionOpportunities.push({
         id: 'qa-gap',
@@ -160,7 +157,10 @@ export function useExecutiveInsights(
     }
 
     // 3. IEPC Below Target
-    if (current.iepcAvg < EXECUTIVE_TARGETS.IEPC.target && current.iepcAvg >= EXECUTIVE_TARGETS.IEPC.operational) {
+    if (
+      current.iepcAvg < EXECUTIVE_TARGETS.IEPC.target &&
+      current.iepcAvg >= EXECUTIVE_TARGETS.IEPC.operational
+    ) {
       const gap = (EXECUTIVE_TARGETS.IEPC.target - current.iepcAvg).toFixed(1);
       evolutionOpportunities.push({
         id: 'iepc-gap',

@@ -11,9 +11,7 @@ export interface ExecutiveFilters {
   clearFilters: () => void;
 }
 
-export function useExecutiveFilters(
-  defaultPeriodo: string
-): ExecutiveFilters {
+export function useExecutiveFilters(defaultPeriodo: string): ExecutiveFilters {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [periodo, setPeriodoState] = useState(defaultPeriodo);

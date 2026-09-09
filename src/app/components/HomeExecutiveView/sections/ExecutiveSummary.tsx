@@ -37,14 +37,13 @@ export function ExecutiveSummary({ data }: ExecutiveSummaryProps) {
 
     // Teams summary
     if (data.teamsCount > 0) {
-      const teamsAboveTarget = data.equipes.filter((e) => e.qaAvg >= EXECUTIVE_TARGETS.QA.target)
-        .length;
+      const teamsAboveTarget = data.equipes.filter(
+        (e) => e.qaAvg >= EXECUTIVE_TARGETS.QA.target
+      ).length;
       if (teamsAboveTarget === data.teamsCount) {
         parts.push('todas as equipes acima da meta');
       } else if (teamsAboveTarget > 0) {
-        parts.push(
-          `${teamsAboveTarget} de ${data.teamsCount} equipes acima da meta`
-        );
+        parts.push(`${teamsAboveTarget} de ${data.teamsCount} equipes acima da meta`);
       }
     }
 
@@ -57,11 +56,15 @@ export function ExecutiveSummary({ data }: ExecutiveSummaryProps) {
         Período: {data.periodo}
       </h2>
       <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
-        {getPeriodicSummary()} {data.totalElogios > 0 && `Total de ${data.totalElogios} reconhecimento${data.totalElogios !== 1 ? 's' : ''} registrado${data.totalElogios !== 1 ? 's' : ''}.`}
+        {getPeriodicSummary()}{' '}
+        {data.totalElogios > 0 &&
+          `Total de ${data.totalElogios} reconhecimento${data.totalElogios !== 1 ? 's' : ''} registrado${data.totalElogios !== 1 ? 's' : ''}.`}
       </p>
       {data.divergentNCs > 0 && (
         <p className="text-xs text-slate-600 dark:text-slate-400 mt-2">
-          ⓘ {data.divergentNCs} registro{data.divergentNCs !== 1 ? 's' : ''} pendente{data.divergentNCs !== 1 ? 's' : ''} de classificação (não incluído{data.divergentNCs !== 1 ? 's' : ''} nos indicadores acima)
+          ⓘ {data.divergentNCs} registro{data.divergentNCs !== 1 ? 's' : ''} pendente
+          {data.divergentNCs !== 1 ? 's' : ''} de classificação (não incluído
+          {data.divergentNCs !== 1 ? 's' : ''} nos indicadores acima)
         </p>
       )}
     </div>

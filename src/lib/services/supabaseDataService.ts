@@ -69,7 +69,10 @@ export async function importCycleDataToSupabase(
   const startTime = Date.now();
 
   await writeImportLog({
-    periodo, file_name: fileName, step: 'start', level: 'info',
+    periodo,
+    file_name: fileName,
+    step: 'start',
+    level: 'info',
     message: `Iniciando importação: ${scores.length} scores, ${ncs.length} NCs, ${elogios.length} elogios`,
     details: { scores: scores.length, ncs: ncs.length, elogios: elogios.length, fileName },
   });
@@ -84,13 +87,24 @@ export async function importCycleDataToSupabase(
 
     if (existingCycle?.is_closed === true) {
       const msg = `Ciclo ${periodo} está FECHADO. Importação bloqueada. Somente um administrador pode reabrir.`;
-      await writeImportLog({ periodo, file_name: fileName, step: 'cycle_check', level: 'error', message: msg });
+      await writeImportLog({
+        periodo,
+        file_name: fileName,
+        step: 'cycle_check',
+        level: 'error',
+        message: msg,
+      });
       return { success: false, error: msg };
     }
 
     await writeImportLog({
-      periodo, file_name: fileName, step: 'cycle_check', level: 'info',
-      message: existingCycle ? `Ciclo existente encontrado: ${existingCycle.id}` : 'Nenhum ciclo existente — será criado',
+      periodo,
+      file_name: fileName,
+      step: 'cycle_check',
+      level: 'info',
+      message: existingCycle
+        ? `Ciclo existente encontrado: ${existingCycle.id}`
+        : 'Nenhum ciclo existente — será criado',
       details: { existingCycle },
     });
 
@@ -119,7 +133,10 @@ export async function importCycleDataToSupabase(
 
       if (insertErr) {
         await writeImportLog({
-          periodo, file_name: fileName, step: 'cycle_upsert', level: 'warn',
+          periodo,
+          file_name: fileName,
+          step: 'cycle_upsert',
+          level: 'warn',
           message: `Insert falhou, tentando upsert: ${insertErr.message}`,
           details: { code: insertErr.code, hint: insertErr.hint },
         });
@@ -132,13 +149,19 @@ export async function importCycleDataToSupabase(
 
         if (upsertErr) {
           await writeImportLog({
-            periodo, file_name: fileName, step: 'cycle_upsert', level: 'error',
+            periodo,
+            file_name: fileName,
+            step: 'cycle_upsert',
+            level: 'error',
             message: `Upsert import_cycles falhou: ${upsertErr.message}`,
             details: { code: upsertErr.code },
           });
           // Last resort: fetch existing
           const { data: fetched } = await supabase
-            .from('import_cycles').select('id').eq('periodo', periodo).maybeSingle();
+            .from('import_cycles')
+            .select('id')
+            .eq('periodo', periodo)
+            .maybeSingle();
           cycleId = fetched?.id;
         } else {
           cycleId = upserted?.id;
@@ -165,12 +188,21 @@ export async function importCycleDataToSupabase(
 
     if (!cycleId) {
       const msg = `Não foi possível obter cycleId para período: ${periodo}`;
-      await writeImportLog({ periodo, file_name: fileName, step: 'cycle_upsert', level: 'error', message: msg });
+      await writeImportLog({
+        periodo,
+        file_name: fileName,
+        step: 'cycle_upsert',
+        level: 'error',
+        message: msg,
+      });
       return { success: false, error: msg };
     }
 
     await writeImportLog({
-      periodo, file_name: fileName, step: 'cycle_upsert', level: 'success',
+      periodo,
+      file_name: fileName,
+      step: 'cycle_upsert',
+      level: 'success',
       message: `cycleId obtido: ${cycleId}`,
       cycle_id: cycleId,
     });
@@ -180,7 +212,10 @@ export async function importCycleDataToSupabase(
     let scoresErrors = 0;
     if (scores.length > 0) {
       await writeImportLog({
-        periodo, file_name: fileName, step: 'scores_start', level: 'info',
+        periodo,
+        file_name: fileName,
+        step: 'scores_start',
+        level: 'info',
         message: `Iniciando upsert de ${scores.length} scores`,
         cycle_id: cycleId,
       });
@@ -223,34 +258,53 @@ export async function importCycleDataToSupabase(
         if (scoresError) {
           scoresErrors++;
           await writeImportLog({
-            periodo, file_name: fileName, step: 'scores_upsert', level: 'error',
+            periodo,
+            file_name: fileName,
+            step: 'scores_upsert',
+            level: 'error',
             message: `Erro no batch ${Math.floor(i / BATCH_SIZE) + 1}: ${scoresError.message}`,
-            details: { code: scoresError.code, hint: scoresError.hint, batch_start: i, batch_size: batch.length },
+            details: {
+              code: scoresError.code,
+              hint: scoresError.hint,
+              batch_start: i,
+              batch_size: batch.length,
+            },
             cycle_id: cycleId,
           });
           // Fallback: insert ignoring conflicts one by one
           for (const row of payload) {
             try {
-              const { error: singleErr } = await supabase.from('cycle_scores').upsert(row, { onConflict: 'periodo,analista,squad' });
+              const { error: singleErr } = await supabase
+                .from('cycle_scores')
+                .upsert(row, { onConflict: 'periodo,analista,squad' });
               if (!singleErr) scoresInserted++;
               else {
                 await writeImportLog({
-                  periodo, file_name: fileName, step: 'scores_fallback', level: 'warn',
+                  periodo,
+                  file_name: fileName,
+                  step: 'scores_fallback',
+                  level: 'warn',
                   message: `Fallback falhou para ${row.analista}/${row.squad}: ${singleErr.message}`,
                   cycle_id: cycleId,
                 });
               }
-            } catch { /* continue */ }
+            } catch {
+              /* continue */
+            }
           }
         } else {
-          scoresInserted += (scoresData?.length || 0);
+          scoresInserted += scoresData?.length || 0;
         }
       }
 
       await writeImportLog({
-        periodo, file_name: fileName, step: 'scores_done', level: scoresErrors > 0 ? 'warn' : 'success',
+        periodo,
+        file_name: fileName,
+        step: 'scores_done',
+        level: scoresErrors > 0 ? 'warn' : 'success',
         message: `Scores: ${scoresInserted}/${scores.length} upserted, ${scoresErrors} batches com erro`,
-        cycle_id: cycleId, rows_affected: scoresInserted,
+        cycle_id: cycleId,
+        rows_affected: scoresInserted,
       });
     }
 
@@ -259,7 +313,10 @@ export async function importCycleDataToSupabase(
     let ncsErrors = 0;
     if (ncs.length > 0) {
       await writeImportLog({
-        periodo, file_name: fileName, step: 'ncs_start', level: 'info',
+        periodo,
+        file_name: fileName,
+        step: 'ncs_start',
+        level: 'info',
         message: `Iniciando inserção de ${ncs.length} NCs`,
         cycle_id: cycleId,
       });
@@ -291,9 +348,17 @@ export async function importCycleDataToSupabase(
         if (ncsError) {
           ncsErrors++;
           await writeImportLog({
-            periodo, file_name: fileName, step: 'ncs_insert', level: 'error',
+            periodo,
+            file_name: fileName,
+            step: 'ncs_insert',
+            level: 'error',
             message: `Erro no batch NC ${Math.floor(i / BATCH_SIZE) + 1}: ${ncsError.message}`,
-            details: { code: ncsError.code, hint: ncsError.hint, batch_start: i, batch_size: batch.length },
+            details: {
+              code: ncsError.code,
+              hint: ncsError.hint,
+              batch_start: i,
+              batch_size: batch.length,
+            },
             cycle_id: cycleId,
           });
           // Fallback: insert each row individually to maximize success
@@ -303,22 +368,31 @@ export async function importCycleDataToSupabase(
               if (!singleErr) ncsInserted++;
               else {
                 await writeImportLog({
-                  periodo, file_name: fileName, step: 'ncs_fallback', level: 'warn',
+                  periodo,
+                  file_name: fileName,
+                  step: 'ncs_fallback',
+                  level: 'warn',
                   message: `Fallback falhou para ${row.analista}/${row.tipo_nc}: ${singleErr.message}`,
                   cycle_id: cycleId,
                 });
               }
-            } catch { /* continue */ }
+            } catch {
+              /* continue */
+            }
           }
         } else {
-          ncsInserted += (ncsData?.length || batch.length);
+          ncsInserted += ncsData?.length || batch.length;
         }
       }
 
       await writeImportLog({
-        periodo, file_name: fileName, step: 'ncs_done', level: ncsErrors > 0 ? 'warn' : 'success',
+        periodo,
+        file_name: fileName,
+        step: 'ncs_done',
+        level: ncsErrors > 0 ? 'warn' : 'success',
         message: `NCs: ${ncsInserted}/${ncs.length} inseridas, ${ncsErrors} batches com erro`,
-        cycle_id: cycleId, rows_affected: ncsInserted,
+        cycle_id: cycleId,
+        rows_affected: ncsInserted,
       });
     }
 
@@ -327,7 +401,10 @@ export async function importCycleDataToSupabase(
     let elogiosErrors = 0;
     if (elogios.length > 0) {
       await writeImportLog({
-        periodo, file_name: fileName, step: 'elogios_start', level: 'info',
+        periodo,
+        file_name: fileName,
+        step: 'elogios_start',
+        level: 'info',
         message: `Iniciando upsert de ${elogios.length} elogios`,
         cycle_id: cycleId,
       });
@@ -354,7 +431,10 @@ export async function importCycleDataToSupabase(
         if (elogiosError) {
           elogiosErrors++;
           await writeImportLog({
-            periodo, file_name: fileName, step: 'elogios_upsert', level: 'error',
+            periodo,
+            file_name: fileName,
+            step: 'elogios_upsert',
+            level: 'error',
             message: `Erro no batch elogios ${Math.floor(i / BATCH_SIZE) + 1}: ${elogiosError.message}`,
             details: { code: elogiosError.code },
             cycle_id: cycleId,
@@ -363,36 +443,49 @@ export async function importCycleDataToSupabase(
             try {
               const { error: singleErr } = await supabase.from('elogios').insert(row);
               if (!singleErr) elogiosInserted++;
-            } catch { /* continue */ }
+            } catch {
+              /* continue */
+            }
           }
         } else {
-          elogiosInserted += (elogiosData?.length || 0);
+          elogiosInserted += elogiosData?.length || 0;
         }
       }
 
       await writeImportLog({
-        periodo, file_name: fileName, step: 'elogios_done', level: elogiosErrors > 0 ? 'warn' : 'success',
+        periodo,
+        file_name: fileName,
+        step: 'elogios_done',
+        level: elogiosErrors > 0 ? 'warn' : 'success',
         message: `Elogios: ${elogiosInserted}/${elogios.length} inseridos, ${elogiosErrors} batches com erro`,
-        cycle_id: cycleId, rows_affected: elogiosInserted,
+        cycle_id: cycleId,
+        rows_affected: elogiosInserted,
       });
     }
 
     // ── Step 6: Refresh cycle summary ────────────────────────────────────────
     try {
-      const { error: summaryError } = await supabase.rpc('refresh_cycle_summary', { p_periodo: periodo });
+      const { error: summaryError } = await supabase.rpc('refresh_cycle_summary', {
+        p_periodo: periodo,
+      });
       if (summaryError) {
         await writeImportLog({
-          periodo, file_name: fileName, step: 'summary_refresh', level: 'warn',
+          periodo,
+          file_name: fileName,
+          step: 'summary_refresh',
+          level: 'warn',
           message: `RPC refresh_cycle_summary falhou, fazendo upsert manual: ${summaryError.message}`,
           cycle_id: cycleId,
         });
         // Manual fallback
-        const qaMedia = scores.length > 0
-          ? scores.reduce((s, r) => s + (r.nota_final_qa ?? 0), 0) / scores.length
-          : 0;
-        const iepcMedia = scores.length > 0
-          ? scores.reduce((s, r) => s + (r.iepc_total ?? 0), 0) / scores.length
-          : 0;
+        const qaMedia =
+          scores.length > 0
+            ? scores.reduce((s, r) => s + (r.nota_final_qa ?? 0), 0) / scores.length
+            : 0;
+        const iepcMedia =
+          scores.length > 0
+            ? scores.reduce((s, r) => s + (r.iepc_total ?? 0), 0) / scores.length
+            : 0;
         const { error: manualSummaryErr } = await supabase.from('cycle_summaries').upsert(
           {
             periodo,
@@ -407,21 +500,30 @@ export async function importCycleDataToSupabase(
         );
         if (manualSummaryErr) {
           await writeImportLog({
-            periodo, file_name: fileName, step: 'summary_refresh', level: 'error',
+            periodo,
+            file_name: fileName,
+            step: 'summary_refresh',
+            level: 'error',
             message: `Upsert manual cycle_summaries falhou: ${manualSummaryErr.message}`,
             cycle_id: cycleId,
           });
         }
       } else {
         await writeImportLog({
-          periodo, file_name: fileName, step: 'summary_refresh', level: 'success',
+          periodo,
+          file_name: fileName,
+          step: 'summary_refresh',
+          level: 'success',
           message: 'cycle_summaries atualizado via RPC',
           cycle_id: cycleId,
         });
       }
     } catch (summaryErr: any) {
       await writeImportLog({
-        periodo, file_name: fileName, step: 'summary_refresh', level: 'warn',
+        periodo,
+        file_name: fileName,
+        step: 'summary_refresh',
+        level: 'warn',
         message: `Erro ao atualizar summary (não crítico): ${summaryErr.message}`,
         cycle_id: cycleId,
       });
@@ -429,7 +531,10 @@ export async function importCycleDataToSupabase(
 
     const duration = Date.now() - startTime;
     await writeImportLog({
-      periodo, file_name: fileName, step: 'complete', level: 'success',
+      periodo,
+      file_name: fileName,
+      step: 'complete',
+      level: 'success',
       message: `✅ Importação concluída em ${duration}ms — scores: ${scoresInserted}, NCs: ${ncsInserted}, elogios: ${elogiosInserted}`,
       cycle_id: cycleId,
       rows_affected: scoresInserted + ncsInserted + elogiosInserted,
@@ -438,7 +543,10 @@ export async function importCycleDataToSupabase(
     return { success: true, cycleId };
   } catch (err: any) {
     await writeImportLog({
-      periodo, file_name: fileName, step: 'critical_error', level: 'error',
+      periodo,
+      file_name: fileName,
+      step: 'critical_error',
+      level: 'error',
       message: `❌ Erro crítico na importação: ${err.message}`,
       details: { stack: err.stack?.substring(0, 500) },
     });
@@ -460,7 +568,9 @@ export async function fetchCycleScoresFromSupabase(periodo?: string): Promise<Cy
     console.error('[FETCH] fetchCycleScores error:', error.message, error.code);
     return [];
   }
-  console.log(`[FETCH] cycle_scores: ${data?.length || 0} registros${periodo ? ` para ${periodo}` : ''}`);
+  console.log(
+    `[FETCH] cycle_scores: ${data?.length || 0} registros${periodo ? ` para ${periodo}` : ''}`
+  );
   return (data || []) as CycleScoreRow[];
 }
 
@@ -503,8 +613,10 @@ export async function fetchAllPeriodosFromSupabase(): Promise<string[]> {
     supabase.from('cycle_scores').select('periodo'),
   ]);
 
-  if (cyclesRes.error) console.error('[FETCH] fetchAllPeriodos (cycles) error:', cyclesRes.error.message);
-  if (scoresRes.error) console.error('[FETCH] fetchAllPeriodos (scores) error:', scoresRes.error.message);
+  if (cyclesRes.error)
+    console.error('[FETCH] fetchAllPeriodos (cycles) error:', cyclesRes.error.message);
+  if (scoresRes.error)
+    console.error('[FETCH] fetchAllPeriodos (scores) error:', scoresRes.error.message);
 
   const fromCycles = (cyclesRes.data || []).map((r: any) => r.periodo as string);
   const fromScores = (scoresRes.data || []).map((r: any) => r.periodo as string);
@@ -535,10 +647,7 @@ export async function toggleElogioDestaqueInSupabase(id: string, destaque: boole
   const supabase = getSupabase();
   if (!supabase) return;
 
-  const { error } = await supabase
-    .from('elogios')
-    .update({ destaque })
-    .eq('id', id);
+  const { error } = await supabase.from('elogios').update({ destaque }).eq('id', id);
 
   if (error) console.error('[SUPABASE] toggleElogioDestaque error:', error.message);
 }
@@ -566,7 +675,10 @@ export async function clearAllDataFromSupabase(): Promise<{ success: boolean; er
     await supabase.from('pdi_records').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('import_logs').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabase.from('import_cycles').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    await supabase.from('cycle_summaries').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase
+      .from('cycle_summaries')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000');
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -579,7 +691,11 @@ export async function fetchImportLogs(periodo?: string, limit = 100): Promise<an
   const supabase = getSupabase();
   if (!supabase) return [];
 
-  let query = supabase.from('import_logs').select('*').order('created_at', { ascending: false }).limit(limit);
+  let query = supabase
+    .from('import_logs')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
   if (periodo) query = query.eq('periodo', periodo);
 
   const { data, error } = await query;
@@ -607,16 +723,22 @@ export async function getActiveCycle(): Promise<string> {
   }
 }
 
-export async function setActiveCycle(periodo: string, actorEmail?: string): Promise<{ success: boolean; error?: string }> {
+export async function setActiveCycle(
+  periodo: string,
+  actorEmail?: string
+): Promise<{ success: boolean; error?: string }> {
   const supabase = getSupabase();
   if (!supabase) return { success: false, error: 'Supabase não configurado.' };
   try {
-    const { error } = await supabase
-      .from('app_settings')
-      .upsert(
-        { key: 'active_cycle', value: periodo, updated_at: new Date().toISOString(), updated_by: actorEmail || null },
-        { onConflict: 'key' }
-      );
+    const { error } = await supabase.from('app_settings').upsert(
+      {
+        key: 'active_cycle',
+        value: periodo,
+        updated_at: new Date().toISOString(),
+        updated_by: actorEmail || null,
+      },
+      { onConflict: 'key' }
+    );
     if (error) return { success: false, error: error.message };
     return { success: true };
   } catch (err: any) {
@@ -638,23 +760,21 @@ export async function createNewCycle(
     if (periodoInicio) metadata.periodo_inicio = periodoInicio;
     if (periodoFim) metadata.periodo_fim = periodoFim;
 
-    const { error } = await supabase
-      .from('import_cycles')
-      .upsert(
-        {
-          periodo,
-          file_name: `Ciclo ${periodo}${periodoInicio && periodoFim ? ` - Período ${periodoInicio} a ${periodoFim}` : ''}`,
-          record_count: 0,
-          is_current: true,
-          is_closed: false,
-          status: 'em_andamento',
-          import_status: 'pending',
-          data_type: 'mixed',
-          metadata,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'periodo' }
-      );
+    const { error } = await supabase.from('import_cycles').upsert(
+      {
+        periodo,
+        file_name: `Ciclo ${periodo}${periodoInicio && periodoFim ? ` - Período ${periodoInicio} a ${periodoFim}` : ''}`,
+        record_count: 0,
+        is_current: true,
+        is_closed: false,
+        status: 'em_andamento',
+        import_status: 'pending',
+        data_type: 'mixed',
+        metadata,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'periodo' }
+    );
     if (error) return { success: false, error: error.message };
     return { success: true };
   } catch (err: any) {

@@ -1,7 +1,14 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { Activity, Clock, TrendingUp, Lock, Unlock, CheckCircle, ExternalLink } from 'lucide-react';
-import { fetchCycleScores, fetchAllPeriodos, closeCycle, reopenCycle, fetchClosedCycles, isCycleClosed } from '@/lib/services/dataService';
+import {
+  fetchCycleScores,
+  fetchAllPeriodos,
+  closeCycle,
+  reopenCycle,
+  fetchClosedCycles,
+  isCycleClosed,
+} from '@/lib/services/dataService';
 import type { ClosedCycle } from '@/lib/services/dataService';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
@@ -93,9 +100,17 @@ export default function HeroCycleStatus() {
           <div className="text-center py-4">
             <div className="flex items-center justify-center gap-2 mb-2">
               <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#8B949E' }} />
-              <span className="text-xs font-medium uppercase tracking-widest" style={{ color: '#8B949E' }}>Sem Ciclo Ativo</span>
+              <span
+                className="text-xs font-medium uppercase tracking-widest"
+                style={{ color: '#8B949E' }}
+              >
+                Sem Ciclo Ativo
+              </span>
             </div>
-            <h1 className="font-display text-3xl font-bold text-white mb-1" style={{ fontFamily: "'Playfair Display', serif" }}>
+            <h1
+              className="font-display text-3xl font-bold text-white mb-1"
+              style={{ fontFamily: "'Playfair Display', serif" }}
+            >
               Bem-vindo ao Portal de Qualidade
             </h1>
             <p className="text-base" style={{ color: 'rgba(255,255,255,0.7)' }}>
@@ -107,9 +122,18 @@ export default function HeroCycleStatus() {
         {/* Show closed cycles summary if any */}
         {closedCycles.length > 0 && (
           <div className="space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#8B949E' }}>Ciclos Fechados</p>
+            <p
+              className="text-xs font-semibold uppercase tracking-wide"
+              style={{ color: '#8B949E' }}
+            >
+              Ciclos Fechados
+            </p>
             {closedCycles.map((cc) => (
-              <ClosedCycleBanner key={cc.id} cycle={cc} onOpen={(p) => router.push(`/cycle-dashboard?periodo=${encodeURIComponent(p)}`)} />
+              <ClosedCycleBanner
+                key={cc.id}
+                cycle={cc}
+                onOpen={(p) => router.push(`/cycle-dashboard?periodo=${encodeURIComponent(p)}`)}
+              />
             ))}
           </div>
         )}
@@ -131,7 +155,10 @@ export default function HeroCycleStatus() {
         {/* Background decorative elements */}
         <div
           className="absolute top-0 right-0 w-64 h-64 rounded-full opacity-5"
-          style={{ background: 'radial-gradient(circle, #2B4F81, transparent)', transform: 'translate(30%, -30%)' }}
+          style={{
+            background: 'radial-gradient(circle, #2B4F81, transparent)',
+            transform: 'translate(30%, -30%)',
+          }}
         />
         <div
           className="absolute bottom-0 left-1/2 w-96 h-32 opacity-5"
@@ -141,23 +168,39 @@ export default function HeroCycleStatus() {
           {/* Left: Welcome */}
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 rounded-full animate-pulse-subtle" style={{ backgroundColor: closed ? '#22C55E' : '#22C55E' }} />
-              <span className="text-xs font-medium uppercase tracking-widest" style={{ color: '#22C55E' }}>
+              <div
+                className="w-2 h-2 rounded-full animate-pulse-subtle"
+                style={{ backgroundColor: closed ? '#22C55E' : '#22C55E' }}
+              />
+              <span
+                className="text-xs font-medium uppercase tracking-widest"
+                style={{ color: '#22C55E' }}
+              >
                 {closed ? 'Ciclo Fechado' : 'Ciclo Ativo'}
               </span>
               {closed && (
-                <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
-                  style={{ backgroundColor: 'rgba(34,197,94,0.15)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.3)' }}>
+                <span
+                  className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
+                  style={{
+                    backgroundColor: 'rgba(34,197,94,0.15)',
+                    color: '#22C55E',
+                    border: '1px solid rgba(34,197,94,0.3)',
+                  }}
+                >
                   <CheckCircle size={10} />
                   Encerrado
                 </span>
               )}
             </div>
-            <h1 className="font-display text-3xl font-bold text-white mb-1" style={{ fontFamily: "'Playfair Display', serif" }}>
+            <h1
+              className="font-display text-3xl font-bold text-white mb-1"
+              style={{ fontFamily: "'Playfair Display', serif" }}
+            >
               Bem-vindo ao Portal de Qualidade
             </h1>
             <p className="text-base" style={{ color: 'rgba(255,255,255,0.7)' }}>
-              Ciclo <span className="text-white font-medium">{periodo}</span> — {totalAnalistas} analistas
+              Ciclo <span className="text-white font-medium">{periodo}</span> — {totalAnalistas}{' '}
+              analistas
             </p>
           </div>
 
@@ -166,13 +209,29 @@ export default function HeroCycleStatus() {
             {/* Stats row */}
             <div className="flex gap-3">
               {[
-                { icon: Activity, label: 'Analistas', value: String(totalAnalistas), color: '#22C55E' },
+                {
+                  icon: Activity,
+                  label: 'Analistas',
+                  value: String(totalAnalistas),
+                  color: '#22C55E',
+                },
                 { icon: Clock, label: 'Período', value: periodo || '—', color: '#EAB308' },
                 { icon: TrendingUp, label: 'Auditor', value: auditor, color: '#60A5FA' },
               ].map((stat) => (
-                <div key={`hero-stat-${stat.label}`} style={{ ...darkCard, display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: '7rem' }}>
+                <div
+                  key={`hero-stat-${stat.label}`}
+                  style={{
+                    ...darkCard,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.25rem',
+                    minWidth: '7rem',
+                  }}
+                >
                   <stat.icon size={16} style={{ color: stat.color }} />
-                  <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>{stat.label}</p>
+                  <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                    {stat.label}
+                  </p>
                   <p className="text-sm font-semibold text-white metric-value">{stat.value}</p>
                 </div>
               ))}
@@ -182,7 +241,9 @@ export default function HeroCycleStatus() {
               {/* View full cycle button */}
               {periodo && (
                 <button
-                  onClick={() => router.push(`/cycle-dashboard?periodo=${encodeURIComponent(periodo)}`)}
+                  onClick={() =>
+                    router.push(`/cycle-dashboard?periodo=${encodeURIComponent(periodo)}`)
+                  }
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all"
                   style={{
                     backgroundColor: 'rgba(59,130,246,0.15)',
@@ -235,9 +296,15 @@ export default function HeroCycleStatus() {
       {/* Closed cycles summary */}
       {closedCycles.length > 0 && (
         <div className="space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#8B949E' }}>Ciclos Fechados</p>
+          <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#8B949E' }}>
+            Ciclos Fechados
+          </p>
           {closedCycles.map((cc) => (
-            <ClosedCycleBanner key={cc.id} cycle={cc} onOpen={(p) => router.push(`/cycle-dashboard?periodo=${encodeURIComponent(p)}`)} />
+            <ClosedCycleBanner
+              key={cc.id}
+              cycle={cc}
+              onOpen={(p) => router.push(`/cycle-dashboard?periodo=${encodeURIComponent(p)}`)}
+            />
           ))}
         </div>
       )}
@@ -245,7 +312,13 @@ export default function HeroCycleStatus() {
   );
 }
 
-function ClosedCycleBanner({ cycle, onOpen }: { cycle: ClosedCycle; onOpen: (periodo: string) => void }) {
+function ClosedCycleBanner({
+  cycle,
+  onOpen,
+}: {
+  cycle: ClosedCycle;
+  onOpen: (periodo: string) => void;
+}) {
   const closedDate = new Date(cycle.closed_at).toLocaleDateString('pt-BR');
   return (
     <div
@@ -258,17 +331,31 @@ function ClosedCycleBanner({ cycle, onOpen }: { cycle: ClosedCycle; onOpen: (per
       <div className="flex items-center gap-2 flex-shrink-0">
         <CheckCircle size={16} style={{ color: '#22C55E' }} />
         <span className="text-sm font-semibold text-white">Ciclo {cycle.periodo}</span>
-        <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-          style={{ backgroundColor: 'rgba(34,197,94,0.15)', color: '#22C55E' }}>
+        <span
+          className="text-xs px-2 py-0.5 rounded-full font-medium"
+          style={{ backgroundColor: 'rgba(34,197,94,0.15)', color: '#22C55E' }}
+        >
           Fechado em {closedDate}
         </span>
       </div>
       <div className="flex flex-wrap gap-4 text-xs" style={{ color: '#8B949E' }}>
-        <span><span className="text-white font-semibold">{cycle.summary.totalAnalistas}</span> analistas</span>
-        <span>QA Média: <span className="text-white font-semibold">{cycle.summary.qaMedia.toFixed(2)}</span></span>
-        <span>IEPC Médio: <span className="text-white font-semibold">{cycle.summary.iepcMedia.toFixed(2)}</span></span>
-        <span>NCs: <span className="text-white font-semibold">{cycle.summary.totalNCs}</span></span>
-        <span>Elogios: <span className="text-white font-semibold">{cycle.summary.totalElogios}</span></span>
+        <span>
+          <span className="text-white font-semibold">{cycle.summary.totalAnalistas}</span> analistas
+        </span>
+        <span>
+          QA Média:{' '}
+          <span className="text-white font-semibold">{cycle.summary.qaMedia.toFixed(2)}</span>
+        </span>
+        <span>
+          IEPC Médio:{' '}
+          <span className="text-white font-semibold">{cycle.summary.iepcMedia.toFixed(2)}</span>
+        </span>
+        <span>
+          NCs: <span className="text-white font-semibold">{cycle.summary.totalNCs}</span>
+        </span>
+        <span>
+          Elogios: <span className="text-white font-semibold">{cycle.summary.totalElogios}</span>
+        </span>
       </div>
       <div className="ml-auto flex items-center gap-1 text-xs" style={{ color: '#60A5FA' }}>
         <ExternalLink size={12} />

@@ -22,7 +22,9 @@ export default function AuthCallbackPage() {
     const handleCallback = async () => {
       try {
         // Try to get existing session first
-        const { data: { session } } = await supabase.auth.getSession();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
         if (session) {
           const allowed = await checkAndEnsureProfile(supabase, session.user);
           if (!allowed) {
@@ -64,19 +66,23 @@ export default function AuthCallbackPage() {
           }
         } else {
           // No code — might be hash-based flow, let onAuthStateChange handle it
-          const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
-            if (event === 'SIGNED_IN' && session) {
-              const allowed = await checkAndEnsureProfile(supabase, session.user);
-              subscription?.unsubscribe();
-              if (!allowed) {
-                await supabase.auth.signOut();
-                setBlockedEmail(session.user.email || '');
-                setBlocked(true);
-                return;
+          const {
+            data: { subscription },
+          } = supabase.auth.onAuthStateChange(
+            async (event: AuthChangeEvent, session: Session | null) => {
+              if (event === 'SIGNED_IN' && session) {
+                const allowed = await checkAndEnsureProfile(supabase, session.user);
+                subscription?.unsubscribe();
+                if (!allowed) {
+                  await supabase.auth.signOut();
+                  setBlockedEmail(session.user.email || '');
+                  setBlocked(true);
+                  return;
+                }
+                router?.replace('/');
               }
-              router?.replace('/');
             }
-          });
+          );
 
           // Fallback redirect after 3s
           setTimeout(() => {
@@ -95,17 +101,28 @@ export default function AuthCallbackPage() {
 
   if (blocked) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: '#071426' }}>
+      <div
+        className="min-h-screen flex items-center justify-center p-6"
+        style={{ backgroundColor: '#071426' }}
+      >
         <div className="w-full max-w-md text-center">
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6" style={{ backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)' }}>
+          <div
+            className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6"
+            style={{
+              backgroundColor: 'rgba(239,68,68,0.1)',
+              border: '1px solid rgba(239,68,68,0.25)',
+            }}
+          >
             <ShieldX size={32} style={{ color: '#EF4444' }} />
           </div>
           <h1 className="text-xl font-bold text-white mb-3">Acesso Negado</h1>
           <p className="text-sm mb-2" style={{ color: '#94A3B8' }}>
-            O e-mail <strong className="text-white">{blockedEmail}</strong> não está cadastrado no sistema.
+            O e-mail <strong className="text-white">{blockedEmail}</strong> não está cadastrado no
+            sistema.
           </p>
           <p className="text-sm mb-8" style={{ color: '#94A3B8' }}>
-            Somente usuários pré-cadastrados pelo administrador podem acessar a plataforma QualiVisão.
+            Somente usuários pré-cadastrados pelo administrador podem acessar a plataforma
+            QualiVisão.
           </p>
           <button
             onClick={() => router?.replace('/')}
@@ -120,11 +137,16 @@ export default function AuthCallbackPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#071426' }}>
+    <div
+      className="min-h-screen flex items-center justify-center"
+      style={{ backgroundColor: '#071426' }}
+    >
       <div className="text-center">
         <Loader2 size={32} className="animate-spin mx-auto mb-4" style={{ color: '#38BDF8' }} />
         <p className="text-sm font-medium text-white mb-1">Autenticando...</p>
-        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>Aguarde, verificando sua conta</p>
+        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
+          Aguarde, verificando sua conta
+        </p>
       </div>
     </div>
   );
@@ -145,7 +167,9 @@ async function checkAndEnsureProfile(supabase: any, user: User): Promise<boolean
     const [preRegResult, profileByEmailResult] = await Promise.all([
       supabase
         .from('pre_registered_users')
-        .select('id, email, full_name, role, cargo_id, squad, squads, is_active, status_usuario, nivel')
+        .select(
+          'id, email, full_name, role, cargo_id, squad, squads, is_active, status_usuario, nivel'
+        )
         .eq('email', email)
         .maybeSingle(),
       supabase
@@ -182,7 +206,11 @@ async function ensureUserProfile(supabase: any, user: User, preReg: any) {
   if (!user?.id || !user?.email) return;
   try {
     const email = user.email.toLowerCase();
-    const adminEmails = ['brunaramos1807@gmail.com', 'bruna.silva@zetti.tech', 'admin@zetti.com.br'];
+    const adminEmails = [
+      'brunaramos1807@gmail.com',
+      'bruna.silva@zetti.tech',
+      'admin@zetti.com.br',
+    ];
     const isAdmin = adminEmails.includes(email);
 
     // Check if profile already exists
@@ -197,7 +225,7 @@ async function ensureUserProfile(supabase: any, user: User, preReg: any) {
         id: user.id,
         email: user.email,
         full_name: preReg?.full_name || user.user_metadata?.full_name || user.email.split('@')[0],
-        role: isAdmin ? 'Admin' : (preReg?.role || 'Coordenador'),
+        role: isAdmin ? 'Admin' : preReg?.role || 'Coordenador',
         cargo_id: preReg?.cargo_id || null,
         squad: preReg?.squad || null,
         squads: preReg?.squads || [],

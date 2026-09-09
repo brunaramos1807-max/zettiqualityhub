@@ -5,7 +5,32 @@ import { usePathname } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { LayoutDashboard, TrendingUp, BarChart3, RefreshCw, ClipboardCheck, Upload, AlertTriangle, Star, History, FileText, Settings, ChevronLeft, ChevronRight, LogOut, Activity, UserSquare2, Zap, MessageSquare, GitBranch, Users, ChevronDown, Plug, ScrollText, ShieldAlert,  } from 'lucide-react';
+import {
+  LayoutDashboard,
+  TrendingUp,
+  BarChart3,
+  RefreshCw,
+  ClipboardCheck,
+  Upload,
+  AlertTriangle,
+  Star,
+  History,
+  FileText,
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+  LogOut,
+  Activity,
+  UserSquare2,
+  Zap,
+  MessageSquare,
+  GitBranch,
+  Users,
+  ChevronDown,
+  Plug,
+  ScrollText,
+  ShieldAlert,
+} from 'lucide-react';
 
 interface NavItem {
   id: string;
@@ -27,16 +52,36 @@ const NAV_SECTIONS: NavSection[] = [
     color: '#38BDF8',
     items: [
       { id: 'cockpit', label: 'Cockpit Executivo', href: '/', icon: <LayoutDashboard size={14} /> },
-      { id: 'evolucao', label: 'Evolução & Tendências', href: '/evolucao-geral', icon: <TrendingUp size={14} /> },
+      {
+        id: 'evolucao',
+        label: 'Evolução & Tendências',
+        href: '/evolucao-geral',
+        icon: <TrendingUp size={14} />,
+      },
     ],
   },
   {
     title: 'OPERAÇÕES',
     color: '#A78BFA',
     items: [
-      { id: 'ciclos', label: 'Governança de Ciclos', href: '/ciclos', icon: <RefreshCw size={14} /> },
-      { id: 'auditoria', label: 'Auditoria & Amostragem', href: '/auditoria', icon: <ClipboardCheck size={14} /> },
-      { id: 'estrutura', label: 'Estrutura Operacional', href: '/suporte', icon: <Users size={14} /> },
+      {
+        id: 'ciclos',
+        label: 'Governança de Ciclos',
+        href: '/ciclos',
+        icon: <RefreshCw size={14} />,
+      },
+      {
+        id: 'auditoria',
+        label: 'Auditoria & Amostragem',
+        href: '/auditoria',
+        icon: <ClipboardCheck size={14} />,
+      },
+      {
+        id: 'estrutura',
+        label: 'Estrutura Operacional',
+        href: '/suporte',
+        icon: <Users size={14} />,
+      },
     ],
   },
   {
@@ -44,35 +89,94 @@ const NAV_SECTIONS: NavSection[] = [
     color: '#22C55E',
     items: [
       { id: 'qa-iepc', label: 'QA & IEPC Oficial', href: '/qa-iepc', icon: <Zap size={14} /> },
-      { id: 'ncs', label: 'Não Conformidades', href: '/nao-conformidades', icon: <AlertTriangle size={14} /> },
-      { id: 'calibragem', label: 'Calibragem de Métodos', href: '/calibragem', icon: <Activity size={14} /> },
+      {
+        id: 'ncs',
+        label: 'Não Conformidades',
+        href: '/nao-conformidades',
+        icon: <AlertTriangle size={14} />,
+      },
+      {
+        id: 'calibragem',
+        label: 'Calibragem de Métodos',
+        href: '/calibragem',
+        icon: <Activity size={14} />,
+      },
     ],
   },
   {
     title: 'ANÁLISE & GESTÃO',
     color: '#FB923C',
     items: [
-      { id: 'historico', label: 'Histórico & Séries', href: '/historico', icon: <History size={14} /> },
-      { id: 'documentos', label: 'Conhecimento & POPs', href: '/documentos', icon: <FileText size={14} /> },
+      {
+        id: 'historico',
+        label: 'Histórico & Séries',
+        href: '/historico',
+        icon: <History size={14} />,
+      },
+      {
+        id: 'documentos',
+        label: 'Conhecimento & POPs',
+        href: '/documentos',
+        icon: <FileText size={14} />,
+      },
     ],
   },
   {
     title: 'ADMINISTRAÇÃO',
     color: '#64748B',
     items: [
-      { id: 'importacoes', label: 'Ingestão de Dados', href: '/importacoes', icon: <Upload size={14} /> },
-      { id: 'configuracoes', label: 'Configurações do SaaS', href: '/configuracoes', icon: <Settings size={14} />, adminOnly: true },
-      { id: 'admin-diagnostico', label: 'Saúde da Plataforma', href: '/admin-diagnostico', icon: <ScrollText size={14} />, adminOnly: true },
+      {
+        id: 'importacoes',
+        label: 'Ingestão de Dados',
+        href: '/importacoes',
+        icon: <Upload size={14} />,
+      },
+      {
+        id: 'configuracoes',
+        label: 'Configurações do SaaS',
+        href: '/configuracoes',
+        icon: <Settings size={14} />,
+        adminOnly: true,
+      },
+      {
+        id: 'admin-diagnostico',
+        label: 'Saúde da Plataforma',
+        href: '/admin-diagnostico',
+        icon: <ScrollText size={14} />,
+        adminOnly: true,
+      },
     ],
   },
 ];
 
 function getActiveSection(pathname: string): string {
-  if (pathname === '/' || pathname.startsWith('/evolucao-geral') || pathname.startsWith('/cycle-dashboard')) return 'EXECUTIVO';
-  if (pathname.startsWith('/ciclo-atual') || pathname.startsWith('/ciclos') || pathname.startsWith('/auditoria') || pathname.startsWith('/suporte')) return 'OPERAÇÕES';
-  if (pathname.startsWith('/qa-iepc') || pathname.startsWith('/nao-conformidades') || pathname.startsWith('/calibragem')) return 'MEDIÇÃO';
-  if (pathname.startsWith('/documentos') || pathname.startsWith('/historico')) return 'ANÁLISE & GESTÃO';
-  if (pathname.startsWith('/configuracoes') || pathname.startsWith('/importacoes') || pathname.startsWith('/admin-diagnostico')) return 'ADMINISTRAÇÃO';
+  if (
+    pathname === '/' ||
+    pathname.startsWith('/evolucao-geral') ||
+    pathname.startsWith('/cycle-dashboard')
+  )
+    return 'EXECUTIVO';
+  if (
+    pathname.startsWith('/ciclo-atual') ||
+    pathname.startsWith('/ciclos') ||
+    pathname.startsWith('/auditoria') ||
+    pathname.startsWith('/suporte')
+  )
+    return 'OPERAÇÕES';
+  if (
+    pathname.startsWith('/qa-iepc') ||
+    pathname.startsWith('/nao-conformidades') ||
+    pathname.startsWith('/calibragem')
+  )
+    return 'MEDIÇÃO';
+  if (pathname.startsWith('/documentos') || pathname.startsWith('/historico'))
+    return 'ANÁLISE & GESTÃO';
+  if (
+    pathname.startsWith('/configuracoes') ||
+    pathname.startsWith('/importacoes') ||
+    pathname.startsWith('/admin-diagnostico')
+  )
+    return 'ADMINISTRAÇÃO';
   return 'EXECUTIVO';
 }
 
@@ -94,7 +198,11 @@ function getActiveId(pathname: string): string {
 }
 
 function getInitials(name: string): string {
-  return name.split(' ').slice(0, 2).map((n) => n[0]?.toUpperCase() || '').join('');
+  return name
+    .split(' ')
+    .slice(0, 2)
+    .map((n) => n[0]?.toUpperCase() || '')
+    .join('');
 }
 
 interface EnterpriseSidebarProps {
@@ -111,7 +219,9 @@ export default function EnterpriseSidebar({ collapsed = false, onToggle }: Enter
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
-    NAV_SECTIONS.forEach((s) => { initial[s.title] = s.title === activeSection; });
+    NAV_SECTIONS.forEach((s) => {
+      initial[s.title] = s.title === activeSection;
+    });
     return initial;
   });
 
@@ -120,7 +230,12 @@ export default function EnterpriseSidebar({ collapsed = false, onToggle }: Enter
   const displayAvatar = getInitials(displayName);
 
   const handleSignOut = async () => {
-    try { systemLogout(); await signOut(); } catch { /* ignore */ }
+    try {
+      systemLogout();
+      await signOut();
+    } catch {
+      /* ignore */
+    }
   };
 
   const toggleSection = (title: string) => {
@@ -206,7 +321,10 @@ export default function EnterpriseSidebar({ collapsed = false, onToggle }: Enter
           if (collapsed) {
             return (
               <div key={section.title} className="mb-1">
-                <div className="my-2 mx-3 h-px" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }} />
+                <div
+                  className="my-2 mx-3 h-px"
+                  style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}
+                />
                 {visibleItems.map((item) => {
                   const isActive = activeId === item.id;
                   return (
@@ -246,12 +364,21 @@ export default function EnterpriseSidebar({ collapsed = false, onToggle }: Enter
                   {hasActive && (
                     <span
                       className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: section.color, boxShadow: `0 0 6px ${section.color}` }}
+                      style={{
+                        backgroundColor: section.color,
+                        boxShadow: `0 0 6px ${section.color}`,
+                      }}
                     />
                   )}
                   {section.title}
                 </span>
-                <span style={{ color: 'rgba(255,255,255,0.15)', transition: 'transform 0.2s', transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)' }}>
+                <span
+                  style={{
+                    color: 'rgba(255,255,255,0.15)',
+                    transition: 'transform 0.2s',
+                    transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
+                  }}
+                >
                   <ChevronDown size={11} />
                 </span>
               </button>
@@ -275,7 +402,9 @@ export default function EnterpriseSidebar({ collapsed = false, onToggle }: Enter
                         style={{
                           color: isActive ? '#fff' : 'rgba(255,255,255,0.45)',
                           backgroundColor: isActive ? `${section.color}14` : 'transparent',
-                          borderLeft: isActive ? `2px solid ${section.color}` : '2px solid transparent',
+                          borderLeft: isActive
+                            ? `2px solid ${section.color}`
+                            : '2px solid transparent',
                           fontSize: '13px',
                           boxShadow: isActive ? `inset 0 0 20px ${section.color}06` : 'none',
                         }}
@@ -290,7 +419,10 @@ export default function EnterpriseSidebar({ collapsed = false, onToggle }: Enter
                         {isActive && (
                           <span
                             className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: section.color, boxShadow: `0 0 6px ${section.color}` }}
+                            style={{
+                              backgroundColor: section.color,
+                              boxShadow: `0 0 6px ${section.color}`,
+                            }}
                           />
                         )}
                       </Link>
@@ -308,18 +440,31 @@ export default function EnterpriseSidebar({ collapsed = false, onToggle }: Enter
         {!collapsed ? (
           <div
             className="flex items-center gap-2.5 p-2.5 rounded-xl"
-            style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
+            style={{
+              backgroundColor: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.06)',
+            }}
           >
             <div
               className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 text-white"
-              style={{ background: 'linear-gradient(135deg, #1E40AF, #3B82F6)', boxShadow: '0 2px 8px rgba(30,64,175,0.4)' }}
+              style={{
+                background: 'linear-gradient(135deg, #1E40AF, #3B82F6)',
+                boxShadow: '0 2px 8px rgba(30,64,175,0.4)',
+              }}
             >
               {displayAvatar}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-white truncate leading-tight">{displayName}</p>
+              <p className="text-xs font-semibold text-white truncate leading-tight">
+                {displayName}
+              </p>
               {displayRole && (
-                <p className="text-xs truncate" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px' }}>{displayRole}</p>
+                <p
+                  className="text-xs truncate"
+                  style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px' }}
+                >
+                  {displayRole}
+                </p>
               )}
             </div>
             <button

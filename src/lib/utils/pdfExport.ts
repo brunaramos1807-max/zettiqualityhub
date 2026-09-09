@@ -33,12 +33,20 @@ export interface FeedbackPDFData {
   oportunidades?: Array<{ titulo: string; descricao: string }>;
   coaching?: Array<{ o_que_foi_dito: string; como_poderia_ser: string; dica_de_ouro: string }>;
   atendimentos?: Array<{
-    protocolo: string; cliente: string; assunto: string;
-    nota_qa: number; nota_iepc: number; classificacao: string; observacao?: string;
+    protocolo: string;
+    cliente: string;
+    assunto: string;
+    nota_qa: number;
+    nota_iepc: number;
+    classificacao: string;
+    observacao?: string;
   }>;
   pdi?: Array<{
-    objetivo: string; acao_desenvolvimento: string; prazo: string;
-    progresso: number; status: string;
+    objetivo: string;
+    acao_desenvolvimento: string;
+    prazo: string;
+    progresso: number;
+    status: string;
   }>;
   conquistas?: Array<{ titulo: string; valor: string; periodo?: string }>;
   historico?: Array<{ ciclo: string; qa_score: number; iepc_score: number }>;
@@ -58,7 +66,13 @@ const GRAY = [148, 163, 184] as [number, number, number];
 const LIGHT_BG = [248, 250, 252] as [number, number, number];
 const SECTION_BG = [241, 245, 249] as [number, number, number];
 
-function addPageHeader(doc: jsPDF, title: string, pageNum: number, totalPages: number, ciclo: string) {
+function addPageHeader(
+  doc: jsPDF,
+  title: string,
+  pageNum: number,
+  totalPages: number,
+  ciclo: string
+) {
   const w = doc.internal.pageSize.getWidth();
   doc.setFillColor(...DARK_BG);
   doc.rect(0, 0, w, 16, 'F');
@@ -80,7 +94,12 @@ function addPageHeader(doc: jsPDF, title: string, pageNum: number, totalPages: n
   doc.text('Documento Confidencial · Uso Interno', w - 10, 14, { align: 'right' });
 }
 
-function addSectionTitle(doc: jsPDF, title: string, y: number, color: [number, number, number] = BLUE): number {
+function addSectionTitle(
+  doc: jsPDF,
+  title: string,
+  y: number,
+  color: [number, number, number] = BLUE
+): number {
   doc.setFillColor(...color);
   doc.rect(10, y, 2.5, 5.5, 'F');
   doc.setTextColor(...color);
@@ -90,7 +109,14 @@ function addSectionTitle(doc: jsPDF, title: string, y: number, color: [number, n
   return y + 11;
 }
 
-function addTextBlock(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, color: [number, number, number] = [30, 41, 59]): number {
+function addTextBlock(
+  doc: jsPDF,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  color: [number, number, number] = [30, 41, 59]
+): number {
   doc.setTextColor(...color);
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
@@ -99,7 +125,16 @@ function addTextBlock(doc: jsPDF, text: string, x: number, y: number, maxWidth: 
   return y + lines.length * 4.8;
 }
 
-function scoreBox(doc: jsPDF, x: number, y: number, w: number, h: number, label: string, value: string, color: [number, number, number]) {
+function scoreBox(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  label: string,
+  value: string,
+  color: [number, number, number]
+) {
   doc.setFillColor(248, 250, 252);
   doc.setDrawColor(...color);
   doc.roundedRect(x, y, w, h, 2, 2, 'FD');
@@ -177,7 +212,11 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
       doc.setTextColor(...WHITE);
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
-      const initials = data.analista.nome.split(' ').slice(0, 2).map((n) => n[0]).join('');
+      const initials = data.analista.nome
+        .split(' ')
+        .slice(0, 2)
+        .map((n) => n[0])
+        .join('');
       doc.text(initials, photoX + photoSize / 2, photoY + photoSize / 2 + 3, { align: 'center' });
     }
   } else {
@@ -186,7 +225,11 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
     doc.setTextColor(...WHITE);
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
-    const initials = data.analista.nome.split(' ').slice(0, 2).map((n) => n[0]).join('');
+    const initials = data.analista.nome
+      .split(' ')
+      .slice(0, 2)
+      .map((n) => n[0])
+      .join('');
     doc.text(initials, photoX + photoSize / 2, photoY + photoSize / 2 + 3, { align: 'center' });
   }
 
@@ -201,7 +244,11 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...GRAY);
   doc.text(data.analista.cargo || 'Analista de Suporte', infoX, heroY + 19);
-  doc.text(`Equipe: ${data.analista.equipe || '—'}  ·  Coordenadora: ${data.analista.coordenador || '—'}`, infoX, heroY + 25);
+  doc.text(
+    `Equipe: ${data.analista.equipe || '—'}  ·  Coordenadora: ${data.analista.coordenador || '—'}`,
+    infoX,
+    heroY + 25
+  );
   doc.text(`Tempo de empresa: ${data.analista.tempoEmpresa || '—'}`, infoX, heroY + 31);
 
   // Ciclo badge (top right)
@@ -216,7 +263,12 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
     doc.setFontSize(6.5);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...GRAY);
-    doc.text(`${data.periodoInicio}${data.periodoFim ? ` a ${data.periodoFim}` : ''}`, pageW - 26, heroY + 18, { align: 'center' });
+    doc.text(
+      `${data.periodoInicio}${data.periodoFim ? ` a ${data.periodoFim}` : ''}`,
+      pageW - 26,
+      heroY + 18,
+      { align: 'center' }
+    );
   }
 
   // Status
@@ -234,21 +286,71 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
   const boxGap = 3;
   const startX = margin;
 
-  scoreBox(doc, startX, boxY, boxW, boxH, 'QA', data.qaScore != null ? `${data.qaScore}` : '—', BLUE_LIGHT);
-  scoreBox(doc, startX + boxW + boxGap, boxY, boxW, boxH, 'IEPC', data.iepcScore != null ? `${data.iepcScore}%` : '—', GREEN);
-  scoreBox(doc, startX + (boxW + boxGap) * 2, boxY, boxW, boxH, 'ADERÊNCIA', data.aderenciaScore != null ? `${data.aderenciaScore}%` : '—', TEAL);
+  scoreBox(
+    doc,
+    startX,
+    boxY,
+    boxW,
+    boxH,
+    'QA',
+    data.qaScore != null ? `${data.qaScore}` : '—',
+    BLUE_LIGHT
+  );
+  scoreBox(
+    doc,
+    startX + boxW + boxGap,
+    boxY,
+    boxW,
+    boxH,
+    'IEPC',
+    data.iepcScore != null ? `${data.iepcScore}%` : '—',
+    GREEN
+  );
+  scoreBox(
+    doc,
+    startX + (boxW + boxGap) * 2,
+    boxY,
+    boxW,
+    boxH,
+    'ADERÊNCIA',
+    data.aderenciaScore != null ? `${data.aderenciaScore}%` : '—',
+    TEAL
+  );
   if (data.posicaoSquad != null) {
-    scoreBox(doc, startX + (boxW + boxGap) * 3, boxY, boxW, boxH, 'POSIÇÃO', `Top ${data.posicaoSquad}`, AMBER);
+    scoreBox(
+      doc,
+      startX + (boxW + boxGap) * 3,
+      boxY,
+      boxW,
+      boxH,
+      'POSIÇÃO',
+      `Top ${data.posicaoSquad}`,
+      AMBER
+    );
   }
   if (data.ciclosConsecutivos && data.ciclosConsecutivos > 0) {
-    scoreBox(doc, startX + (boxW + boxGap) * 4, boxY, boxW, boxH, 'CICLOS EVOL.', `${data.ciclosConsecutivos}`, GREEN);
+    scoreBox(
+      doc,
+      startX + (boxW + boxGap) * 4,
+      boxY,
+      boxW,
+      boxH,
+      'CICLOS EVOL.',
+      `${data.ciclosConsecutivos}`,
+      GREEN
+    );
   }
 
   let y = boxY + boxH + 8;
 
   // Resumo Executivo
   if (data.resumoCiclo) {
-    if (y > pageH - 50) { doc.addPage(); currentPage++; addPageHeader(doc, 'Resumo Executivo', currentPage, totalPages, data.ciclo); y = 24; }
+    if (y > pageH - 50) {
+      doc.addPage();
+      currentPage++;
+      addPageHeader(doc, 'Resumo Executivo', currentPage, totalPages, data.ciclo);
+      y = 24;
+    }
     y = addSectionTitle(doc, 'Resumo Executivo do Ciclo', y, BLUE);
     doc.setFillColor(...SECTION_BG);
     const resumoLines = doc.splitTextToSize(data.resumoCiclo, contentW - 6);
@@ -260,7 +362,12 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
 
   // Performance por Pilar — QA
   if (data.pilares_qa && data.pilares_qa.length > 0) {
-    if (y > pageH - 55) { doc.addPage(); currentPage++; addPageHeader(doc, 'Performance QA', currentPage, totalPages, data.ciclo); y = 24; }
+    if (y > pageH - 55) {
+      doc.addPage();
+      currentPage++;
+      addPageHeader(doc, 'Performance QA', currentPage, totalPages, data.ciclo);
+      y = 24;
+    }
     y = addSectionTitle(doc, 'Performance por Pilar — QA', y, BLUE_LIGHT);
     autoTable(doc, {
       startY: y,
@@ -269,7 +376,11 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
         p.nome,
         p.pontuacao,
         p.max,
-        p.variacao !== undefined ? (p.variacao >= 0 ? `+${p.variacao} pts` : `${p.variacao} pts`) : '—',
+        p.variacao !== undefined
+          ? p.variacao >= 0
+            ? `+${p.variacao} pts`
+            : `${p.variacao} pts`
+          : '—',
       ]),
       styles: { fontSize: 7.5, cellPadding: 2, textColor: [30, 41, 59] },
       headStyles: { fillColor: BLUE, textColor: WHITE, fontStyle: 'bold', fontSize: 7.5 },
@@ -282,7 +393,12 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
 
   // Performance por Pilar — IEPC
   if (data.pilares_iepc && data.pilares_iepc.length > 0) {
-    if (y > pageH - 55) { doc.addPage(); currentPage++; addPageHeader(doc, 'Performance IEPC', currentPage, totalPages, data.ciclo); y = 24; }
+    if (y > pageH - 55) {
+      doc.addPage();
+      currentPage++;
+      addPageHeader(doc, 'Performance IEPC', currentPage, totalPages, data.ciclo);
+      y = 24;
+    }
     y = addSectionTitle(doc, 'Performance por Pilar — IEPC', y, TEAL);
     autoTable(doc, {
       startY: y,
@@ -291,7 +407,11 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
         p.nome,
         p.pontuacao,
         p.max,
-        p.variacao !== undefined ? (p.variacao >= 0 ? `+${p.variacao} pts` : `${p.variacao} pts`) : '—',
+        p.variacao !== undefined
+          ? p.variacao >= 0
+            ? `+${p.variacao} pts`
+            : `${p.variacao} pts`
+          : '—',
       ]),
       styles: { fontSize: 7.5, cellPadding: 2, textColor: [30, 41, 59] },
       headStyles: { fillColor: [42, 130, 120], textColor: WHITE, fontStyle: 'bold', fontSize: 7.5 },
@@ -304,7 +424,12 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
 
   // Histórico
   if (data.historico && data.historico.length > 1) {
-    if (y > pageH - 45) { doc.addPage(); currentPage++; addPageHeader(doc, 'Evolução Histórica', currentPage, totalPages, data.ciclo); y = 24; }
+    if (y > pageH - 45) {
+      doc.addPage();
+      currentPage++;
+      addPageHeader(doc, 'Evolução Histórica', currentPage, totalPages, data.ciclo);
+      y = 24;
+    }
     y = addSectionTitle(doc, 'Evolução Histórica', y, GREEN);
     autoTable(doc, {
       startY: y,
@@ -331,7 +456,12 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
   if (data.pontosFortes && data.pontosFortes.length > 0) {
     y = addSectionTitle(doc, 'Pontos Fortes', y, GREEN);
     data.pontosFortes.slice(0, 5).forEach((p) => {
-      if (y > pageH - 28) { doc.addPage(); currentPage++; addPageHeader(doc, 'Pontos Fortes', currentPage, totalPages, data.ciclo); y = 24; }
+      if (y > pageH - 28) {
+        doc.addPage();
+        currentPage++;
+        addPageHeader(doc, 'Pontos Fortes', currentPage, totalPages, data.ciclo);
+        y = 24;
+      }
       doc.setFillColor(240, 253, 244);
       doc.setDrawColor(...GREEN);
       const lines = doc.splitTextToSize(`${p.titulo}: ${p.descricao}`, contentW - 8);
@@ -351,10 +481,20 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
 
   // Oportunidades
   if (data.oportunidades && data.oportunidades.length > 0) {
-    if (y > pageH - 35) { doc.addPage(); currentPage++; addPageHeader(doc, 'Oportunidades', currentPage, totalPages, data.ciclo); y = 24; }
+    if (y > pageH - 35) {
+      doc.addPage();
+      currentPage++;
+      addPageHeader(doc, 'Oportunidades', currentPage, totalPages, data.ciclo);
+      y = 24;
+    }
     y = addSectionTitle(doc, 'Oportunidades de Evolução', y, AMBER);
     data.oportunidades.slice(0, 5).forEach((o) => {
-      if (y > pageH - 28) { doc.addPage(); currentPage++; addPageHeader(doc, 'Oportunidades', currentPage, totalPages, data.ciclo); y = 24; }
+      if (y > pageH - 28) {
+        doc.addPage();
+        currentPage++;
+        addPageHeader(doc, 'Oportunidades', currentPage, totalPages, data.ciclo);
+        y = 24;
+      }
       doc.setFillColor(255, 251, 235);
       doc.setDrawColor(...AMBER);
       const lines = doc.splitTextToSize(`${o.titulo}: ${o.descricao}`, contentW - 8);
@@ -374,13 +514,23 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
 
   // Evolução Técnica
   if (data.evolucaoTecnica) {
-    if (y > pageH - 55) { doc.addPage(); currentPage++; addPageHeader(doc, 'Evolução Técnica', currentPage, totalPages, data.ciclo); y = 24; }
+    if (y > pageH - 55) {
+      doc.addPage();
+      currentPage++;
+      addPageHeader(doc, 'Evolução Técnica', currentPage, totalPages, data.ciclo);
+      y = 24;
+    }
     y = addSectionTitle(doc, 'Evolução Técnica', y, BLUE_LIGHT);
     doc.setFillColor(240, 249, 255);
     doc.setDrawColor(...BLUE_LIGHT);
     const lines = doc.splitTextToSize(data.evolucaoTecnica, contentW - 6);
     const h = lines.length * 4.8 + 6;
-    if (y + h > pageH - 18) { doc.addPage(); currentPage++; addPageHeader(doc, 'Evolução Técnica', currentPage, totalPages, data.ciclo); y = 24; }
+    if (y + h > pageH - 18) {
+      doc.addPage();
+      currentPage++;
+      addPageHeader(doc, 'Evolução Técnica', currentPage, totalPages, data.ciclo);
+      y = 24;
+    }
     doc.roundedRect(margin, y, contentW, h, 2, 2, 'FD');
     doc.setTextColor(30, 41, 59);
     doc.setFontSize(8.5);
@@ -391,13 +541,23 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
 
   // Evolução Comportamental
   if (data.evolucaoComportamental) {
-    if (y > pageH - 55) { doc.addPage(); currentPage++; addPageHeader(doc, 'Evolução Comportamental', currentPage, totalPages, data.ciclo); y = 24; }
+    if (y > pageH - 55) {
+      doc.addPage();
+      currentPage++;
+      addPageHeader(doc, 'Evolução Comportamental', currentPage, totalPages, data.ciclo);
+      y = 24;
+    }
     y = addSectionTitle(doc, 'Evolução Comportamental', y, [139, 126, 200]);
     doc.setFillColor(245, 243, 255);
     doc.setDrawColor(139, 126, 200);
     const lines = doc.splitTextToSize(data.evolucaoComportamental, contentW - 6);
     const h = lines.length * 4.8 + 6;
-    if (y + h > pageH - 18) { doc.addPage(); currentPage++; addPageHeader(doc, 'Evolução Comportamental', currentPage, totalPages, data.ciclo); y = 24; }
+    if (y + h > pageH - 18) {
+      doc.addPage();
+      currentPage++;
+      addPageHeader(doc, 'Evolução Comportamental', currentPage, totalPages, data.ciclo);
+      y = 24;
+    }
     doc.roundedRect(margin, y, contentW, h, 2, 2, 'FD');
     doc.setTextColor(30, 41, 59);
     doc.setFontSize(8.5);
@@ -408,7 +568,12 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
 
   // Risco Operacional
   if (data.riscoOperacional) {
-    if (y > pageH - 45) { doc.addPage(); currentPage++; addPageHeader(doc, 'Risco Operacional', currentPage, totalPages, data.ciclo); y = 24; }
+    if (y > pageH - 45) {
+      doc.addPage();
+      currentPage++;
+      addPageHeader(doc, 'Risco Operacional', currentPage, totalPages, data.ciclo);
+      y = 24;
+    }
     y = addSectionTitle(doc, 'Risco Operacional', y, RED);
     doc.setFillColor(254, 242, 242);
     doc.setDrawColor(...RED);
@@ -424,10 +589,20 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
 
   // Coaching
   if (data.coaching && data.coaching.length > 0) {
-    if (y > pageH - 55) { doc.addPage(); currentPage++; addPageHeader(doc, 'Coaching de Comunicação', currentPage, totalPages, data.ciclo); y = 24; }
+    if (y > pageH - 55) {
+      doc.addPage();
+      currentPage++;
+      addPageHeader(doc, 'Coaching de Comunicação', currentPage, totalPages, data.ciclo);
+      y = 24;
+    }
     y = addSectionTitle(doc, 'Coaching de Comunicação', y, BLUE);
     data.coaching.forEach((c) => {
-      if (y > pageH - 45) { doc.addPage(); currentPage++; addPageHeader(doc, 'Coaching de Comunicação', currentPage, totalPages, data.ciclo); y = 24; }
+      if (y > pageH - 45) {
+        doc.addPage();
+        currentPage++;
+        addPageHeader(doc, 'Coaching de Comunicação', currentPage, totalPages, data.ciclo);
+        y = 24;
+      }
 
       const col = (contentW - 4) / 3;
       const l1 = doc.splitTextToSize(`"${c.o_que_foi_dito}"`, col - 4);
@@ -435,7 +610,12 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
       const l3 = doc.splitTextToSize(c.dica_de_ouro, col - 4);
       const maxH = Math.max(l1.length, l2.length, l3.length) * 4.5 + 11;
 
-      if (y + maxH > pageH - 18) { doc.addPage(); currentPage++; addPageHeader(doc, 'Coaching', currentPage, totalPages, data.ciclo); y = 24; }
+      if (y + maxH > pageH - 18) {
+        doc.addPage();
+        currentPage++;
+        addPageHeader(doc, 'Coaching', currentPage, totalPages, data.ciclo);
+        y = 24;
+      }
 
       doc.setFillColor(240, 249, 255);
       doc.setDrawColor(...BLUE_LIGHT);
@@ -515,7 +695,8 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
           if (val === 'excelente') hookData.cell.styles.textColor = [21, 128, 61];
           else if (val === 'bom') hookData.cell.styles.textColor = [30, 64, 175];
           else if (val === 'regular') hookData.cell.styles.textColor = [161, 98, 7];
-          else if (val === 'crítico' || val === 'critico') hookData.cell.styles.textColor = [185, 28, 28];
+          else if (val === 'crítico' || val === 'critico')
+            hookData.cell.styles.textColor = [185, 28, 28];
         }
       },
     });
@@ -523,10 +704,20 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
 
     const withObs = data.atendimentos.filter((a) => a.observacao);
     if (withObs.length > 0) {
-      if (y > pageH - 35) { doc.addPage(); currentPage++; addPageHeader(doc, 'Observações', currentPage, totalPages, data.ciclo); y = 24; }
+      if (y > pageH - 35) {
+        doc.addPage();
+        currentPage++;
+        addPageHeader(doc, 'Observações', currentPage, totalPages, data.ciclo);
+        y = 24;
+      }
       y = addSectionTitle(doc, 'Observações dos Atendimentos', y, GRAY);
       withObs.forEach((a) => {
-        if (y > pageH - 28) { doc.addPage(); currentPage++; addPageHeader(doc, 'Observações', currentPage, totalPages, data.ciclo); y = 24; }
+        if (y > pageH - 28) {
+          doc.addPage();
+          currentPage++;
+          addPageHeader(doc, 'Observações', currentPage, totalPages, data.ciclo);
+          y = 24;
+        }
         doc.setFontSize(7.5);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(...BLUE);
@@ -566,7 +757,12 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
   }
 
   if (data.historico && data.historico.length > 0) {
-    if (y > pageH - 45) { doc.addPage(); currentPage++; addPageHeader(doc, 'Histórico', currentPage, totalPages, data.ciclo); y = 24; }
+    if (y > pageH - 45) {
+      doc.addPage();
+      currentPage++;
+      addPageHeader(doc, 'Histórico', currentPage, totalPages, data.ciclo);
+      y = 24;
+    }
     y = addSectionTitle(doc, 'Histórico de Ciclos', y, GREEN);
     autoTable(doc, {
       startY: y,
@@ -599,7 +795,9 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
   if (photoBase64) {
     try {
       doc.addImage(photoBase64, 'JPEG', margin + 5, y + 6, 22, 22, undefined, 'FAST');
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   const closingInfoX = photoBase64 ? margin + 32 : margin + 8;
@@ -612,9 +810,17 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...GRAY);
-  doc.text(`Ciclo: ${data.ciclo}  ·  QA: ${data.qaScore ?? '—'}  ·  IEPC: ${data.iepcScore ?? '—'}%  ·  Aderência: ${data.aderenciaScore ?? '—'}%`, closingInfoX, y + 19);
+  doc.text(
+    `Ciclo: ${data.ciclo}  ·  QA: ${data.qaScore ?? '—'}  ·  IEPC: ${data.iepcScore ?? '—'}%  ·  Aderência: ${data.aderenciaScore ?? '—'}%`,
+    closingInfoX,
+    y + 19
+  );
   if (data.posicaoSquad) {
-    doc.text(`Posição no Squad: Top ${data.posicaoSquad} de ${data.totalSquad || '?'} analistas`, closingInfoX, y + 25);
+    doc.text(
+      `Posição no Squad: Top ${data.posicaoSquad} de ${data.totalSquad || '?'} analistas`,
+      closingInfoX,
+      y + 25
+    );
   }
   if (data.ciclosConsecutivos && data.ciclosConsecutivos > 0) {
     doc.setTextColor(...GREEN);
@@ -638,7 +844,12 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
   doc.setFontSize(7.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(30, 41, 59);
-  doc.text('Continue evoluindo. Cada ciclo é uma oportunidade de crescimento profissional.', pageW / 2, y + 13, { align: 'center' });
+  doc.text(
+    'Continue evoluindo. Cada ciclo é uma oportunidade de crescimento profissional.',
+    pageW / 2,
+    y + 13,
+    { align: 'center' }
+  );
 
   y += 25;
 
@@ -647,11 +858,18 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
   doc.setTextColor(...GRAY);
   doc.setFontSize(6.5);
   doc.setFont('helvetica', 'normal');
-  doc.text('Documento confidencial · Uso interno · QualiVisão People Analytics © 2026', pageW / 2, y + 7, { align: 'center' });
+  doc.text(
+    'Documento confidencial · Uso interno · QualiVisão People Analytics © 2026',
+    pageW / 2,
+    y + 7,
+    { align: 'center' }
+  );
 
   const now = new Date();
   const dateStr = `${now.toLocaleDateString('pt-BR')} às ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-  doc.text(`Gerado em: ${dateStr}  ·  Ciclo: ${data.ciclo}  ·  Versão 1.0`, pageW / 2, y + 13, { align: 'center' });
+  doc.text(`Gerado em: ${dateStr}  ·  Ciclo: ${data.ciclo}  ·  Versão 1.0`, pageW / 2, y + 13, {
+    align: 'center',
+  });
   doc.setTextColor(...BLUE_LIGHT);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
@@ -664,10 +882,17 @@ export async function exportFeedbackPDF(data: FeedbackPDFData): Promise<void> {
     doc.setFontSize(6.5);
     doc.setTextColor(...GRAY);
     doc.setFont('helvetica', 'normal');
-    doc.text(`QualiVisão People Analytics  ·  ${data.ciclo}  ·  Pág. ${i} / ${totalPagesActual}`, pageW / 2, pageH - 4, { align: 'center' });
+    doc.text(
+      `QualiVisão People Analytics  ·  ${data.ciclo}  ·  Pág. ${i} / ${totalPagesActual}`,
+      pageW / 2,
+      pageH - 4,
+      { align: 'center' }
+    );
   }
 
-  doc.save(`feedback_${data.analista.nome.replace(/\s+/g, '_')}_${data.ciclo.replace('/', '-')}.pdf`);
+  doc.save(
+    `feedback_${data.analista.nome.replace(/\s+/g, '_')}_${data.ciclo.replace('/', '-')}.pdf`
+  );
 }
 
 // ─── Cycle PDF Export (existing) ─────────────────────────────────────────────
@@ -680,8 +905,16 @@ export interface PDFReportData {
     nota_final_qa: number;
     iepc_total: number;
     total_ncs: number;
-    p1: number; p2: number; p3: number; p4: number; p5: number;
-    e1: number; e2: number; e3: number; e4: number; e5: number;
+    p1: number;
+    p2: number;
+    p3: number;
+    p4: number;
+    p5: number;
+    e1: number;
+    e2: number;
+    e3: number;
+    e4: number;
+    e5: number;
   }>;
   ncs: Array<{
     analista: string;
@@ -714,12 +947,22 @@ export function exportCyclePDF(data: PDFReportData): void {
   doc.text(`Período: ${data.periodo}   |   Gerado em: ${now}`, 14, 22);
 
   const totalAnalistas = data.scores.length;
-  const avgQA = totalAnalistas > 0 ? (data.scores.reduce((s, r) => s + r.nota_final_qa, 0) / totalAnalistas).toFixed(2) : '—';
-  const avgIEPC = totalAnalistas > 0 ? (data.scores.reduce((s, r) => s + r.iepc_total, 0) / totalAnalistas).toFixed(2) : '—';
+  const avgQA =
+    totalAnalistas > 0
+      ? (data.scores.reduce((s, r) => s + r.nota_final_qa, 0) / totalAnalistas).toFixed(2)
+      : '—';
+  const avgIEPC =
+    totalAnalistas > 0
+      ? (data.scores.reduce((s, r) => s + r.iepc_total, 0) / totalAnalistas).toFixed(2)
+      : '—';
 
   doc.setFontSize(9);
   doc.setTextColor(100, 100, 100);
-  doc.text(`Analistas: ${totalAnalistas}   |   QA Média: ${avgQA}   |   IEPC Médio: ${avgIEPC}   |   NCs: ${data.ncs.length}   |   Elogios: ${data.elogios.length}`, 14, 34);
+  doc.text(
+    `Analistas: ${totalAnalistas}   |   QA Média: ${avgQA}   |   IEPC Médio: ${avgIEPC}   |   NCs: ${data.ncs.length}   |   Elogios: ${data.elogios.length}`,
+    14,
+    34
+  );
 
   if (data.scores.length > 0) {
     doc.setFontSize(11);
@@ -728,8 +971,42 @@ export function exportCyclePDF(data: PDFReportData): void {
     doc.text('Pontuações QA / IEPC por Analista', 14, 42);
     autoTable(doc, {
       startY: 46,
-      head: [['Analista', 'Squad', 'QA', 'IEPC', 'NCs', 'P1', 'P2', 'P3', 'P4', 'P5', 'E1', 'E2', 'E3', 'E4', 'E5']],
-      body: data.scores.map((s) => [s.analista, s.squad, s.nota_final_qa.toFixed(2), s.iepc_total.toFixed(2), s.total_ncs, s.p1, s.p2, s.p3, s.p4, s.p5, s.e1, s.e2, s.e3, s.e4, s.e5]),
+      head: [
+        [
+          'Analista',
+          'Squad',
+          'QA',
+          'IEPC',
+          'NCs',
+          'P1',
+          'P2',
+          'P3',
+          'P4',
+          'P5',
+          'E1',
+          'E2',
+          'E3',
+          'E4',
+          'E5',
+        ],
+      ],
+      body: data.scores.map((s) => [
+        s.analista,
+        s.squad,
+        s.nota_final_qa.toFixed(2),
+        s.iepc_total.toFixed(2),
+        s.total_ncs,
+        s.p1,
+        s.p2,
+        s.p3,
+        s.p4,
+        s.p5,
+        s.e1,
+        s.e2,
+        s.e3,
+        s.e4,
+        s.e5,
+      ]),
       styles: { fontSize: 7.5, cellPadding: 2 },
       headStyles: { fillColor: [30, 64, 175], textColor: 255, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [245, 247, 250] },
@@ -741,7 +1018,13 @@ export function exportCyclePDF(data: PDFReportData): void {
   if (data.ncs.length > 0) {
     const lastY = (doc as any).lastAutoTable?.finalY ?? 46;
     const pageHeight = doc.internal.pageSize.getHeight();
-    const startY = lastY + 10 + 40 > pageHeight ? (() => { doc.addPage(); return 20; })() : lastY + 10;
+    const startY =
+      lastY + 10 + 40 > pageHeight
+        ? (() => {
+            doc.addPage();
+            return 20;
+          })()
+        : lastY + 10;
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(239, 68, 68);
@@ -749,7 +1032,13 @@ export function exportCyclePDF(data: PDFReportData): void {
     autoTable(doc, {
       startY: startY + 4,
       head: [['Analista', 'Squad', 'Tipo de NC', 'Descrição', 'Pontos Deduzidos']],
-      body: data.ncs.map((n) => [n.analista, n.squad, n.tipo_nc, n.descricao || '—', n.pontos_deduzidos]),
+      body: data.ncs.map((n) => [
+        n.analista,
+        n.squad,
+        n.tipo_nc,
+        n.descricao || '—',
+        n.pontos_deduzidos,
+      ]),
       styles: { fontSize: 8, cellPadding: 2 },
       headStyles: { fillColor: [239, 68, 68], textColor: 255, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [255, 248, 248] },
@@ -760,7 +1049,13 @@ export function exportCyclePDF(data: PDFReportData): void {
   if (data.elogios.length > 0) {
     const lastY2 = (doc as any).lastAutoTable?.finalY ?? 46;
     const pageHeight = doc.internal.pageSize.getHeight();
-    const startY2 = lastY2 + 10 + 40 > pageHeight ? (() => { doc.addPage(); return 20; })() : lastY2 + 10;
+    const startY2 =
+      lastY2 + 10 + 40 > pageHeight
+        ? (() => {
+            doc.addPage();
+            return 20;
+          })()
+        : lastY2 + 10;
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(34, 197, 94);
@@ -781,7 +1076,12 @@ export function exportCyclePDF(data: PDFReportData): void {
     doc.setPage(i);
     doc.setFontSize(7);
     doc.setTextColor(150, 150, 150);
-    doc.text(`Portal da Qualidade — ${data.periodo} — Página ${i} de ${totalPages}`, pageWidth / 2, doc.internal.pageSize.getHeight() - 6, { align: 'center' });
+    doc.text(
+      `Portal da Qualidade — ${data.periodo} — Página ${i} de ${totalPages}`,
+      pageWidth / 2,
+      doc.internal.pageSize.getHeight() - 6,
+      { align: 'center' }
+    );
   }
 
   doc.save(`relatorio_ciclo_${data.periodo.replace('/', '-')}.pdf`);

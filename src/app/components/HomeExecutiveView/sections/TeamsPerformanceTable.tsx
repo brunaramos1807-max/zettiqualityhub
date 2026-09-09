@@ -57,9 +57,7 @@ export function TeamsPerformanceTable({
     }
 
     if (typeof aVal === 'string') {
-      return sortDir === 'asc'
-        ? aVal.localeCompare(bVal)
-        : bVal.localeCompare(aVal);
+      return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
     }
 
     return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
@@ -83,11 +81,7 @@ export function TeamsPerformanceTable({
     if (sortKey !== column) {
       return <div className="w-4 h-4" />;
     }
-    return sortDir === 'asc' ? (
-      <ChevronUp size={16} />
-    ) : (
-      <ChevronDown size={16} />
-    );
+    return sortDir === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />;
   };
 
   return (

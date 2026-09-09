@@ -24,7 +24,8 @@ function buildCycleDataPrompt(analysts: Analyst[]): string {
     .join('\n');
 
   const squadRows = SQUAD_AVERAGES.map(
-    (s) => `- ${s.squad}: Média QA=${s.avgQA.toFixed(2)}, Média IEPC=${s.avgIEPC.toFixed(2)}, Analistas=${s.analysts}`
+    (s) =>
+      `- ${s.squad}: Média QA=${s.avgQA.toFixed(2)}, Média IEPC=${s.avgIEPC.toFixed(2)}, Analistas=${s.analysts}`
   ).join('\n');
 
   const ncTypes = NC_RECORDS.reduce<Record<string, number>>((acc, nc) => {
@@ -117,7 +118,10 @@ export default function ExecutiveInsights({ analysts }: ExecutiveInsightsProps) 
   const sections = parseSections(response);
 
   return (
-    <div className="rounded-xl p-6" style={{ backgroundColor: '#161B22', border: '1px solid rgba(255,255,255,0.08)' }}>
+    <div
+      className="rounded-xl p-6"
+      style={{ backgroundColor: '#161B22', border: '1px solid rgba(255,255,255,0.08)' }}
+    >
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div className="flex items-center gap-3">
@@ -125,7 +129,16 @@ export default function ExecutiveInsights({ analysts }: ExecutiveInsightsProps) 
             className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
             style={{ background: 'linear-gradient(135deg, #1a3a5c 0%, #2B4F81 100%)' }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#60A5FA"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M12 2a10 10 0 1 0 10 10" />
               <path d="M12 6v6l4 2" />
               <path d="M22 2 12 12" />
@@ -174,18 +187,25 @@ export default function ExecutiveInsights({ analysts }: ExecutiveInsightsProps) 
 
       {/* Content */}
       {!hasGenerated && !isLoading && (
-        <EmptyState onGenerate={handleGenerate} cycleLabel={CYCLE_LABEL} analystCount={targetAnalysts.length} />
+        <EmptyState
+          onGenerate={handleGenerate}
+          cycleLabel={CYCLE_LABEL}
+          analystCount={targetAnalysts.length}
+        />
       )}
 
       {(isLoading || (hasGenerated && response)) && (
         <div className="space-y-4">
-          {isLoading && !response && (
-            <LoadingState />
-          )}
+          {isLoading && !response && <LoadingState />}
 
           {response && sections.length > 0 ? (
             sections.map((section, idx) => (
-              <InsightSection key={idx} section={section} index={idx} isStreaming={isLoading && idx === sections.length - 1} />
+              <InsightSection
+                key={idx}
+                section={section}
+                index={idx}
+                isStreaming={isLoading && idx === sections.length - 1}
+              />
             ))
           ) : response ? (
             <div
@@ -252,9 +272,7 @@ function parseSections(text: string): ParsedSection[] {
     if (!part.trim()) continue;
 
     for (const def of sectionDefs) {
-      const matches = def.keywords.some((kw) =>
-        part.toLowerCase().includes(kw.toLowerCase())
-      );
+      const matches = def.keywords.some((kw) => part.toLowerCase().includes(kw.toLowerCase()));
       if (matches) {
         // Extract title from first line
         const lines = part.trim().split('\n');
@@ -265,11 +283,7 @@ function parseSections(text: string): ParsedSection[] {
           .replace(/^[🔴📚✅]\s*/, '')
           .trim();
 
-        const content = lines
-          .slice(1)
-          .join('\n')
-          .replace(/\*\*/g, '')
-          .trim();
+        const content = lines.slice(1).join('\n').replace(/\*\*/g, '').trim();
 
         if (content) {
           sections.push({
@@ -321,10 +335,7 @@ function InsightSection({
           />
         )}
       </div>
-      <div
-        className="text-sm leading-relaxed whitespace-pre-wrap"
-        style={{ color: '#C9D1D9' }}
-      >
+      <div className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: '#C9D1D9' }}>
         {section.content}
       </div>
     </div>
@@ -353,7 +364,16 @@ function EmptyState({
         className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
         style={{ background: 'rgba(43,79,129,0.15)', border: '1px solid rgba(43,79,129,0.3)' }}
       >
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          width="28"
+          height="28"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#60A5FA"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <circle cx="12" cy="12" r="10" />
           <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
           <path d="M12 17h.01" />
@@ -363,9 +383,10 @@ function EmptyState({
         Análise Executiva Pronta para Geração
       </p>
       <p className="text-xs mb-5" style={{ color: '#8B949E', maxWidth: '380px' }}>
-        Clique em <strong style={{ color: '#60A5FA' }}>Gerar Análise</strong> para que o Gemini analise os dados de{' '}
-        <strong style={{ color: '#C9D1D9' }}>{analystCount} analistas</strong> do ciclo{' '}
-        <strong style={{ color: '#C9D1D9' }}>{cycleLabel}</strong> e identifique gargalos, temas de treinamento e padrões de acerto.
+        Clique em <strong style={{ color: '#60A5FA' }}>Gerar Análise</strong> para que o Gemini
+        analise os dados de <strong style={{ color: '#C9D1D9' }}>{analystCount} analistas</strong>{' '}
+        do ciclo <strong style={{ color: '#C9D1D9' }}>{cycleLabel}</strong> e identifique gargalos,
+        temas de treinamento e padrões de acerto.
       </p>
       <button
         onClick={onGenerate}
@@ -387,9 +408,21 @@ function LoadingState() {
   return (
     <div className="space-y-3">
       {[
-        { label: 'Identificando gargalos operacionais...', color: 'rgba(239,68,68,0.15)', border: 'rgba(239,68,68,0.2)' },
-        { label: 'Mapeando temas de treinamento...', color: 'rgba(234,179,8,0.1)', border: 'rgba(234,179,8,0.2)' },
-        { label: 'Reconhecendo padrões de acerto...', color: 'rgba(34,197,94,0.08)', border: 'rgba(34,197,94,0.2)' },
+        {
+          label: 'Identificando gargalos operacionais...',
+          color: 'rgba(239,68,68,0.15)',
+          border: 'rgba(239,68,68,0.2)',
+        },
+        {
+          label: 'Mapeando temas de treinamento...',
+          color: 'rgba(234,179,8,0.1)',
+          border: 'rgba(234,179,8,0.2)',
+        },
+        {
+          label: 'Reconhecendo padrões de acerto...',
+          color: 'rgba(34,197,94,0.08)',
+          border: 'rgba(34,197,94,0.2)',
+        },
       ].map((item, i) => (
         <div
           key={i}
@@ -401,7 +434,9 @@ function LoadingState() {
             <div className="h-3 rounded bg-white/10 w-3/4" />
             <div className="h-2.5 rounded bg-white/5 w-1/2" />
           </div>
-          <span className="text-xs" style={{ color: '#8B949E' }}>{item.label}</span>
+          <span className="text-xs" style={{ color: '#8B949E' }}>
+            {item.label}
+          </span>
         </div>
       ))}
     </div>
@@ -412,7 +447,16 @@ function LoadingState() {
 
 function SparkleIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" />
       <path d="M5 3l.75 2.25L8 6l-2.25.75L5 9l-.75-2.25L2 6l2.25-.75z" />
       <path d="M19 15l.75 2.25L22 18l-2.25.75L19 21l-.75-2.25L16 18l2.25-.75z" />
@@ -422,7 +466,16 @@ function SparkleIcon() {
 
 function RefreshIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
       <path d="M21 3v5h-5" />
       <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />

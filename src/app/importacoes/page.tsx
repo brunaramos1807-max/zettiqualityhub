@@ -17,7 +17,7 @@ import {
   Activity,
   ShieldCheck,
   RefreshCw,
-  X
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -93,7 +93,12 @@ export default function ImportacoesPage() {
           const mapped: ImportRecord[] = cycles.map((c: any) => ({
             id: c.id,
             fileName: c.file_name || 'Importação de Dados',
-            tipo: c.data_type === 'scores' ? 'Qualidade QA/IEPC' : c.data_type === 'ncs' ? 'Não Conformidades' : 'Dataset Analítico',
+            tipo:
+              c.data_type === 'scores'
+                ? 'Qualidade QA/IEPC'
+                : c.data_type === 'ncs'
+                  ? 'Não Conformidades'
+                  : 'Dataset Analítico',
             modo: c.status === 'em_andamento' ? 'Por Andamento' : 'Ciclo Consolidado',
             periodo: c.periodo,
             data: c.updated_at || c.created_at || new Date().toISOString(),
@@ -103,22 +108,13 @@ export default function ImportacoesPage() {
           setImports(mapped);
           setLoading(false);
           return;
+        } else {
+          setImports([]);
+          setLoading(false);
+          return;
         }
       }
-
-      // Fallback default record for active cycle 08/2026
-      setImports([
-        {
-          id: 'imp_08_2026_default',
-          fileName: 'dataset_analitico_qa_08-2026.xlsx',
-          tipo: 'Dataset Analítico',
-          modo: 'Ciclo Consolidado',
-          periodo: '08/2026',
-          data: '2026-08-26T12:00:00Z',
-          rows: 36,
-          status: 'Homologado',
-        },
-      ]);
+      setImports([]);
     } catch {
       setImports([]);
     } finally {
@@ -141,23 +137,26 @@ export default function ImportacoesPage() {
     try {
       const supabase = createClient();
       if (supabase) {
-        await supabase.from('cycle_scores').upsert({
-          periodo: form.periodo,
-          analista: form.analista,
-          squad: form.squad,
-          coordenador: form.coordenador || null,
-          auditor: form.auditor || null,
-          nota_final_qa: parseFloat(form.nota_final_qa) || 0,
-          iepc_total: parseFloat(form.iepc_total) || 0,
-          total_ncs: parseInt(form.total_ncs) || 0,
-          pontos_deduzidos_nc: parseFloat(form.pontos_deduzidos_nc) || 0,
-          p1: parseFloat(form.p1) || 0,
-          p2: parseFloat(form.p2) || 0,
-          p3: parseFloat(form.p3) || 0,
-          p4: parseFloat(form.p4) || 0,
-          p5: parseFloat(form.p5) || 0,
-          source: 'manual',
-        }, { onConflict: 'periodo,analista,squad' });
+        await supabase.from('cycle_scores').upsert(
+          {
+            periodo: form.periodo,
+            analista: form.analista,
+            squad: form.squad,
+            coordenador: form.coordenador || null,
+            auditor: form.auditor || null,
+            nota_final_qa: parseFloat(form.nota_final_qa) || 0,
+            iepc_total: parseFloat(form.iepc_total) || 0,
+            total_ncs: parseInt(form.total_ncs) || 0,
+            pontos_deduzidos_nc: parseFloat(form.pontos_deduzidos_nc) || 0,
+            p1: parseFloat(form.p1) || 0,
+            p2: parseFloat(form.p2) || 0,
+            p3: parseFloat(form.p3) || 0,
+            p4: parseFloat(form.p4) || 0,
+            p5: parseFloat(form.p5) || 0,
+            source: 'manual',
+          },
+          { onConflict: 'periodo,analista,squad' }
+        );
       }
 
       toast.success(`Avaliação de ${form.analista} registrada com sucesso!`);
@@ -202,7 +201,8 @@ export default function ImportacoesPage() {
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Recepção, validação e auditoria de lotes de resultados externos (QA, IEPC e Não Conformidades).
+              Recepção, validação e auditoria de lotes de resultados externos (QA, IEPC e Não
+              Conformidades).
             </p>
           </div>
 
@@ -242,7 +242,10 @@ export default function ImportacoesPage() {
                 Garantia de Integridade e Fronteira do Produto
               </p>
               <p className="mt-0.5">
-                O QualiVisão processa estritamente dados consolidados da qualidade. Todas as entradas passam pelo contrato canônico de validação (Zod), preservando a separação metodológica entre QA (técnico), IEPC (percepção) e Não Conformidades (eventos com dedução configurável).
+                O QualiVisão processa estritamente dados consolidados da qualidade. Todas as
+                entradas passam pelo contrato canônico de validação (Zod), preservando a separação
+                metodológica entre QA (técnico), IEPC (percepção) e Não Conformidades (eventos com
+                dedução configurável).
               </p>
             </div>
           </div>
@@ -295,17 +298,13 @@ export default function ImportacoesPage() {
                       <td className="px-5 py-3 font-mono font-bold text-slate-900">
                         {imp.periodo}
                       </td>
-                      <td className="px-5 py-3 font-medium text-slate-800">
-                        {imp.fileName}
-                      </td>
+                      <td className="px-5 py-3 font-medium text-slate-800">{imp.fileName}</td>
                       <td className="px-5 py-3">
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700">
                           {imp.tipo}
                         </span>
                       </td>
-                      <td className="px-5 py-3 text-slate-600">
-                        {imp.modo}
-                      </td>
+                      <td className="px-5 py-3 text-slate-600">{imp.modo}</td>
                       <td className="px-5 py-3 text-right font-mono font-semibold text-slate-800">
                         {imp.rows}
                       </td>
@@ -317,9 +316,11 @@ export default function ImportacoesPage() {
                         })}
                       </td>
                       <td className="px-5 py-3">
-                        <span className={`inline-flex items-center gap-1 text-[11px] font-semibold ${
-                          imp.status === 'Homologado' ? 'text-emerald-700' : 'text-amber-700'
-                        }`}>
+                        <span
+                          className={`inline-flex items-center gap-1 text-[11px] font-semibold ${
+                            imp.status === 'Homologado' ? 'text-emerald-700' : 'text-amber-700'
+                          }`}
+                        >
                           <CheckCircle2 size={12} /> {imp.status}
                         </span>
                       </td>
@@ -378,7 +379,10 @@ export default function ImportacoesPage() {
                     Inserção manual de resultado individual para contingência
                   </p>
                 </div>
-                <button onClick={() => setManualOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <button
+                  onClick={() => setManualOpen(false)}
+                  className="text-slate-400 hover:text-slate-600"
+                >
                   <X size={16} />
                 </button>
               </div>
@@ -396,14 +400,18 @@ export default function ImportacoesPage() {
                     />
                   </div>
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Squad / Equipe *</label>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Squad / Equipe *
+                    </label>
                     <select
                       value={form.squad}
                       onChange={(e) => setForm({ ...form, squad: e.target.value })}
                       className="w-full px-2.5 py-1.5 border border-slate-300 rounded-md"
                     >
                       {SQUADS.map((s) => (
-                        <option key={s} value={s}>{s}</option>
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -434,7 +442,9 @@ export default function ImportacoesPage() {
 
                 <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
                   <div>
-                    <label className="block font-semibold text-blue-700 mb-1">Nota Final QA (0–100) *</label>
+                    <label className="block font-semibold text-blue-700 mb-1">
+                      Nota Final QA (0–100) *
+                    </label>
                     <input
                       type="number"
                       step="0.1"
@@ -447,7 +457,9 @@ export default function ImportacoesPage() {
                     />
                   </div>
                   <div>
-                    <label className="block font-semibold text-sky-700 mb-1">Índice IEPC (0–100) *</label>
+                    <label className="block font-semibold text-sky-700 mb-1">
+                      Índice IEPC (0–100) *
+                    </label>
                     <input
                       type="number"
                       step="0.1"
@@ -473,7 +485,9 @@ export default function ImportacoesPage() {
                     />
                   </div>
                   <div>
-                    <label className="block font-semibold text-red-600 mb-1">Pontos Deduzidos NC</label>
+                    <label className="block font-semibold text-red-600 mb-1">
+                      Pontos Deduzidos NC
+                    </label>
                     <input
                       type="number"
                       value={form.pontos_deduzidos_nc}

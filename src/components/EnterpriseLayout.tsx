@@ -12,7 +12,10 @@ interface EnterpriseLayoutProps {
   requireAdmin?: boolean;
 }
 
-export default function EnterpriseLayout({ children, requireAdmin = false }: EnterpriseLayoutProps) {
+export default function EnterpriseLayout({
+  children,
+  requireAdmin = false,
+}: EnterpriseLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -21,9 +24,7 @@ export default function EnterpriseLayout({ children, requireAdmin = false }: Ent
         <EnterpriseSidebar collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} />
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
           <EnterpriseTopbar />
-          <main className="flex-1 overflow-y-auto">
-            {children}
-          </main>
+          <main className="flex-1 overflow-y-auto">{children}</main>
           <AppFooter />
         </div>
       </div>

@@ -1,7 +1,12 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { BarChart2, Star, AlertTriangle, ThumbsUp } from 'lucide-react';
-import { fetchCycleScores, fetchNCRecords, fetchElogios, fetchAllPeriodos } from '@/lib/services/dataService';
+import {
+  fetchCycleScores,
+  fetchNCRecords,
+  fetchElogios,
+  fetchAllPeriodos,
+} from '@/lib/services/dataService';
 
 interface KPIData {
   qaAvg: number;
@@ -12,7 +17,13 @@ interface KPIData {
 }
 
 export default function HomeKPICards() {
-  const [kpis, setKpis] = useState<KPIData>({ qaAvg: 0, iepcAvg: 0, totalNCs: 0, totalElogios: 0, hasData: false });
+  const [kpis, setKpis] = useState<KPIData>({
+    qaAvg: 0,
+    iepcAvg: 0,
+    totalNCs: 0,
+    totalElogios: 0,
+    hasData: false,
+  });
 
   const loadKPIs = async () => {
     // Get the most recent period to filter correctly
@@ -30,17 +41,15 @@ export default function HomeKPICards() {
       return;
     }
 
-    const qaAvg = scores.reduce((s: number, a: any) => s + (a.nota_final_qa || 0), 0) / scores.length;
-    const iepcAvg = scores.reduce((s: number, a: any) => {
-      // Defensive fallback: iepc_total → iepc → indice_satisfacao → iepc_total_calculado → 0
-      const iepc =
-        a?.iepc_total ??
-        a?.iepc ??
-        a?.indice_satisfacao ??
-        a?.iepc_total_calculado ??
-        0;
-      return s + Number(iepc);
-    }, 0) / scores.length;
+    const qaAvg =
+      scores.reduce((s: number, a: any) => s + (a.nota_final_qa || 0), 0) / scores.length;
+    const iepcAvg =
+      scores.reduce((s: number, a: any) => {
+        // Defensive fallback: iepc_total → iepc → indice_satisfacao → iepc_total_calculado → 0
+        const iepc =
+          a?.iepc_total ?? a?.iepc ?? a?.indice_satisfacao ?? a?.iepc_total_calculado ?? 0;
+        return s + Number(iepc);
+      }, 0) / scores.length;
 
     setKpis({
       qaAvg,
@@ -60,8 +69,13 @@ export default function HomeKPICards() {
 
   if (!kpis.hasData) {
     return (
-      <div className="rounded-xl p-8 text-center" style={{ backgroundColor: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
-        <p className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>Nenhum dado importado. Importe uma planilha para visualizar os KPIs.</p>
+      <div
+        className="rounded-xl p-8 text-center"
+        style={{ backgroundColor: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}
+      >
+        <p className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>
+          Nenhum dado importado. Importe uma planilha para visualizar os KPIs.
+        </p>
       </div>
     );
   }
@@ -128,10 +142,14 @@ export default function HomeKPICards() {
           </div>
           <div className="mb-1">
             <span className="text-3xl font-bold text-white metric-value">{card.value}</span>
-            <span className="text-sm ml-1" style={{ color: 'rgba(255,255,255,0.4)' }}>{card.suffix}</span>
+            <span className="text-sm ml-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
+              {card.suffix}
+            </span>
           </div>
           <p className="text-xs font-medium text-white mb-0.5">{card.label}</p>
-          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>{card.description}</p>
+          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>
+            {card.description}
+          </p>
         </div>
       ))}
     </div>

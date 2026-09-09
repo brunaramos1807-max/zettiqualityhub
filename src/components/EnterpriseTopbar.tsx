@@ -78,7 +78,10 @@ export default function EnterpriseTopbar() {
 
       {/* Right side */}
       <div className="flex items-center gap-3">
-        <span className="hidden md:block text-xs capitalize" style={{ color: 'rgba(255,255,255,0.25)' }}>
+        <span
+          className="hidden md:block text-xs capitalize"
+          style={{ color: 'rgba(255,255,255,0.25)' }}
+        >
           {currentDate}
         </span>
 
@@ -110,11 +113,16 @@ export default function EnterpriseTopbar() {
               className="absolute right-0 top-full mt-1 w-72 rounded-xl shadow-2xl z-50 py-2"
               style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.08)' }}
             >
-              <div className="px-4 py-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <div
+                className="px-4 py-2"
+                style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+              >
                 <p className="text-xs font-semibold text-white">Notificações</p>
               </div>
               <div className="px-4 py-6 text-center">
-                <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>Nenhuma notificação pendente</p>
+                <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                  Nenhuma notificação pendente
+                </p>
               </div>
             </div>
           )}
@@ -124,7 +132,11 @@ export default function EnterpriseTopbar() {
         {session?.cargo && (
           <span
             className="hidden sm:inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium"
-            style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}
+            style={{
+              backgroundColor: 'rgba(56,189,248,0.1)',
+              color: '#38BDF8',
+              border: '1px solid rgba(56,189,248,0.2)',
+            }}
           >
             {session.cargo}
           </span>

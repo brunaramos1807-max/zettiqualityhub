@@ -3,8 +3,7 @@
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type SystemRole =
-  | 'Administrador'
-  | 'Coordenador' |'Gestor' |'Coordenador Geral' |'Auditor';
+  'Administrador' | 'Coordenador' | 'Gestor' | 'Coordenador Geral' | 'Auditor';
 
 export interface UserPermissions {
   acesso_total: boolean;
@@ -55,13 +54,7 @@ export const SYSTEM_ROLES: SystemRole[] = [
   'Auditor',
 ];
 
-export const TEAM_OPTIONS = [
-  'PDV',
-  'PDV N1',
-  'Compras e Estoque',
-  'Financeiro Fiscal',
-  'Todas',
-];
+export const TEAM_OPTIONS = ['PDV', 'PDV N1', 'Compras e Estoque', 'Financeiro Fiscal', 'Todas'];
 
 export const DEFAULT_PERMISSIONS: UserPermissions = {
   acesso_total: false,
@@ -181,7 +174,9 @@ export async function seedDefaultAdmin(): Promise<void> {
   }
 
   // Always ensure brunaramos1807@gmail.com exists as Admin with correct password
-  const brunaIdx = getUsers().findIndex((u) => u.email.toLowerCase() === 'brunaramos1807@gmail.com');
+  const brunaIdx = getUsers().findIndex(
+    (u) => u.email.toLowerCase() === 'brunaramos1807@gmail.com'
+  );
   if (brunaIdx === -1) {
     const brunaHash = await hashPassword('ZettiAdmin@2026');
     const now = new Date().toISOString();
@@ -202,7 +197,11 @@ export async function seedDefaultAdmin(): Promise<void> {
     // Ensure existing bruna account has admin permissions and is active
     const currentUsers = getUsers();
     const bruna = currentUsers[brunaIdx];
-    if (bruna.cargo !== 'Administrador' || !bruna.permissoes.acesso_total || bruna.status !== 'Ativo') {
+    if (
+      bruna.cargo !== 'Administrador' ||
+      !bruna.permissoes.acesso_total ||
+      bruna.status !== 'Ativo'
+    ) {
       currentUsers[brunaIdx] = {
         ...bruna,
         cargo: 'Administrador',
@@ -271,10 +270,7 @@ export function getCurrentSession(): SessionData | null {
 
 export function isAdmin(session: SessionData | null): boolean {
   if (!session) return false;
-  return (
-    session.cargo === 'Administrador' ||
-    session.permissoes.acesso_total === true
-  );
+  return session.cargo === 'Administrador' || session.permissoes.acesso_total === true;
 }
 
 // ─── User CRUD ────────────────────────────────────────────────────────────────

@@ -42,7 +42,10 @@ export function LoadingState() {
       <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-4">
         <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded w-1/4 mb-4 animate-pulse" />
         {[...Array(5)].map((_, i) => (
-          <div key={i} className="flex gap-4 mb-3 pb-3 border-b border-slate-200 dark:border-slate-700">
+          <div
+            key={i}
+            className="flex gap-4 mb-3 pb-3 border-b border-slate-200 dark:border-slate-700"
+          >
             <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/4 animate-pulse" />
             <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/4 animate-pulse" />
             <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/4 animate-pulse" />

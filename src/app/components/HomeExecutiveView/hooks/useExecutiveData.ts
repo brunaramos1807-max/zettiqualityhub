@@ -77,23 +77,58 @@ function normalizeNCType(raw: string): string {
   const upper = raw.toUpperCase().trim();
 
   // Verificar códigos literais primeiro
-  if (upper.includes('NC-1') || upper.includes('POSTURA') || upper.includes('ÉTICA') || upper.includes('ETICA')) return 'NC-1';
-  if (upper.includes('NC-2') || upper.includes('ACURAC') || upper.includes('TÉCNIC') || upper.includes('TECNIC')) return 'NC-2';
-  if (upper.includes('NC-3') || upper.includes('REGISTRO') || upper.includes('RASTREAB')) return 'NC-3';
+  if (
+    upper.includes('NC-1') ||
+    upper.includes('POSTURA') ||
+    upper.includes('ÉTICA') ||
+    upper.includes('ETICA')
+  )
+    return 'NC-1';
+  if (
+    upper.includes('NC-2') ||
+    upper.includes('ACURAC') ||
+    upper.includes('TÉCNIC') ||
+    upper.includes('TECNIC')
+  )
+    return 'NC-2';
+  if (upper.includes('NC-3') || upper.includes('REGISTRO') || upper.includes('RASTREAB'))
+    return 'NC-3';
   if (upper.includes('NC-4') || upper.includes('FLUXO') || upper.includes('OPERAC')) return 'NC-4';
-  if (upper.includes('NC-5') || upper.includes('SEGURANÇA') || upper.includes('SEGURANCA') || upper.includes('INFORMA')) return 'NC-5';
+  if (
+    upper.includes('NC-5') ||
+    upper.includes('SEGURANÇA') ||
+    upper.includes('SEGURANCA') ||
+    upper.includes('INFORMA')
+  )
+    return 'NC-5';
 
   // Categorias descritivas encontradas em 02/2026
-  if (upper.includes('DESINTERESSE') || upper.includes('FALHA DE PROATIVIDADE')) return 'Desinteresse';
+  if (upper.includes('DESINTERESSE') || upper.includes('FALHA DE PROATIVIDADE'))
+    return 'Desinteresse';
   if (upper.includes('NEGLIGÊNCIA') || upper.includes('NEGLIGENCIA')) return 'Negligência';
-  if (upper.includes('ORIENTAÇÃO INCORRETA') || upper.includes('ORIENTACAO INCORRETA') || upper.includes('ENCAMINHAMENTO INDEVIDO')) return 'Orientação Incorreta';
+  if (
+    upper.includes('ORIENTAÇÃO INCORRETA') ||
+    upper.includes('ORIENTACAO INCORRETA') ||
+    upper.includes('ENCAMINHAMENTO INDEVIDO')
+  )
+    return 'Orientação Incorreta';
   if (upper.includes('ERRO CRÍTICO') || upper.includes('ERRO CRITICO')) return 'Erro Crítico';
 
   return 'Outros';
 }
 
 function isValidNCType(type: string): boolean {
-  return ['NC-1', 'NC-2', 'NC-3', 'NC-4', 'NC-5', 'Desinteresse', 'Negligência', 'Orientação Incorreta', 'Erro Crítico'].includes(type);
+  return [
+    'NC-1',
+    'NC-2',
+    'NC-3',
+    'NC-4',
+    'NC-5',
+    'Desinteresse',
+    'Negligência',
+    'Orientação Incorreta',
+    'Erro Crítico',
+  ].includes(type);
 }
 
 // ─── Classification ────────────────────────────────────────────────────────
@@ -104,10 +139,33 @@ export function getPerformanceClass(score: number): {
   bg: string;
   border: string;
 } {
-  if (score >= 90) return { label: 'Excelência', color: '#10b981', bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.3)' };
-  if (score >= 80) return { label: 'Performance Esperada', color: '#facc15', bg: 'rgba(250,204,21,0.12)', border: 'rgba(250,204,21,0.3)' };
-  if (score >= 70) return { label: 'Operacional', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' };
-  return { label: 'Crítico', color: '#ef4444', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.3)' };
+  if (score >= 90)
+    return {
+      label: 'Excelência',
+      color: '#10b981',
+      bg: 'rgba(16,185,129,0.12)',
+      border: 'rgba(16,185,129,0.3)',
+    };
+  if (score >= 80)
+    return {
+      label: 'Performance Esperada',
+      color: '#facc15',
+      bg: 'rgba(250,204,21,0.12)',
+      border: 'rgba(250,204,21,0.3)',
+    };
+  if (score >= 70)
+    return {
+      label: 'Operacional',
+      color: '#f59e0b',
+      bg: 'rgba(245,158,11,0.12)',
+      border: 'rgba(245,158,11,0.3)',
+    };
+  return {
+    label: 'Crítico',
+    color: '#ef4444',
+    bg: 'rgba(239,68,68,0.12)',
+    border: 'rgba(239,68,68,0.3)',
+  };
 }
 
 // ─── Hook ──────────────────────────────────────────────────────────────────
@@ -208,18 +266,14 @@ export function useExecutiveData(periodo: string): ExecutiveDataState {
       const qaAvg =
         scores.length > 0
           ? Math.round(
-              (scores.reduce((sum, s) => sum + (s.nota_final_qa || 0), 0) /
-                scores.length) *
-                100
+              (scores.reduce((sum, s) => sum + (s.nota_final_qa || 0), 0) / scores.length) * 100
             ) / 100
           : 0;
 
       const iepcAvg =
         scores.length > 0
           ? Math.round(
-              (scores.reduce((sum, s) => sum + (s.iepc_total || 0), 0) /
-                scores.length) *
-                100
+              (scores.reduce((sum, s) => sum + (s.iepc_total || 0), 0) / scores.length) * 100
             ) / 100
           : 0;
 
@@ -227,8 +281,7 @@ export function useExecutiveData(periodo: string): ExecutiveDataState {
       const prevPeriodQA =
         prevScores.length > 0
           ? Math.round(
-              (prevScores.reduce((sum, s) => sum + (s.nota_final_qa || 0), 0) /
-                prevScores.length) *
+              (prevScores.reduce((sum, s) => sum + (s.nota_final_qa || 0), 0) / prevScores.length) *
                 100
             ) / 100
           : undefined;
@@ -236,8 +289,7 @@ export function useExecutiveData(periodo: string): ExecutiveDataState {
       const prevPeriodIEPC =
         prevScores.length > 0
           ? Math.round(
-              (prevScores.reduce((sum, s) => sum + (s.iepc_total || 0), 0) /
-                prevScores.length) *
+              (prevScores.reduce((sum, s) => sum + (s.iepc_total || 0), 0) / prevScores.length) *
                 100
             ) / 100
           : undefined;
@@ -253,9 +305,7 @@ export function useExecutiveData(periodo: string): ExecutiveDataState {
         teamsCount: equipeMap.size,
         analystCount: scores.length,
         ncByType,
-        equipes: Array.from(equipeMap.values()).sort(
-          (a, b) => b.qaAvg - a.qaAvg
-        ),
+        equipes: Array.from(equipeMap.values()).sort((a, b) => b.qaAvg - a.qaAvg),
         prevPeriodQA,
         prevPeriodIEPC,
       });
@@ -299,10 +349,7 @@ export function calcTrend(
   return diff > 0 ? 'up' : 'down';
 }
 
-export function getTrendPercent(
-  current: number,
-  previous?: number
-): number {
+export function getTrendPercent(current: number, previous?: number): number {
   if (!previous) return 0;
   return Math.round(((current - previous) / Math.max(Math.abs(previous), 1)) * 100);
 }

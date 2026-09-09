@@ -1,11 +1,11 @@
 import React from 'react';
+import { Activity, Target, AlertTriangle, Star } from 'lucide-react';
 import {
-  Activity,
-  Target,
-  AlertTriangle,
-  Star,
-} from 'lucide-react';
-import { ExecutiveMetrics, getPerformanceClass, calcTrend, getTrendPercent } from '../hooks/useExecutiveData';
+  ExecutiveMetrics,
+  getPerformanceClass,
+  calcTrend,
+  getTrendPercent,
+} from '../hooks/useExecutiveData';
 import { MetricCard } from '../components/MetricCard';
 import { EXECUTIVE_TARGETS } from '../config/targets';
 

@@ -34,9 +34,7 @@ export function MetricCard({
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium text-slate-600 dark:text-slate-300">
-          {label}
-        </h3>
+        <h3 className="text-sm font-medium text-slate-600 dark:text-slate-300">{label}</h3>
         {icon && <div className="text-slate-400">{icon}</div>}
       </div>
 
@@ -69,15 +67,9 @@ export function MetricCard({
 
         {trend && trend !== 'unavailable' && (
           <div className="flex items-center gap-1 ml-auto">
-            {trend === 'up' && (
-              <TrendingUp size={16} className="text-green-600" />
-            )}
-            {trend === 'down' && (
-              <TrendingDown size={16} className="text-red-600" />
-            )}
-            {trend === 'stable' && (
-              <Minus size={16} className="text-slate-400" />
-            )}
+            {trend === 'up' && <TrendingUp size={16} className="text-green-600" />}
+            {trend === 'down' && <TrendingDown size={16} className="text-red-600" />}
+            {trend === 'stable' && <Minus size={16} className="text-slate-400" />}
             {trendPercent !== undefined && (
               <span
                 className={`text-xs font-semibold ${

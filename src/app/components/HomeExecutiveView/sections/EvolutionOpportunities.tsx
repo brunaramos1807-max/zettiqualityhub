@@ -7,9 +7,7 @@ interface EvolutionOpportunitiesProps {
   insights: Insight[];
 }
 
-export function EvolutionOpportunities({
-  insights,
-}: EvolutionOpportunitiesProps) {
+export function EvolutionOpportunities({ insights }: EvolutionOpportunitiesProps) {
   if (insights.length === 0) {
     return (
       <div>

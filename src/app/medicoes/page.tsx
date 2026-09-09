@@ -2,302 +2,365 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
-import { 
-  Zap, 
-  AlertTriangle, 
-  Target, 
-  TrendingUp, 
-  Calendar, 
-  Filter, 
-  Download, 
-  ChevronRight, 
-  ArrowUpRight, 
-  ArrowDownRight,
+import {
+  AlertTriangle,
+  Target,
+  Calendar,
+  Filter,
+  Download,
+  ChevronRight,
   ShieldCheck,
-  Activity
+  Activity,
+  CheckCircle2,
+  RefreshCw,
+  Search,
+  Building2,
+  Users,
 } from 'lucide-react';
 import Link from 'next/link';
-
-interface EquipeMedicao {
-  equipe: string;
-  coordenador: string;
-  media_qa: number;
-  media_iepc: number;
-  total_ncs: number;
-  pontos_deduzidos_nc: number;
-  atendimentos: number;
-  status: 'conforme' | 'atencao' | 'critico';
-}
-
-// Dados baseados na amostragem oficial do ciclo 08/2026
-const DADOS_INICIAIS: EquipeMedicao[] = [
-  {
-    equipe: 'Compras e Estoque',
-    coordenador: 'Jonatas Jesus',
-    media_qa: 85.3,
-    media_iepc: 85.6,
-    total_ncs: 1,
-    pontos_deduzidos_nc: -20,
-    atendimentos: 28,
-    status: 'conforme',
-  },
-  {
-    equipe: 'PDV',
-    coordenador: 'Ayron Silva',
-    media_qa: 85.8,
-    media_iepc: 87.8,
-    total_ncs: 3,
-    pontos_deduzidos_nc: -60,
-    atendimentos: 42,
-    status: 'atencao',
-  },
-  {
-    equipe: 'PDV N1',
-    coordenador: 'Ayron Silva',
-    media_qa: 90.4,
-    media_iepc: 88.3,
-    total_ncs: 0,
-    pontos_deduzidos_nc: 0,
-    atendimentos: 15,
-    status: 'conforme',
-  },
-  {
-    equipe: 'Financeiro Fiscal',
-    coordenador: 'Amanda Cristina',
-    media_qa: 72.3,
-    media_iepc: 76.4,
-    total_ncs: 8,
-    pontos_deduzidos_nc: -160,
-    atendimentos: 22,
-    status: 'critico',
-  },
-];
+import { fetchMedicoesOficiais, fetchCiclos } from '@/lib/services/qualityDataService';
+import { Ciclo, MetricasAgregadasEquipe } from '@/lib/domain/types';
 
 export default function MedicoesPage() {
-  const [ciclo, setCiclo] = useState('08/2026');
-  const [equipes, setEquipes] = useState<EquipeMedicao[]>(DADOS_INICIAIS);
-  const [filtroStatus, setFiltroStatus] = useState<string>('todos');
+  const [ciclos, setCiclos] = useState<Ciclo[]>([]);
+  const [cicloSelecionado, setCicloSelecionado] = useState<string>('08/2026');
+  const [equipeFiltro, setEquipeFiltro] = useState<string>('all');
+  const [statusFiltro, setStatusFiltro] = useState<string>('todos');
+  const [busca, setBusca] = useState<string>('');
 
-  // Cálculos agregados sem inventar dados
-  const resumo = useMemo(() => {
-    if (equipes.length === 0) return null;
-    const mediaQA = (equipes.reduce((acc, e) => acc + e.media_qa, 0) / equipes.length).toFixed(1);
-    const mediaIEPC = (equipes.reduce((acc, e) => acc + e.media_iepc, 0) / equipes.length).toFixed(1);
-    const totalNCs = equipes.reduce((acc, e) => acc + e.total_ncs, 0);
-    const totalDeducoes = equipes.reduce((acc, e) => acc + e.pontos_deduzidos_nc, 0);
-    const totalAtendimentos = equipes.reduce((acc, e) => acc + e.atendimentos, 0);
+  const [metricasEquipes, setMetricasEquipes] = useState<MetricasAgregadasEquipe[]>([]);
+  const [resumoGeral, setResumoGeral] = useState({
+    mediaQA: 0,
+    mediaIEPC: 0,
+    totalNCs: 0,
+    totalPontosNC: 0,
+    totalAvaliados: 0,
+  });
+  const [loading, setLoading] = useState<boolean>(true);
 
-    return { mediaQA, mediaIEPC, totalNCs, totalDeducoes, totalAtendimentos };
-  }, [equipes]);
+  // Carregar lista de ciclos do Supabase
+  useEffect(() => {
+    fetchCiclos().then((lista) => {
+      setCiclos(lista);
+      if (lista.length > 0 && !lista.some((c) => c.periodo === cicloSelecionado)) {
+        setCicloSelecionado(lista[0].periodo);
+      }
+    });
+  }, []);
 
+  // Carregar medições reais do Supabase
+  const carregarMedicoes = async () => {
+    setLoading(true);
+    try {
+      const cicloAtual = ciclos.find((c) => c.periodo === cicloSelecionado);
+      const res = await fetchMedicoesOficiais({
+        periodo: cicloSelecionado,
+        equipe: equipeFiltro,
+        dataInicio: cicloAtual?.data_inicio,
+        dataFim: cicloAtual?.data_fim,
+      });
+
+      setMetricasEquipes(res.metricasEquipes);
+      const totalAv = res.metricasEquipes.reduce((s, e) => s + e.total_avaliados, 0);
+      setResumoGeral({
+        mediaQA: res.mediaGeralQA,
+        mediaIEPC: res.mediaGeralIEPC,
+        totalNCs: res.totalGeralNCs,
+        totalPontosNC: res.totalPontosDeduzidosNC,
+        totalAvaliados: totalAv,
+      });
+    } catch (err) {
+      console.error('Erro ao buscar medições:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (ciclos.length > 0) {
+      carregarMedicoes();
+    }
+  }, [cicloSelecionado, equipeFiltro, ciclos]);
+
+  // Lista única de equipes para filtro
+  const listaEquipes = useMemo(() => {
+    const set = new Set<string>();
+    metricasEquipes.forEach((e) => set.add(e.equipe_nome));
+    return Array.from(set);
+  }, [metricasEquipes]);
+
+  // Filtragem de tabela
   const equipesFiltradas = useMemo(() => {
-    if (filtroStatus === 'todos') return equipes;
-    return equipes.filter((e) => e.status === filtroStatus);
-  }, [equipes, filtroStatus]);
+    return metricasEquipes.filter((e) => {
+      const matchStatus = statusFiltro === 'todos' || e.status === statusFiltro;
+      const matchBusca = busca === '' || e.equipe_nome.toLowerCase().includes(busca.toLowerCase());
+      return matchStatus && matchBusca;
+    });
+  }, [metricasEquipes, statusFiltro, busca]);
+
+  const cicloObj = ciclos.find((c) => c.periodo === cicloSelecionado);
 
   return (
     <EnterpriseLayout>
       <div className="p-6 max-w-7xl mx-auto space-y-6">
-        
-        {/* Banner de Contexto Ativo */}
-        <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-slate-900/80 border border-slate-800 rounded-md">
+        {/* Banner de Contexto e Governança do Ciclo */}
+        <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-white border border-slate-200 rounded-md shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-md">
-              <Activity size={18} />
+            <div className="p-2 bg-blue-50 border border-blue-100 text-blue-700 rounded-md">
+              <Activity size={20} />
             </div>
             <div>
-              <div className="text-xs text-slate-400 font-mono uppercase tracking-wider">Painel Integrado de Medição</div>
-              <div className="text-sm font-semibold text-white">Resultados Oficiais de Qualidade & Percepção</div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
+                  Medição Integrada da Qualidade
+                </h1>
+                {cicloObj?.is_closed ? (
+                  <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded">
+                    Homologado
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded">
+                    Em Apuração
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Resultados consolidados por equipe. QA Técnico e IEPC Percepção mantidos formalmente
+                separados.
+                {cicloObj?.data_inicio && cicloObj?.data_fim && (
+                  <span className="ml-2 font-mono text-slate-400">
+                    (Vigência: {cicloObj.data_inicio} até {cicloObj.data_fim})
+                  </span>
+                )}
+              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-md text-xs text-slate-300">
-              <Calendar size={14} className="text-slate-400" />
-              <span>Ciclo:</span>
-              <select 
-                value={ciclo} 
-                onChange={(e) => setCiclo(e.target.value)}
-                className="bg-transparent text-white font-medium focus:outline-none cursor-pointer"
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs text-slate-700">
+              <Calendar size={14} className="text-slate-500" />
+              <span className="font-semibold">Ciclo:</span>
+              <select
+                value={cicloSelecionado}
+                onChange={(e) => setCicloSelecionado(e.target.value)}
+                className="bg-transparent text-slate-900 font-bold focus:outline-none cursor-pointer"
               >
-                <option value="08/2026">08/2026 (26/07 a 25/08)</option>
-                <option value="07/2026">07/2026 (26/06 a 25/07)</option>
-                <option value="06/2026">06/2026 (26/05 a 25/06)</option>
+                {ciclos.map((c) => (
+                  <option key={c.periodo} value={c.periodo}>
+                    {c.identificacao}
+                  </option>
+                ))}
               </select>
             </div>
 
-            <button 
-              className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded-md transition-colors"
-              onClick={() => alert('Exportação de dados oficiais gerada em conformidade com o ciclo.')}
+            <button
+              onClick={carregarMedicoes}
+              className="p-2 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-md transition-colors"
+              title="Atualizar dados do banco"
             >
-              <Download size={14} />
-              <span>Exportar</span>
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>
           </div>
         </div>
 
-        {/* Nível 1: KPIs Executivos Essenciais */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          
-          {/* Card QA Oficial */}
-          <div className="p-4 bg-slate-900 border border-slate-800 rounded-md hover:border-slate-700 transition-all">
-            <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
-              <span className="font-medium">QA Oficial (Técnico)</span>
-              <span className="p-1 bg-emerald-500/10 text-emerald-400 rounded-md flex items-center gap-0.5 text-[10px]">
-                <ArrowUpRight size={10} /> +1.4%
+        {/* Cards de Resumo Geral da Qualidade */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="p-4 bg-white border border-slate-200 rounded-md shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                QA Técnico Oficial
+              </span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-200">
+                P1–P5 (0–100)
               </span>
             </div>
-            <div className="text-2xl font-bold text-white tracking-tight">{resumo?.mediaQA ?? '--'}</div>
-            <div className="text-xs text-slate-500 mt-1 flex justify-between items-center">
-              <span>Meta: 85.0 pts</span>
-              <Link href="/qa-iepc" className="text-blue-400 hover:text-blue-300 flex items-center gap-0.5">
-                Ver pilares <ChevronRight size={12} />
-              </Link>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-2xl font-bold font-mono text-blue-700">
+                {resumoGeral.mediaQA > 0 ? `${resumoGeral.mediaQA}%` : '—'}
+              </span>
+              <span className="text-xs text-slate-500">média ponderada</span>
             </div>
+            <p className="text-[11px] text-slate-500 mt-2">
+              Conformidade com os padrões operacionais
+            </p>
           </div>
 
-          {/* Card IEPC Oficial */}
-          <div className="p-4 bg-slate-900 border border-slate-800 rounded-md hover:border-slate-700 transition-all">
-            <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
-              <span className="font-medium">IEPC Oficial (Percepção)</span>
-              <span className="p-1 bg-emerald-500/10 text-emerald-400 rounded-md flex items-center gap-0.5 text-[10px]">
-                <ArrowUpRight size={10} /> +0.8%
+          <div className="p-4 bg-white border border-slate-200 rounded-md shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                IEPC Percepção Oficial
+              </span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-sky-50 text-sky-700 rounded border border-sky-200">
+                E1–E5 (0–100)
               </span>
             </div>
-            <div className="text-2xl font-bold text-white tracking-tight">{resumo?.mediaIEPC ?? '--'}</div>
-            <div className="text-xs text-slate-500 mt-1 flex justify-between items-center">
-              <span>Meta: 80.0 pts</span>
-              <Link href="/qa-iepc" className="text-blue-400 hover:text-blue-300 flex items-center gap-0.5">
-                Ver dimensões <ChevronRight size={12} />
-              </Link>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-2xl font-bold font-mono text-sky-700">
+                {resumoGeral.mediaIEPC > 0 ? `${resumoGeral.mediaIEPC}%` : '—'}
+              </span>
+              <span className="text-xs text-slate-500">experiência</span>
             </div>
+            <p className="text-[11px] text-slate-500 mt-2">
+              Resolução, esforço e clareza percebida
+            </p>
           </div>
 
-          {/* Card Não Conformidades */}
-          <div className="p-4 bg-slate-900 border border-slate-800 rounded-md hover:border-slate-700 transition-all">
-            <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
-              <span className="font-medium">Total de NCs Registradas</span>
-              <span className="p-1 bg-rose-500/10 text-rose-400 rounded-md flex items-center gap-0.5 text-[10px]">
-                <ArrowDownRight size={10} /> {resumo?.totalDeducoes} pts
+          <div className="p-4 bg-white border border-slate-200 rounded-md shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                Não Conformidades
+              </span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-red-50 text-red-700 rounded border border-red-200">
+                Eventos
               </span>
             </div>
-            <div className="text-2xl font-bold text-white tracking-tight">{resumo?.totalNCs ?? 0}</div>
-            <div className="text-xs text-slate-500 mt-1 flex justify-between items-center">
-              <span>Impacto: -20 pts/evento</span>
-              <Link href="/nao-conformidades" className="text-rose-400 hover:text-rose-300 flex items-center gap-0.5">
-                Ver eventos <ChevronRight size={12} />
-              </Link>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-2xl font-bold font-mono text-red-600">
+                {resumoGeral.totalNCs}
+              </span>
+              <span className="text-xs text-slate-500 font-mono">
+                (-{resumoGeral.totalPontosNC} pts deduzidos)
+              </span>
             </div>
+            <p className="text-[11px] text-slate-500 mt-2">Desvios graves registrados no ciclo</p>
           </div>
 
-          {/* Card Amostragem Auditada */}
-          <div className="p-4 bg-slate-900 border border-slate-800 rounded-md hover:border-slate-700 transition-all">
-            <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
-              <span className="font-medium">Chamados Auditados</span>
-              <span className="text-[10px] text-slate-400 font-mono">100% Homologado</span>
+          <div className="p-4 bg-white border border-slate-200 rounded-md shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                Amostragem Auditada
+              </span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded">
+                Avaliados
+              </span>
             </div>
-            <div className="text-2xl font-bold text-white tracking-tight">{resumo?.totalAtendimentos ?? 0}</div>
-            <div className="text-xs text-slate-500 mt-1 flex justify-between items-center">
-              <span>4 Equipes apuradas</span>
-              <span className="text-emerald-400 font-medium text-[11px]">Amostra Completa</span>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-2xl font-bold font-mono text-slate-800">
+                {resumoGeral.totalAvaliados}
+              </span>
+              <span className="text-xs text-slate-500">profissionais</span>
             </div>
+            <p className="text-[11px] text-slate-500 mt-2">Cobertura nas equipes operacionais</p>
           </div>
-
         </div>
 
-        {/* Nível 3: Tabela Estruturada por Equipe Operacional */}
-        <div className="bg-slate-900 border border-slate-800 rounded-md overflow-hidden">
-          <div className="p-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-semibold text-white">Desempenho da Qualidade por Equipe Operacional</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Visão estratificada de conformidade técnica versus experiência percebida</p>
+        {/* Tabela de Medição por Equipe com Pilares Detalhados */}
+        <div className="bg-white border border-slate-200 rounded-md overflow-hidden shadow-sm">
+          <div className="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50">
+            <div className="flex items-center gap-2">
+              <Filter size={15} className="text-slate-500" />
+              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Desempenho por Equipe / Squad
+              </span>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Filter size={14} className="text-slate-400" />
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar equipe..."
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  className="pl-7 pr-3 py-1 text-xs border border-slate-300 rounded-md focus:outline-none focus:border-blue-600 w-40 font-medium"
+                />
+              </div>
+
               <select
-                value={filtroStatus}
-                onChange={(e) => setFiltroStatus(e.target.value)}
-                className="px-2.5 py-1 bg-slate-800 border border-slate-700 rounded-md text-xs text-slate-300 focus:outline-none"
+                value={statusFiltro}
+                onChange={(e) => setStatusFiltro(e.target.value)}
+                className="px-2.5 py-1 text-xs border border-slate-300 rounded-md text-slate-700 font-medium focus:outline-none"
               >
                 <option value="todos">Todos os Status</option>
-                <option value="conforme">Conforme (&ge; 85)</option>
-                <option value="atencao">Em Atenção</option>
-                <option value="critico">Crítico (&lt; 75)</option>
+                <option value="conforme">Conforme (&gt;= 85%)</option>
+                <option value="alerta">Alerta (75%–84%)</option>
+                <option value="critico">Crítico (&lt; 75% ou &gt;= 5 NCs)</option>
               </select>
             </div>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
+            <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-950/60 border-b border-slate-800 text-slate-400 font-medium">
-                  <th className="py-3 px-4">Equipe</th>
-                  <th className="py-3 px-4">Coordenação</th>
-                  <th className="py-3 px-4 text-right">Nota QA</th>
-                  <th className="py-3 px-4 text-right">Índice IEPC</th>
-                  <th className="py-3 px-4 text-right">NCs</th>
-                  <th className="py-3 px-4 text-right">Dedução NC</th>
-                  <th className="py-3 px-4 text-right">Amostra</th>
-                  <th className="py-3 px-4 text-center">Status</th>
-                  <th className="py-3 px-4 text-right">Ações</th>
+                <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-4 py-3">Equipe / Squad</th>
+                  <th className="px-4 py-3 text-right">Avaliados</th>
+                  <th className="px-4 py-3 text-right font-mono text-blue-700">QA Técnico</th>
+                  <th className="px-4 py-3 text-center">P1..P5 Médias</th>
+                  <th className="px-4 py-3 text-right font-mono text-sky-700">IEPC Percepção</th>
+                  <th className="px-4 py-3 text-center">E1..E5 Médias</th>
+                  <th className="px-4 py-3 text-right text-red-600">NCs</th>
+                  <th className="px-4 py-3 text-right text-red-600 font-mono">Dedução NC</th>
+                  <th className="px-4 py-3 text-center">Status</th>
+                  <th className="px-4 py-3 text-right">Ação</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                {equipesFiltradas.map((eq) => (
-                  <tr key={eq.equipe} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="py-3 px-4 font-medium text-white">{eq.equipe}</td>
-                    <td className="py-3 px-4 text-slate-400">{eq.coordenador}</td>
-                    <td className="py-3 px-4 text-right font-mono font-semibold text-emerald-400">{eq.media_qa.toFixed(1)}</td>
-                    <td className="py-3 px-4 text-right font-mono font-semibold text-blue-400">{eq.media_iepc.toFixed(1)}</td>
-                    <td className="py-3 px-4 text-right font-mono font-semibold">
-                      {eq.total_ncs > 0 ? (
-                        <span className="text-rose-400 font-bold">{eq.total_ncs}</span>
-                      ) : (
-                        <span className="text-slate-500">0</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono text-slate-400">
-                      {eq.pontos_deduzidos_nc !== 0 ? `${eq.pontos_deduzidos_nc} pts` : '-'}
-                    </td>
-                    <td className="py-3 px-4 text-right text-slate-400">{eq.atendimentos} ch</td>
-                    <td className="py-3 px-4 text-center">
-                      <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-medium uppercase tracking-wider ${
-                        eq.status === 'conforme'
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          : eq.status === 'atencao'
-                          ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                          : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                      }`}>
-                        {eq.status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <Link 
-                        href={`/qa-iepc?equipe=${encodeURIComponent(eq.equipe)}`}
-                        className="text-blue-400 hover:text-blue-300 font-medium inline-flex items-center gap-1"
-                      >
-                        Analisar <ChevronRight size={12} />
-                      </Link>
+              <tbody className="divide-y divide-slate-100">
+                {loading ? (
+                  <tr>
+                    <td colSpan={10} className="px-4 py-12 text-center text-slate-400">
+                      Consultando medições do banco de dados...
                     </td>
                   </tr>
-                ))}
+                ) : equipesFiltradas.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="px-4 py-12 text-center text-slate-400">
+                      Nenhum registro encontrado para este ciclo e filtros.
+                    </td>
+                  </tr>
+                ) : (
+                  equipesFiltradas.map((eq) => (
+                    <tr key={eq.equipe_nome} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="px-4 py-3 font-semibold text-slate-900">{eq.equipe_nome}</td>
+                      <td className="px-4 py-3 text-right font-mono text-slate-600">
+                        {eq.total_avaliados}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono font-bold text-blue-700">
+                        {eq.media_qa.toFixed(1)}%
+                      </td>
+                      <td className="px-4 py-3 text-center text-[10px] font-mono text-slate-500">
+                        P1:{eq.p1} | P2:{eq.p2} | P3:{eq.p3} | P4:{eq.p4} | P5:{eq.p5}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono font-bold text-sky-700">
+                        {eq.media_iepc.toFixed(1)}%
+                      </td>
+                      <td className="px-4 py-3 text-center text-[10px] font-mono text-slate-500">
+                        E1:{eq.e1} | E2:{eq.e2} | E3:{eq.e3} | E4:{eq.e4} | E5:{eq.e5}
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-red-600">
+                        {eq.total_ncs}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-red-600 font-semibold">
+                        -{eq.pontos_deduzidos_nc} pts
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${
+                            eq.status === 'conforme'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : eq.status === 'alerta'
+                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                : 'bg-red-50 text-red-700 border border-red-200'
+                          }`}
+                        >
+                          {eq.status.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Link
+                          href={`/analises/pareto?periodo=${cicloSelecionado}&equipe=${encodeURIComponent(eq.equipe_nome)}`}
+                          className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 font-bold"
+                        >
+                          Ver Desvios <ChevronRight size={13} />
+                        </Link>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
         </div>
-
-        {/* Rodapé Metodológico */}
-        <div className="p-4 bg-slate-900/40 border border-slate-800 rounded-md text-xs text-slate-400 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <ShieldCheck size={16} className="text-emerald-400" />
-            <span>Resultados oficiais preservados conforme apuração da origem (Versão Metodológica QA-V4.0).</span>
-          </div>
-          <Link href="/documentos" className="text-blue-400 hover:text-blue-300 font-medium">
-            Consultar Fichas Técnicas &rarr;
-          </Link>
-        </div>
-
       </div>
     </EnterpriseLayout>
   );

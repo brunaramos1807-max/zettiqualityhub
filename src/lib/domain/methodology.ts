@@ -106,7 +106,10 @@ export function agregarMetricasEquipe(
   const notasQA = avaliacoes.map((a) => a.nota_final_qa).filter((n) => n != null);
   const notasIEPC = avaliacoes.map((a) => a.indice_iepc).filter((n) => n != null);
   const totalNCs = avaliacoes.reduce((acc, a) => acc + (a.total_ncs || 0), 0);
-  const totalAtendimentos = avaliacoes.reduce((acc, a) => acc + (a.qtd_atendimentos_auditados || 1), 0);
+  const totalAtendimentos = avaliacoes.reduce(
+    (acc, a) => acc + (a.qtd_atendimentos_auditados || 1),
+    0
+  );
 
   return {
     equipe_id,
@@ -118,7 +121,8 @@ export function agregarMetricasEquipe(
     media_iepc: calcularMedia(notasIEPC) ?? 0,
     mediana_iepc: calcularMediana(notasIEPC) ?? undefined,
     total_ncs: totalNCs,
-    taxa_nc_por_atendimento: totalAtendimentos > 0 ? Number(((totalNCs / totalAtendimentos) * 100).toFixed(2)) : 0,
+    taxa_nc_por_atendimento:
+      totalAtendimentos > 0 ? Number(((totalNCs / totalAtendimentos) * 100).toFixed(2)) : 0,
     desvio_padrao_qa: calcularDesvioPadrao(notasQA) ?? undefined,
     aproveitamento_pilares: {},
   };

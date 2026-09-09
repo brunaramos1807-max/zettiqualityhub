@@ -18,9 +18,7 @@ interface HomeExecutiveViewProps {
   defaultPeriodo?: string;
 }
 
-export function HomeExecutiveView({
-  defaultPeriodo = '02/2026',
-}: HomeExecutiveViewProps) {
+export function HomeExecutiveView({ defaultPeriodo = '02/2026' }: HomeExecutiveViewProps) {
   // Filters state
   const filters = useExecutiveFilters(defaultPeriodo);
   const { periodo, squad, setSquad } = filters;
@@ -34,9 +32,8 @@ export function HomeExecutiveView({
   const insights = useExecutiveInsights(currentData.data, previousData.data);
 
   // Filtered teams (by squad if selected)
-  const filteredTeams = currentData.data?.equipes.filter(
-    (team) => !squad || team.name === squad
-  ) || [];
+  const filteredTeams =
+    currentData.data?.equipes.filter((team) => !squad || team.name === squad) || [];
 
   if (currentData.loading) {
     return (
@@ -77,9 +74,7 @@ export function HomeExecutiveView({
       {/* Header with Filters */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-700">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
-            Painel Executivo
-          </h1>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Painel Executivo</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
             Visão consolidada de desempenho e indicadores
           </p>

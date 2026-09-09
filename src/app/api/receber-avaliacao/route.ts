@@ -1,49 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { determinarCicloPorData } from '@/lib/domain/cycleGovernance';
 import { AvaliacaoIngestaoSchema } from '@/lib/domain/canonicalSchemas';
+import {
+  extrairPeriodoMesAno,
+  normalizarIdentificadorCiclo,
+  isCicloHomologado,
+  validarDataNoIntervaloCiclo,
+} from '@/lib/domain/cycleGovernance';
 
 // ─── Service-role Supabase client (Server-Side Only) ─────────────────────────
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceKey) {
-    throw new Error('Supabase service role não configurada');
+    throw new Error('Supabase service role key não configurada no ambiente.');
   }
   return createSupabaseClient(url, serviceKey, {
     auth: { persistSession: false },
   });
 }
 
-// ─── Validação de Token Bearer (SHA-256) ──────────────────────────────────────
-async function validateToken(
+// ─── Validação Estrita de Autenticação Bearer ─────────────────────────────────
+async function authenticateRequest(
   supabase: any,
   authHeader: string | null
-): Promise<{ valid: boolean; error?: string }> {
+): Promise<{ authenticated: boolean; error?: string }> {
   if (!authHeader) {
-    // Modo desenvolvimento permissivo se chave mestra estiver em preview
-    if (process.env.NODE_ENV === 'development') return { valid: true };
-    return { valid: false, error: 'Authorization header ausente. Formato: Bearer <token>' };
+    return {
+      authenticated: false,
+      error: 'Cabeçalho de autorização obrigatório. Use: Bearer <token>',
+    };
   }
 
   const bearerMatch = authHeader.match(/^[Bb]earer\s+(.+)$/);
   if (!bearerMatch) {
-    return { valid: false, error: 'Formato inválido. Formato esperado: Bearer <token>' };
+    return {
+      authenticated: false,
+      error: 'Formato de autorização inválido. Esperado: Bearer <token>',
+    };
   }
 
   const token = bearerMatch[1].trim();
 
-  // Bypass seguro se for token de integração de ambiente
+  // 1. Verificação contra token de integração do ambiente (sem fallback)
   if (process.env.INTEGRATION_API_TOKEN && token === process.env.INTEGRATION_API_TOKEN) {
-    return { valid: true };
+    return { authenticated: true };
   }
 
+  // 2. Verificação contra hash SHA-256 no banco
   try {
     const encoder = new TextEncoder();
     const data = encoder.encode(token);
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+    const hashHex = Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
 
     const { data: tokenRow, error } = await supabase
       .from('integration_tokens')
@@ -53,12 +64,11 @@ async function validateToken(
       .maybeSingle();
 
     if (error || !tokenRow) {
-      // Fallback de compatibilidade
-      return { valid: token.length >= 8 };
+      return { authenticated: false, error: 'Token de integração inválido ou inativo.' };
     }
 
     if (tokenRow.expires_at && new Date(tokenRow.expires_at) < new Date()) {
-      return { valid: false, error: 'Token expirado' };
+      return { authenticated: false, error: 'Token de integração expirado.' };
     }
 
     await supabase
@@ -66,20 +76,10 @@ async function validateToken(
       .update({ last_used_at: new Date().toISOString() })
       .eq('id', tokenRow.id);
 
-    return { valid: true };
-  } catch (err) {
-    return { valid: true }; // Fallback para continuidade operacional
+    return { authenticated: true };
+  } catch (err: any) {
+    return { authenticated: false, error: 'Erro ao validar credenciais: ' + err.message };
   }
-}
-
-// ─── Parser Numérico Seguro ──────────────────────────────────────────────────
-function parseNum(val: unknown, fallback: number = 0): number {
-  if (typeof val === 'number') return isNaN(val) ? fallback : val;
-  if (typeof val === 'string') {
-    const parsed = parseFloat(val.replace(',', '.'));
-    return isNaN(parsed) ? fallback : parsed;
-  }
-  return fallback;
 }
 
 // ─── Endpoint POST /api/receber-avaliacao ────────────────────────────────────
@@ -90,128 +90,189 @@ export async function POST(request: NextRequest) {
   try {
     supabase = getServiceClient();
   } catch (err: any) {
-    return NextResponse.json({ error: 'Falha de infraestrutura', details: err.message }, { status: 503 });
+    return NextResponse.json(
+      { error: 'Falha de configuração interna', details: err.message },
+      { status: 503 }
+    );
   }
 
-  // 1. Validar autenticação
+  // 1. Autenticação estrita (sem permissões de fallback)
   const authHeader = request.headers.get('authorization');
-  const authCheck = await validateToken(supabase, authHeader);
-  if (!authCheck.valid) {
+  const authCheck = await authenticateRequest(supabase, authHeader);
+  if (!authCheck.authenticated) {
     return NextResponse.json({ error: authCheck.error }, { status: 401 });
   }
 
-  // 2. Extrair Payload
+  // 2. Extração do payload
   let body: any;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'JSON inválido no corpo da requisição' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'Corpo da requisição deve ser um JSON válido' },
+      { status: 400 }
+    );
   }
 
-  // 3. Normalizar campos canônicos
-  const analistaNome = body?.analista?.nome || body?.analista?.nome_completo || body?.analista || 'Analista';
-  const squadNome = body?.analista?.squad || body?.analista?.equipe || body?.squad || body?.equipe || 'Geral';
-  const coordenadorNome = body?.analista?.coordenador || body?.coordenador || null;
-  const auditorNome = body?.analista?.auditor || body?.auditor || null;
-  const dataRegistro = body?.metadata?.gerado_em || body?.data_registro || new Date().toISOString();
-  
-  const cicloReferencia = body?.ciclo?.nome || body?.periodo || determinarCicloPorData(dataRegistro);
-  
-  // Notas Oficiais
-  const notaQA = parseNum(body?.scores?.qa ?? body?.nota_final_qa ?? body?.qa_score);
-  const indiceIEPC = parseNum(body?.scores?.iepc ?? body?.iepc_total ?? body?.indice_satisfacao);
-  const totalNCs = parseNum(body?.total_ncs ?? (Array.isArray(body?.nao_conformidades) ? body.nao_conformidades.length : 0));
-  const pontosDeduzidosNC = parseNum(body?.pontos_deduzidos_nc ?? (totalNCs * 20));
-
-  // Pilares QA
-  const p1 = parseNum(body?.qa_pilares?.p1?.pontos ?? body?.p1);
-  const p2 = parseNum(body?.qa_pilares?.p2?.pontos ?? body?.p2);
-  const p3 = parseNum(body?.qa_pilares?.p3?.pontos ?? body?.p3);
-  const p4 = parseNum(body?.qa_pilares?.p4?.pontos ?? body?.p4);
-  const p5 = parseNum(body?.qa_pilares?.p5?.pontos ?? body?.p5);
-
-  // Dimensões IEPC
-  const e1 = parseNum(body?.iepc_pilares?.e1?.pontos ?? body?.e1);
-  const e2 = parseNum(body?.iepc_pilares?.e2?.pontos ?? body?.e2);
-  const e3 = parseNum(body?.iepc_pilares?.e3?.pontos ?? body?.e3);
-  const e4 = parseNum(body?.iepc_pilares?.e4?.pontos ?? body?.e4);
-  const e5 = parseNum(body?.iepc_pilares?.e5?.pontos ?? body?.e5);
-
-  const hashRegistro = body?.metadata?.hash_registro || `${cicloReferencia}_${analistaNome}_${Date.now()}`;
-
-  // 4. Gravar Log de Ingestão (Audit Trail)
-  try {
-    await supabase.from('integration_request_logs').insert({
-      origem: body?.metadata?.origem || 'qualicore_api',
-      versao_schema: body?.metadata?.versao || 'QA-V4.0',
-      status_code: 200,
-      ip_origem: request.headers.get('x-forwarded-for') || 'api',
-      payload_hash: hashRegistro,
-      payload_json: body,
-      tempo_resposta_ms: Date.now() - startTime,
-    });
-  } catch (logErr) {
-    // Não interrompe fluxo principal se tabela de log oscilar
-    console.warn('[receber-avaliacao] log warning:', logErr);
+  // 3. Validação do contrato canônico via Zod
+  const validation = AvaliacaoIngestaoSchema.safeParse(body);
+  if (!validation.success) {
+    const errorDetails = validation.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`);
+    return NextResponse.json(
+      { error: 'Payload em desacordo com o contrato canônico', details: errorDetails },
+      { status: 422 }
+    );
   }
 
-  // 5. Persistência de Resultados Oficiais no Banco (Sem criar RH/Feedback/PDI)
-  const scoreRecord = {
-    periodo: cicloReferencia,
-    data_registro: dataRegistro,
-    analista: analistaNome,
-    squad: squadNome,
-    coordenador: coordenadorNome,
-    auditor: auditorNome,
-    nota_final_qa: notaQA,
-    iepc_total: indiceIEPC,
-    total_ncs: totalNCs,
-    pontos_deduzidos_nc: pontosDeduzidosNC,
-    p1, p2, p3, p4, p5,
-    e1, e2, e3, e4, e5,
-  };
+  const data = validation.data;
+  const mesAno = extrairPeriodoMesAno(data.periodo || '');
+  if (!mesAno) {
+    return NextResponse.json(
+      { error: 'Campo "periodo" é obrigatório no formato MM/AAAA (ex: "09/2026")' },
+      { status: 422 }
+    );
+  }
 
-  // Upsert em cycle_scores / avaliacoes_qa
-  const { data: savedScore, error: scoreError } = await supabase
-    .from('cycle_scores')
-    .upsert(scoreRecord, { onConflict: 'periodo,analista' })
-    .select('id')
+  const identificacaoCiclo = normalizarIdentificadorCiclo(mesAno);
+
+  // 4. Verificação de status do ciclo e integridade das datas
+  const { data: cicloRow } = await supabase
+    .from('import_cycles')
+    .select('id, status, is_closed, data_inicio, data_fim')
+    .eq('periodo', mesAno)
     .maybeSingle();
 
-  if (scoreError) {
-    console.error('[receber-avaliacao] Erro ao gravar cycle_scores:', scoreError.message);
+  if (cicloRow && isCicloHomologado(cicloRow)) {
+    return NextResponse.json(
+      {
+        error: `O ${identificacaoCiclo} está homologado e bloqueado contra novas inserções.`,
+        ciclo: mesAno,
+      },
+      { status: 403 }
+    );
   }
 
-  // 6. Persistir Eventos de Não Conformidade (Se houver)
-  if (Array.isArray(body?.nao_conformidades) && body.nao_conformidades.length > 0) {
-    const ncRows = body.nao_conformidades.map((nc: any) => ({
-      periodo: cicloReferencia,
-      data_registro: dataRegistro,
-      analista: analistaNome,
-      squad: squadNome,
-      coordenador: coordenadorNome,
-      auditor: auditorNome,
-      tipo_nc: nc?.tipo || nc?.tipo_nc || nc?.codigo || 'Não Conformidade',
-      descricao: nc?.descricao || nc?.justificativa_tecnica || null,
-      pontos_deduzidos: parseNum(nc?.pontos ?? nc?.pontos_deduzidos, 20),
-      protocolo: nc?.protocolo || null,
+  // Validação das datas cadastradas no ciclo
+  if (data.data_registro && cicloRow?.data_inicio && cicloRow?.data_fim) {
+    const dateCheck = validarDataNoIntervaloCiclo(
+      data.data_registro,
+      cicloRow.data_inicio,
+      cicloRow.data_fim
+    );
+    if (!dateCheck.valido) {
+      return NextResponse.json(
+        {
+          error: dateCheck.mensagem,
+          data_registro: data.data_registro,
+          intervalo_ciclo: { inicio: cicloRow.data_inicio, fim: cicloRow.data_fim },
+        },
+        { status: 422 }
+      );
+    }
+  }
+
+  // 5. Garantir ciclo no banco se não existir
+  let cycleId = cicloRow?.id;
+  if (!cycleId) {
+    const { data: insertedCycle } = await supabase
+      .from('import_cycles')
+      .upsert(
+        {
+          periodo: mesAno,
+          identificacao: identificacaoCiclo,
+          status: 'em_apuracao',
+          is_closed: false,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'periodo' }
+      )
+      .select('id')
+      .single();
+    cycleId = insertedCycle?.id;
+  }
+
+  // 6. Persistência Idempotente da Avaliação Oficial (cycle_scores)
+  const scorePayload = {
+    cycle_id: cycleId,
+    periodo: mesAno,
+    data_registro: data.data_registro || null,
+    analista: data.analista_nome,
+    squad: data.equipe_nome,
+    coordenador: data.coordenador_nome || null,
+    auditor: data.auditor_nome || null,
+    nota_final_qa: data.nota_final_qa,
+    iepc_total: data.indice_iepc,
+    total_ncs: data.total_ncs,
+    pontos_deduzidos_nc: data.pontos_deduzidos_nc,
+    qtd_atendimentos_avaliados: data.qtd_atendimentos_auditados,
+    p1: data.p1 || 0,
+    p2: data.p2 || 0,
+    p3: data.p3 || 0,
+    p4: data.p4 || 0,
+    p5: data.p5 || 0,
+    e1: data.e1 || 0,
+    e2: data.e2 || 0,
+    e3: data.e3 || 0,
+    e4: data.e4 || 0,
+    e5: data.e5 || 0,
+    source: 'api_integration',
+  };
+
+  const { error: scoreError } = await supabase
+    .from('cycle_scores')
+    .upsert(scorePayload, { onConflict: 'periodo,analista,squad' });
+
+  if (scoreError) {
+    return NextResponse.json(
+      { error: 'Falha ao persistir pontuação de qualidade', details: scoreError.message },
+      { status: 500 }
+    );
+  }
+
+  // 7. Persistência de Não Conformidades vinculadas
+  let ncsInseridas = 0;
+  if (data.nao_conformidades && data.nao_conformidades.length > 0) {
+    const ncsPayload = data.nao_conformidades.map((nc) => ({
+      cycle_id: cycleId,
+      periodo: mesAno,
+      data_registro:
+        nc.data_registro || data.data_registro || new Date().toISOString().split('T')[0],
+      analista: data.analista_nome,
+      squad: data.equipe_nome,
+      coordenador: data.coordenador_nome || null,
+      auditor: data.auditor_nome || null,
+      tipo_nc: nc.tipo_nc,
+      pontos_deduzidos: nc.pontos_deduzidos,
+      protocolo_referencia: nc.protocolo_referencia || null,
+      descricao: nc.evidencia_resumo || nc.justificativa || null,
+      source: 'api_integration',
     }));
 
-    await supabase.from('nc_records').insert(ncRows);
+    const { error: ncError } = await supabase.from('nc_records').insert(ncsPayload);
+    if (!ncError) ncsInseridas = ncsPayload.length;
   }
 
-  // 7. Retorno Canônico de Sucesso
+  // 8. Log de Auditoria Forense
+  try {
+    await supabase.from('integration_request_logs').insert({
+      origem: 'api_receber_avaliacao',
+      status_code: 200,
+      ip_origem: request.headers.get('x-forwarded-for') || 'api',
+      payload_hash: data.hash_registro || `${mesAno}_${data.analista_identificador}`,
+      tempo_resposta_ms: Date.now() - startTime,
+    });
+  } catch {
+    // Audit log não bloqueia resposta
+  }
+
   return NextResponse.json({
     sucesso: true,
-    mensagem: 'Avaliação recebida e integrada com sucesso ao QualiVisão.',
-    dados: {
-      ciclo: cicloReferencia,
-      analista: analistaNome,
-      squad: squadNome,
-      nota_final_qa: notaQA,
-      indice_iepc: indiceIEPC,
-      total_ncs: totalNCs,
-    },
-    tempo_processamento_ms: Date.now() - startTime,
+    mensagem: `Avaliação de ${data.analista_nome} registrada com sucesso no ${identificacaoCiclo}`,
+    ciclo: mesAno,
+    analista: data.analista_nome,
+    equipe: data.equipe_nome,
+    nota_qa: data.nota_final_qa,
+    indice_iepc: data.indice_iepc,
+    ncs_registradas: ncsInseridas,
   });
 }

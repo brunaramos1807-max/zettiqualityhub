@@ -1,337 +1,689 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
-import { 
-  GitBranch, 
-  HelpCircle, 
-  CheckCircle2, 
-  ArrowRight, 
-  Layers, 
-  Plus, 
-  FileText, 
+import {
+  GitBranch,
+  HelpCircle,
+  CheckCircle2,
+  ArrowRight,
+  Layers,
+  Plus,
+  FileText,
   AlertCircle,
-  TrendingDown,
-  ShieldAlert,
-  ChevronRight
+  Calendar,
+  RefreshCw,
+  X,
+  Trash2,
+  Check,
 } from 'lucide-react';
 import Link from 'next/link';
+import {
+  fetchInvestigacoes,
+  salvarInvestigacao,
+  validarCausaRaiz,
+  fetchCiclos,
+} from '@/lib/services/qualityDataService';
+import {
+  InvestigacaoQualidade,
+  Ciclo,
+  IshikawaCategoria,
+  CincoPorquesItem,
+} from '@/lib/domain/types';
+import { toast } from 'sonner';
 
-interface Investigacao {
-  id: string;
-  titulo: string;
-  indicadorAfetado: string;
-  equipeAfetada: string;
-  perdaEstimada: string;
-  status: 'em_investigacao' | 'causa_validada' | 'plano_criado';
-  causaRaiz?: string;
-  dataAbertura: string;
-}
-
-const INVESTIGACOES_INICIAIS: Investigacao[] = [
-  {
-    id: 'INV-2026-001',
-    titulo: 'Alta recorrência de Não Conformidades de Registro e Rastreabilidade no Suporte Fiscal',
-    indicadorAfetado: 'Não Conformidades (8 ocorrências)',
-    equipeAfetada: 'Financeiro Fiscal',
-    perdaEstimada: '-160 pontos no ciclo',
-    status: 'causa_validada',
-    causaRaiz: 'Falta de checklist obrigatório de documentação técnica ao encerrar chamados de SPA/Desenvolvimento.',
-    dataAbertura: '22/08/2026',
-  },
-  {
-    id: 'INV-2026-002',
-    titulo: 'Queda de aproveitamento no Pilar P2.4 (Documentação Técnica)',
-    indicadorAfetado: 'QA — P2 Tratativa da Demanda',
-    equipeAfetada: 'PDV & Compras',
-    perdaEstimada: '-82.5 pontos acumulados',
-    status: 'em_investigacao',
-    dataAbertura: '24/08/2026',
-  },
+const CATEGORIAS_ISHIKAWA_PADRAO: IshikawaCategoria[] = [
+  { categoria: 'metodo', label: 'Método (Processos & Procedimentos)', itens: [] },
+  { categoria: 'mao_de_obra', label: 'Mão de Obra (Competências & Capacitação)', itens: [] },
+  { categoria: 'maquina', label: 'Máquina (Sistemas, Ferramentas & Equipamentos)', itens: [] },
+  { categoria: 'material', label: 'Material (Insumos, Bases & Documentos)', itens: [] },
+  { categoria: 'medicao', label: 'Medição (Critérios, Amostragens & Métricas)', itens: [] },
+  { categoria: 'meio_ambiente', label: 'Meio Ambiente (Cultura, Clima & Contexto)', itens: [] },
 ];
 
-export default function DiagnosticoPage() {
-  const [investigacoes, setInvestigacoes] = useState<Investigacao[]>(INVESTIGACOES_INICIAIS);
-  const [investigacaoAtiva, setInvestigacaoAtiva] = useState<string>('INV-2026-001');
-  const [abaAtiva, setAbaAtiva] = useState<'ishikawa' | '5porques'>('ishikawa');
+function DiagnosticoContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
-  // Estado interativo do Ishikawa (6Ms)
-  const [ishikawaData, setIshikawaData] = useState({
-    metodo: ['Encerramento de chamados não exige validação de retorno do Desenvolvimento', 'Procedimento de teste em ambiente homologado não está formalizado no manual'],
-    maoDeObra: ['Novos analistas desconhecem a exigência de nota técnica no SPA', 'Sobrecarga de chamados em dias de pico'],
-    maquina: ['Sistema de atendimento não bloqueia encerramento com campo em branco', 'Lentidão esporádica na ferramenta de chamados'],
-    material: ['Base de conhecimento interna desatualizada sobre rotinas fiscais'],
-    medicao: ['Auditoria realizada apenas no fechamento do ciclo, sem amostragem intermediária'],
-    meioAmbiente: ['Ruído operacional durante horários de pico de plantão'],
+  const fatorParam = searchParams.get('fator');
+  const periodoParam = searchParams.get('periodo');
+  const squadParam = searchParams.get('squad');
+
+  const [ciclos, setCiclos] = useState<Ciclo[]>([]);
+  const [cicloSelecionado, setCicloSelecionado] = useState<string>(periodoParam || '08/2026');
+  const [investigacoes, setInvestigacoes] = useState<InvestigacaoQualidade[]>([]);
+  const [investigacaoAtivaId, setInvestigacaoAtivaId] = useState<string | null>(null);
+  const [abaAtiva, setAbaAtiva] = useState<'ishikawa' | '5porques'>('ishikawa');
+  const [loading, setLoading] = useState<boolean>(true);
+
+  // Modal nova investigação
+  const [modalNovaAberta, setModalNovaAberta] = useState<boolean>(false);
+  const [novoTitulo, setNovoTitulo] = useState<string>(
+    fatorParam ? `Investigação: ${fatorParam}` : ''
+  );
+  const [novoDesvio, setNovoDesvio] = useState<string>(fatorParam || '');
+  const [novoIndicador, setNovoIndicador] = useState<string>('Não Conformidades / QA');
+  const [novoSquad, setNovoSquad] = useState<string>(squadParam || '');
+
+  // Estado da investigação ativa
+  const investigacaoAtiva =
+    investigacoes.find((i) => i.id === investigacaoAtivaId) || investigacoes[0] || null;
+
+  // Item inputs
+  const [novoItemIshikawa, setNovoItemIshikawa] = useState<{ categoria: string; texto: string }>({
+    categoria: 'metodo',
+    texto: '',
   });
 
-  // Estado dos 5 Porquês
-  const [porques, setPorques] = useState([
-    { nivel: 1, pergunta: 'Por que o atendimento foi concluído sem documentação técnica?', resposta: 'Porque o analista apenas alterou o status para "Resolvido" sem preencher o resumo técnico.' },
-    { nivel: 2, pergunta: 'Por que ele não preencheu o resumo técnico?', resposta: 'Porque acreditava que a resposta fornecida no chat do cliente era suficiente para rastreabilidade.' },
-    { nivel: 3, pergunta: 'Por que acreditava que a resposta do chat era suficiente?', resposta: 'Porque não havia orientação clara de que o histórico técnico deve ser registrado internamente no SUP.' },
-    { nivel: 4, pergunta: 'Por que não havia essa orientação clara na ferramenta?', resposta: 'Porque a rotina de encerramento não possui um checklist de campos obrigatórios.' },
-    { nivel: 5, pergunta: 'Por que não possui checklist obrigatório?', resposta: 'CAUSA RAIZ: A parametrização do fluxo de encerramento da ferramenta de tickets não impõe validação prévia de documentação.' },
-  ]);
+  const [novaPerguntaPorque, setNovaPerguntaPorque] = useState<string>('');
+  const [novaRespostaPorque, setNovaRespostaPorque] = useState<string>('');
+
+  // Carregar ciclos
+  useEffect(() => {
+    fetchCiclos().then((lista) => {
+      setCiclos(lista);
+      if (lista.length > 0 && !periodoParam) {
+        setCicloSelecionado(lista[0].periodo);
+      }
+    });
+  }, [periodoParam]);
+
+  // Carregar investigações do banco
+  const carregarInvestigacoes = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchInvestigacoes(cicloSelecionado);
+      setInvestigacoes(data);
+      if (data.length > 0) {
+        setInvestigacaoAtivaId(data[0].id);
+      } else {
+        setInvestigacaoAtivaId(null);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar investigações:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (cicloSelecionado) {
+      carregarInvestigacoes();
+    }
+  }, [cicloSelecionado]);
+
+  // Se veio parâmetro da tela de Pareto e ainda não tem investigação correspondente, abre o modal
+  useEffect(() => {
+    if (fatorParam && !loading) {
+      setModalNovaAberta(true);
+    }
+  }, [fatorParam, loading]);
+
+  const handleCriarInvestigacao = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!novoTitulo) return;
+
+    try {
+      const res = await salvarInvestigacao({
+        periodo: cicloSelecionado,
+        titulo: novoTitulo,
+        desvio_detectado: novoDesvio,
+        indicador_afetado: novoIndicador,
+        squad: novoSquad || undefined,
+        status: 'aberta',
+        ishikawa: CATEGORIAS_ISHIKAWA_PADRAO,
+        cinco_porques: [],
+      });
+
+      if (res.success) {
+        toast.success('Investigação criada e persistida com sucesso!');
+        setModalNovaAberta(false);
+        setNovoTitulo('');
+        setNovoDesvio('');
+        await carregarInvestigacoes();
+        if (res.id) setInvestigacaoAtivaId(res.id);
+      } else {
+        toast.error('Erro ao criar investigação: ' + res.error);
+      }
+    } catch (err: any) {
+      toast.error('Falha ao salvar: ' + err.message);
+    }
+  };
+
+  const handleAdicionarItemIshikawa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!investigacaoAtiva || !novoItemIshikawa.texto.trim()) return;
+
+    const currentIshikawa: IshikawaCategoria[] = investigacaoAtiva.ishikawa?.length
+      ? [...investigacaoAtiva.ishikawa]
+      : CATEGORIAS_ISHIKAWA_PADRAO.map((c) => ({ ...c, itens: [] }));
+
+    const targetCat = currentIshikawa.find((c) => c.categoria === novoItemIshikawa.categoria);
+    if (targetCat) {
+      targetCat.itens.push(novoItemIshikawa.texto.trim());
+    } else {
+      currentIshikawa.push({
+        categoria: novoItemIshikawa.categoria as any,
+        label: novoItemIshikawa.categoria,
+        itens: [novoItemIshikawa.texto.trim()],
+      });
+    }
+
+    try {
+      await salvarInvestigacao({
+        id: investigacaoAtiva.id,
+        ishikawa: currentIshikawa,
+        status: 'em_analise',
+      });
+      setNovoItemIshikawa({ ...novoItemIshikawa, texto: '' });
+      await carregarInvestigacoes();
+      toast.success('Fator adicionado ao Diagrama de Ishikawa.');
+    } catch (err: any) {
+      toast.error('Erro ao salvar fator: ' + err.message);
+    }
+  };
+
+  const handleAdicionarPorque = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!investigacaoAtiva || !novaPerguntaPorque.trim() || !novaRespostaPorque.trim()) return;
+
+    const currentPorques: CincoPorquesItem[] = investigacaoAtiva.cinco_porques || [];
+    const novoNivel = currentPorques.length + 1;
+
+    const updated = [
+      ...currentPorques,
+      {
+        nivel: novoNivel,
+        pergunta: novaPerguntaPorque.trim(),
+        resposta: novaRespostaPorque.trim(),
+      },
+    ];
+
+    try {
+      await salvarInvestigacao({
+        id: investigacaoAtiva.id,
+        cinco_porques: updated,
+        status: 'em_analise',
+      });
+      setNovaPerguntaPorque('');
+      setNovaRespostaPorque('');
+      await carregarInvestigacoes();
+      toast.success(`Porquê #${novoNivel} registrado no banco.`);
+    } catch (err: any) {
+      toast.error('Erro ao salvar porquê: ' + err.message);
+    }
+  };
+
+  const handleValidarCausa = async (causaTexto: string) => {
+    if (!investigacaoAtiva) return;
+    try {
+      const res = await validarCausaRaiz(investigacaoAtiva.id, causaTexto);
+      if (res.success) {
+        toast.success('Causa raiz validada com sucesso!');
+        await carregarInvestigacoes();
+      } else {
+        toast.error('Erro: ' + res.error);
+      }
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
 
   return (
     <EnterpriseLayout>
       <div className="p-6 max-w-7xl mx-auto space-y-6">
-        
         {/* Banner de Cabeçalho */}
-        <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-slate-900 border border-slate-800 rounded-md">
+        <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-white border border-slate-200 rounded-md shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-purple-500/10 border border-purple-500/20 text-purple-400 rounded-md">
+            <div className="p-2 bg-purple-50 border border-purple-100 text-purple-700 rounded-md">
               <GitBranch size={18} />
             </div>
             <div>
-              <div className="text-xs text-slate-400 font-mono uppercase tracking-wider">Módulo de Diagnóstico</div>
-              <h1 className="text-sm font-semibold text-white">Central de Investigação Causal & Estúdio Ishikawa</h1>
+              <div className="text-xs text-slate-400 font-mono uppercase tracking-wider">
+                Módulo de Diagnóstico
+              </div>
+              <h1 className="text-sm font-bold text-slate-900">
+                Central de Investigação Causal (Ishikawa 6Ms & 5 Porquês)
+              </h1>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <Link 
-              href="/melhoria/planos"
-              className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded-md transition-colors"
-            >
-              <span>Ir para Planos 5W2H</span>
-              <ArrowRight size={14} />
-            </Link>
-          </div>
-        </div>
-
-        {/* Seletor de Investigação Ativa */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {investigacoes.map((inv) => {
-            const isSelected = inv.id === investigacaoAtiva;
-            return (
-              <div 
-                key={inv.id}
-                onClick={() => setInvestigacaoAtiva(inv.id)}
-                className={`p-4 rounded-md border cursor-pointer transition-all ${
-                  isSelected 
-                    ? 'bg-slate-900 border-blue-500/60 shadow-sm' 
-                    : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
-                }`}
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs text-slate-700">
+              <Calendar size={14} className="text-slate-500" />
+              <span className="font-semibold">Ciclo:</span>
+              <select
+                value={cicloSelecionado}
+                onChange={(e) => setCicloSelecionado(e.target.value)}
+                className="bg-transparent text-slate-900 font-bold focus:outline-none cursor-pointer"
               >
-                <div className="flex items-center justify-between text-xs mb-1.5">
-                  <span className="font-mono font-bold text-blue-400">{inv.id}</span>
-                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium uppercase ${
-                    inv.status === 'causa_validada' 
-                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                      : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                  }`}>
-                    {inv.status === 'causa_validada' ? 'Causa Validada' : 'Em Investigação'}
-                  </span>
-                </div>
-                <h3 className="text-sm font-semibold text-white leading-snug">{inv.titulo}</h3>
-                <div className="text-xs text-slate-400 mt-2 flex flex-wrap gap-x-4 gap-y-1">
-                  <span>Equipe: <strong className="text-slate-300">{inv.equipeAfetada}</strong></span>
-                  <span>Impacto: <strong className="text-rose-400">{inv.perdaEstimada}</strong></span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                {ciclos.map((c) => (
+                  <option key={c.periodo} value={c.periodo}>
+                    {c.identificacao}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-        {/* Estúdio de Investigação: Ishikawa 6Ms ou 5 Porquês */}
-        <div className="bg-slate-900 border border-slate-800 rounded-md overflow-hidden">
-          
-          {/* Barra de Abas */}
-          <div className="flex border-b border-slate-800 bg-slate-950/60 px-4">
             <button
-              onClick={() => setAbaAtiva('ishikawa')}
-              className={`py-3 px-4 text-xs font-semibold border-b-2 transition-colors ${
-                abaAtiva === 'ishikawa' 
-                  ? 'border-blue-500 text-blue-400' 
-                  : 'border-transparent text-slate-400 hover:text-slate-300'
-              }`}
+              onClick={() => setModalNovaAberta(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-md transition-colors"
             >
-              Diagrama de Causa e Efeito (Ishikawa — 6Ms)
-            </button>
-            <button
-              onClick={() => setAbaAtiva('5porques')}
-              className={`py-3 px-4 text-xs font-semibold border-b-2 transition-colors ${
-                abaAtiva === '5porques' 
-                  ? 'border-blue-500 text-blue-400' 
-                  : 'border-transparent text-slate-400 hover:text-slate-300'
-              }`}
-            >
-              Árvore dos 5 Porquês (Aprofundamento Causal)
+              <Plus size={14} /> Nova Investigação
             </button>
           </div>
+        </div>
 
-          <div className="p-6">
-            
-            {/* Aba Ishikawa 6Ms */}
-            {abaAtiva === 'ishikawa' && (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs text-slate-400">
-                    Mapeamento de hipóteses de causa estruturadas pelos 6 fatores fundamentais de processo.
+        {/* Layout de Duas Colunas: Lista de Investigações + Painel de Análise */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Coluna Esquerda: Investigações do Ciclo (4 cols) */}
+          <div className="lg:col-span-4 space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Investigações do Ciclo ({investigacoes.length})
+              </span>
+              <button
+                onClick={carregarInvestigacoes}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+              </button>
+            </div>
+
+            {loading ? (
+              <div className="p-8 text-center text-xs text-slate-400 bg-white border border-slate-200 rounded-md">
+                Carregando investigações do banco...
+              </div>
+            ) : investigacoes.length === 0 ? (
+              <div className="p-8 text-center bg-white border border-slate-200 rounded-md space-y-3">
+                <AlertCircle size={28} className="mx-auto text-slate-300" />
+                <p className="text-xs text-slate-600 font-medium">
+                  Nenhuma investigação aberta para este ciclo.
+                </p>
+                <button
+                  onClick={() => setModalNovaAberta(true)}
+                  className="px-3 py-1.5 bg-purple-50 text-purple-700 border border-purple-200 text-xs font-bold rounded-md"
+                >
+                  Abrir Primeira Investigação
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {investigacoes.map((inv) => {
+                  const isSelected = inv.id === investigacaoAtiva?.id;
+                  return (
+                    <div
+                      key={inv.id}
+                      onClick={() => setInvestigacaoAtivaId(inv.id)}
+                      className={`p-3.5 rounded-md border cursor-pointer transition-all ${
+                        isSelected
+                          ? 'bg-purple-50/50 border-purple-500 shadow-sm'
+                          : 'bg-white border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                            inv.status === 'causa_validada'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : inv.status === 'convertida_plano'
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                          }`}
+                        >
+                          {inv.status.replace('_', ' ')}
+                        </span>
+                        {inv.squad && (
+                          <span className="text-[10px] font-medium text-slate-500">
+                            {inv.squad}
+                          </span>
+                        )}
+                      </div>
+
+                      <h3 className="text-xs font-bold text-slate-900 mt-2 line-clamp-2">
+                        {inv.titulo}
+                      </h3>
+
+                      <p className="text-[11px] text-slate-500 mt-1 line-clamp-1">
+                        Desvio: {inv.desvio_detectado}
+                      </p>
+
+                      {inv.causa_raiz_validada && (
+                        <div className="mt-2.5 p-2 bg-emerald-50/80 border border-emerald-200 rounded text-[11px] text-emerald-900 font-medium">
+                          <strong>Causa Validada:</strong> {inv.causa_raiz_validada}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Coluna Direita: Estúdio de Diagnóstico (8 cols) */}
+          <div className="lg:col-span-8">
+            {investigacaoAtiva ? (
+              <div className="bg-white border border-slate-200 rounded-md shadow-sm overflow-hidden flex flex-col">
+                {/* Header da Investigação */}
+                <div className="p-5 border-b border-slate-200 bg-slate-50/50 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[11px] font-mono text-purple-700 font-bold">
+                      {cicloSelecionado} | {investigacaoAtiva.squad || 'Geral'}
+                    </span>
+
+                    {investigacaoAtiva.status === 'causa_validada' && (
+                      <Link
+                        href={`/melhoria/planos?investigacao_id=${investigacaoAtiva.id}&titulo=${encodeURIComponent(investigacaoAtiva.titulo)}&causa=${encodeURIComponent(investigacaoAtiva.causa_raiz_validada || '')}&periodo=${cicloSelecionado}`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-md shadow-sm"
+                      >
+                        Transformar em Plano 5W2H <ArrowRight size={13} />
+                      </Link>
+                    )}
                   </div>
-                  <button 
-                    onClick={() => alert('Para adicionar nova hipótese, selecione a categoria desejada.')}
-                    className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 font-medium"
+
+                  <h2 className="text-sm font-bold text-slate-900">{investigacaoAtiva.titulo}</h2>
+                  <p className="text-xs text-slate-600">
+                    <strong>Desvio Detectado:</strong> {investigacaoAtiva.desvio_detectado}
+                  </p>
+
+                  {/* Abas Ishikawa vs 5 Porquês */}
+                  <div className="flex gap-2 pt-3">
+                    <button
+                      onClick={() => setAbaAtiva('ishikawa')}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${
+                        abaAtiva === 'ishikawa'
+                          ? 'bg-purple-700 text-white'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      Diagrama de Ishikawa (6Ms)
+                    </button>
+                    <button
+                      onClick={() => setAbaAtiva('5porques')}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${
+                        abaAtiva === '5porques'
+                          ? 'bg-purple-700 text-white'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      Árvore dos 5 Porquês
+                    </button>
+                  </div>
+                </div>
+
+                {/* ABA 1: ISHIKAWA 6Ms */}
+                {abaAtiva === 'ishikawa' && (
+                  <div className="p-5 space-y-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {CATEGORIAS_ISHIKAWA_PADRAO.map((catInfo) => {
+                        const existingCat = investigacaoAtiva.ishikawa?.find(
+                          (c) => c.categoria === catInfo.categoria
+                        );
+                        const itens = existingCat?.itens || [];
+
+                        return (
+                          <div
+                            key={catInfo.categoria}
+                            className="p-3.5 bg-slate-50 border border-slate-200 rounded-md"
+                          >
+                            <h4 className="text-xs font-bold text-slate-800 mb-2">
+                              {catInfo.label}
+                            </h4>
+                            {itens.length === 0 ? (
+                              <p className="text-[11px] text-slate-400 italic">
+                                Nenhum fator apontado.
+                              </p>
+                            ) : (
+                              <ul className="space-y-1 text-xs">
+                                {itens.map((item, i) => (
+                                  <li
+                                    key={i}
+                                    className="flex items-start justify-between gap-2 p-1.5 bg-white border border-slate-200 rounded text-slate-800"
+                                  >
+                                    <span>{item}</span>
+                                    <button
+                                      onClick={() => handleValidarCausa(item)}
+                                      className="text-[10px] text-purple-700 font-bold hover:underline flex-shrink-0"
+                                      title="Definir este fator como causa raiz validada"
+                                    >
+                                      Validar Causa
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Formulário para adicionar fator ao Ishikawa */}
+                    <form
+                      onSubmit={handleAdicionarItemIshikawa}
+                      className="p-4 bg-purple-50/50 border border-purple-200 rounded-md flex flex-wrap items-center gap-3"
+                    >
+                      <select
+                        value={novoItemIshikawa.categoria}
+                        onChange={(e) =>
+                          setNovoItemIshikawa({ ...novoItemIshikawa, categoria: e.target.value })
+                        }
+                        className="px-2.5 py-1.5 text-xs border border-slate-300 rounded-md bg-white font-medium focus:outline-none"
+                      >
+                        {CATEGORIAS_ISHIKAWA_PADRAO.map((c) => (
+                          <option key={c.categoria} value={c.categoria}>
+                            {c.label}
+                          </option>
+                        ))}
+                      </select>
+
+                      <input
+                        type="text"
+                        placeholder="Descreva a hipótese ou fator causal..."
+                        value={novoItemIshikawa.texto}
+                        onChange={(e) =>
+                          setNovoItemIshikawa({ ...novoItemIshikawa, texto: e.target.value })
+                        }
+                        className="flex-1 min-w-[200px] px-3 py-1.5 text-xs border border-slate-300 rounded-md focus:outline-none focus:border-purple-600"
+                        required
+                      />
+
+                      <button
+                        type="submit"
+                        className="px-3.5 py-1.5 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-md"
+                      >
+                        Adicionar Fator
+                      </button>
+                    </form>
+                  </div>
+                )}
+
+                {/* ABA 2: 5 PORQUÊS */}
+                {abaAtiva === '5porques' && (
+                  <div className="p-5 space-y-5">
+                    <div className="space-y-3">
+                      {!investigacaoAtiva.cinco_porques ||
+                      investigacaoAtiva.cinco_porques.length === 0 ? (
+                        <p className="text-xs text-slate-400 italic py-6 text-center">
+                          Nenhum nível de porquê encadeado ainda. Inicie o encadeamento causal
+                          abaixo.
+                        </p>
+                      ) : (
+                        investigacaoAtiva.cinco_porques.map((item) => (
+                          <div
+                            key={item.nivel}
+                            className="p-3.5 bg-slate-50 border border-slate-200 rounded-md space-y-1"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-purple-100 text-purple-800 rounded font-mono">
+                                #{item.nivel} PORQUÊ
+                              </span>
+                              <button
+                                onClick={() => handleValidarCausa(item.resposta)}
+                                className="text-[11px] font-bold text-emerald-700 hover:underline inline-flex items-center gap-1"
+                              >
+                                <CheckCircle2 size={12} /> Validar como Causa Raiz
+                              </button>
+                            </div>
+                            <p className="text-xs font-bold text-slate-900 mt-1">
+                              P: {item.pergunta}
+                            </p>
+                            <p className="text-xs text-slate-700 bg-white p-2 border border-slate-100 rounded">
+                              R: {item.resposta}
+                            </p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    {/* Formulário para adicionar próximo porquê */}
+                    <form
+                      onSubmit={handleAdicionarPorque}
+                      className="p-4 bg-purple-50/50 border border-purple-200 rounded-md space-y-3"
+                    >
+                      <h4 className="text-xs font-bold text-slate-800">
+                        Adicionar Próximo Nível (Porquê #
+                        {(investigacaoAtiva.cinco_porques?.length || 0) + 1})
+                      </h4>
+                      <input
+                        type="text"
+                        placeholder="Por que este problema ou efeito ocorreu?"
+                        value={novaPerguntaPorque}
+                        onChange={(e) => setNovaPerguntaPorque(e.target.value)}
+                        className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-md focus:outline-none focus:border-purple-600"
+                        required
+                      />
+                      <input
+                        type="text"
+                        placeholder="Resposta ou constatação técnica comprovada..."
+                        value={novaRespostaPorque}
+                        onChange={(e) => setNovaRespostaPorque(e.target.value)}
+                        className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-md focus:outline-none focus:border-purple-600"
+                        required
+                      />
+                      <div className="text-right">
+                        <button
+                          type="submit"
+                          className="px-3.5 py-1.5 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-md"
+                        >
+                          Registrar Resposta
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="bg-white border border-slate-200 rounded-md p-12 text-center text-slate-400 text-xs">
+                Selecione ou crie uma investigação para visualizar o estúdio de causa raiz.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Modal Nova Investigação */}
+        {modalNovaAberta && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div className="w-full max-w-md bg-white border border-slate-200 rounded-md shadow-2xl overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/50">
+                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                  Nova Investigação de Causa Raiz
+                </h3>
+                <button
+                  onClick={() => setModalNovaAberta(false)}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleCriarInvestigacao} className="p-5 space-y-3.5 text-xs">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Título da Investigação *
+                  </label>
+                  <input
+                    type="text"
+                    value={novoTitulo}
+                    onChange={(e) => setNovoTitulo(e.target.value)}
+                    placeholder="Ex: Análise de falhas de documentação técnica"
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:outline-none focus:border-purple-600"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Desvio / Problema Observado *
+                  </label>
+                  <input
+                    type="text"
+                    value={novoDesvio}
+                    onChange={(e) => setNovoDesvio(e.target.value)}
+                    placeholder="Ex: Concentração de 8 NCs de rastreabilidade"
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:outline-none focus:border-purple-600"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Indicador Afetado
+                    </label>
+                    <input
+                      type="text"
+                      value={novoIndicador}
+                      onChange={(e) => setNovoIndicador(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Squad / Equipe
+                    </label>
+                    <input
+                      type="text"
+                      value={novoSquad}
+                      onChange={(e) => setNovoSquad(e.target.value)}
+                      placeholder="Ex: Financeiro Fiscal"
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-md"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setModalNovaAberta(false)}
+                    className="px-3 py-1.5 border border-slate-300 text-slate-600 rounded-md"
                   >
-                    <Plus size={14} /> Adicionar Hipótese
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 bg-purple-700 hover:bg-purple-800 text-white font-bold rounded-md"
+                  >
+                    Abrir Investigação
                   </button>
                 </div>
-
-                {/* Grade dos 6Ms */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  
-                  {/* Método */}
-                  <div className="p-3.5 bg-slate-950/70 border border-slate-800 rounded-md">
-                    <div className="text-xs font-bold text-blue-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                      <span className="w-2 h-2 bg-blue-500 rounded-sm" /> Método
-                    </div>
-                    <ul className="space-y-1.5 text-xs text-slate-300">
-                      {ishikawaData.metodo.map((m, i) => (
-                        <li key={i} className="flex items-start gap-1.5">
-                          <span className="text-slate-600 mt-0.5">•</span>
-                          <span>{m}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* Mão de Obra */}
-                  <div className="p-3.5 bg-slate-950/70 border border-slate-800 rounded-md">
-                    <div className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                      <span className="w-2 h-2 bg-amber-500 rounded-sm" /> Mão de Obra
-                    </div>
-                    <ul className="space-y-1.5 text-xs text-slate-300">
-                      {ishikawaData.maoDeObra.map((m, i) => (
-                        <li key={i} className="flex items-start gap-1.5">
-                          <span className="text-slate-600 mt-0.5">•</span>
-                          <span>{m}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* Máquina / Sistema */}
-                  <div className="p-3.5 bg-slate-950/70 border border-slate-800 rounded-md">
-                    <div className="text-xs font-bold text-purple-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                      <span className="w-2 h-2 bg-purple-500 rounded-sm" /> Máquina / Sistema
-                    </div>
-                    <ul className="space-y-1.5 text-xs text-slate-300">
-                      {ishikawaData.maquina.map((m, i) => (
-                        <li key={i} className="flex items-start gap-1.5">
-                          <span className="text-slate-600 mt-0.5">•</span>
-                          <span>{m}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* Material */}
-                  <div className="p-3.5 bg-slate-950/70 border border-slate-800 rounded-md">
-                    <div className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                      <span className="w-2 h-2 bg-emerald-500 rounded-sm" /> Material
-                    </div>
-                    <ul className="space-y-1.5 text-xs text-slate-300">
-                      {ishikawaData.material.map((m, i) => (
-                        <li key={i} className="flex items-start gap-1.5">
-                          <span className="text-slate-600 mt-0.5">•</span>
-                          <span>{m}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* Medição */}
-                  <div className="p-3.5 bg-slate-950/70 border border-slate-800 rounded-md">
-                    <div className="text-xs font-bold text-rose-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                      <span className="w-2 h-2 bg-rose-500 rounded-sm" /> Medição
-                    </div>
-                    <ul className="space-y-1.5 text-xs text-slate-300">
-                      {ishikawaData.medicao.map((m, i) => (
-                        <li key={i} className="flex items-start gap-1.5">
-                          <span className="text-slate-600 mt-0.5">•</span>
-                          <span>{m}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* Meio Ambiente */}
-                  <div className="p-3.5 bg-slate-950/70 border border-slate-800 rounded-md">
-                    <div className="text-xs font-bold text-cyan-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                      <span className="w-2 h-2 bg-cyan-500 rounded-sm" /> Meio Ambiente
-                    </div>
-                    <ul className="space-y-1.5 text-xs text-slate-300">
-                      {ishikawaData.meioAmbiente.map((m, i) => (
-                        <li key={i} className="flex items-start gap-1.5">
-                          <span className="text-slate-600 mt-0.5">•</span>
-                          <span>{m}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                </div>
-              </div>
-            )}
-
-            {/* Aba 5 Porquês */}
-            {abaAtiva === '5porques' && (
-              <div className="space-y-4">
-                <div className="text-xs text-slate-400 mb-2">
-                  Encadeamento lógico de causa e efeito partindo do sintoma observado até a causa raiz validada.
-                </div>
-
-                <div className="space-y-3">
-                  {porques.map((p, idx) => {
-                    const isRaiz = idx === porques.length - 1;
-                    return (
-                      <div 
-                        key={p.nivel}
-                        className={`p-4 rounded-md border text-xs ${
-                          isRaiz 
-                            ? 'bg-emerald-950/30 border-emerald-500/40' 
-                            : 'bg-slate-950/60 border-slate-800'
-                        }`}
-                      >
-                        <div className="font-semibold text-slate-400 mb-1 flex items-center gap-2">
-                          <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold ${
-                            isRaiz ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-300'
-                          }`}>
-                            {p.nivel}
-                          </span>
-                          <span>{p.pergunta}</span>
-                        </div>
-                        <div className={`mt-1 pl-7 ${isRaiz ? 'font-bold text-emerald-300 text-sm' : 'text-slate-200'}`}>
-                          {p.resposta}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Ação Construtiva */}
-                <div className="pt-4 flex items-center justify-between border-t border-slate-800">
-                  <div className="flex items-center gap-2 text-xs text-emerald-400">
-                    <CheckCircle2 size={16} />
-                    <span>Causa fundamental validada empiricamente pela equipe de qualidade.</span>
-                  </div>
-                  <Link 
-                    href="/melhoria/planos?origem=INV-2026-001"
-                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-md transition-colors"
-                  >
-                    <span>Transformar em Plano de Ação 5W2H</span>
-                    <ArrowRight size={14} />
-                  </Link>
-                </div>
-              </div>
-            )}
-
+              </form>
+            </div>
           </div>
-        </div>
-
+        )}
       </div>
     </EnterpriseLayout>
+  );
+}
+
+export default function DiagnosticoPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-6 text-xs text-slate-400">Carregando estúdio de diagnóstico...</div>
+      }
+    >
+      <DiagnosticoContent />
+    </Suspense>
   );
 }

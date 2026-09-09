@@ -1,11 +1,32 @@
 'use client';
 import React, { useState, useCallback, useEffect } from 'react';
-import { X, Upload, CheckCircle, Loader2, AlertCircle, ChevronRight, Database, Info, Layers, GitMerge, FileSpreadsheet } from 'lucide-react';
+import {
+  X,
+  Upload,
+  CheckCircle,
+  Loader2,
+  AlertCircle,
+  ChevronRight,
+  Database,
+  Info,
+  Layers,
+  GitMerge,
+  FileSpreadsheet,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
-import { parseQAScoresCSV, parseNCsCSV, isCycleClosed, type CycleScoreRow, type NCRow } from '@/lib/services/dataService';
-import { importCycleDataToSupabase, isCycleClosedInSupabase } from '@/lib/services/supabaseDataService';
+import {
+  parseQAScoresCSV,
+  parseNCsCSV,
+  isCycleClosed,
+  type CycleScoreRow,
+  type NCRow,
+} from '@/lib/services/dataService';
+import {
+  importCycleDataToSupabase,
+  isCycleClosedInSupabase,
+} from '@/lib/services/supabaseDataService';
 import { processarLoteIngestao } from '@/lib/services/canonicalIngestionService';
 
 interface ImportModalProps {
@@ -89,39 +110,51 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
   // Check cycle status whenever period changes
   useEffect(() => {
     if (!periodo) return;
-    isCycleClosedInSupabase(periodo).then((isClosed) => {
-      setCycleClosedWarning(isClosed);
-    }).catch(() => {
-      setCycleClosedWarning(isCycleClosed(periodo));
-    });
+    isCycleClosedInSupabase(periodo)
+      .then((isClosed) => {
+        setCycleClosedWarning(isClosed);
+      })
+      .catch(() => {
+        setCycleClosedWarning(isCycleClosed(periodo));
+      });
   }, [periodo]);
 
-  const handleProcessWorkbook = async (file: File): Promise<{ scores: CycleScoreRow[]; ncs: NCRow[] }> => {
+  const handleProcessWorkbook = async (
+    file: File
+  ): Promise<{ scores: CycleScoreRow[]; ncs: NCRow[] }> => {
     const data = new Uint8Array(await file.arrayBuffer());
     const workbook = XLSX.read(data, { type: 'array' });
-    
+
     let scoresRows: Record<string, any>[] = [];
     let ncRows: Record<string, any>[] = [];
 
     const sheetNames = workbook.SheetNames;
-    const scoresSheetName = sheetNames.find(s => 
-      normalizeStr(s).includes('resultado') || 
-      normalizeStr(s).includes('qualidade') || 
-      normalizeStr(s).includes('scores')
-    ) || sheetNames[0];
+    const scoresSheetName =
+      sheetNames.find(
+        (s) =>
+          normalizeStr(s).includes('resultado') ||
+          normalizeStr(s).includes('qualidade') ||
+          normalizeStr(s).includes('scores')
+      ) || sheetNames[0];
 
-    const ncSheetName = sheetNames.find(s => 
-      normalizeStr(s).includes('naoconformidade') || 
-      normalizeStr(s).includes('nao_conformidade') ||
-      normalizeStr(s).includes('nc')
+    const ncSheetName = sheetNames.find(
+      (s) =>
+        normalizeStr(s).includes('naoconformidade') ||
+        normalizeStr(s).includes('nao_conformidade') ||
+        normalizeStr(s).includes('nc')
     );
 
     if (scoresSheetName && workbook.Sheets[scoresSheetName]) {
-      scoresRows = XLSX.utils.sheet_to_json(workbook.Sheets[scoresSheetName], { defval: '' }) as Record<string, any>[];
+      scoresRows = XLSX.utils.sheet_to_json(workbook.Sheets[scoresSheetName], {
+        defval: '',
+      }) as Record<string, any>[];
     }
 
     if (ncSheetName && workbook.Sheets[ncSheetName]) {
-      ncRows = XLSX.utils.sheet_to_json(workbook.Sheets[ncSheetName], { defval: '' }) as Record<string, any>[];
+      ncRows = XLSX.utils.sheet_to_json(workbook.Sheets[ncSheetName], { defval: '' }) as Record<
+        string,
+        any
+      >[];
     }
 
     const parsedScores = parseQAScoresCSV(scoresRows, periodo);
@@ -130,97 +163,115 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
     return { scores: parsedScores, ncs: parsedNCs };
   };
 
-  const handleFileDrop = useCallback(async (file: File) => {
-    setImportError(null);
-    const ext = file.name.split('.').pop()?.toLowerCase();
-    if (!['csv', 'xlsx', 'xls'].includes(ext || '')) {
-      toast.error('Formato inválido. Envie um arquivo .xlsx, .xls ou .csv.');
-      return;
-    }
-
-    try {
-      let parsedScores: CycleScoreRow[] = [];
-      let parsedNCs: NCRow[] = [];
-      let totalRows = 0;
-
-      if (selectedType === 'dataset_analitico' && (ext === 'xlsx' || ext === 'xls')) {
-        const result = await handleProcessWorkbook(file);
-        parsedScores = result.scores;
-        parsedNCs = result.ncs;
-        totalRows = parsedScores.length + parsedNCs.length;
-      } else if (ext === 'csv') {
-        const text = await file.text();
-        const results = await new Promise<Papa.ParseResult<Record<string, any>>>((resolve, reject) => {
-          Papa.parse(text, { header: true, skipEmptyLines: true, complete: resolve, error: reject });
-        });
-        const rows = results.data;
-        totalRows = rows.length;
-        if (selectedType === 'ncs') {
-          parsedNCs = parseNCsCSV(rows, periodo);
-        } else {
-          parsedScores = parseQAScoresCSV(rows, periodo);
-        }
-      } else {
-        // Fallback single sheet XLSX
-        const data = new Uint8Array(await file.arrayBuffer());
-        const wb = XLSX.read(data, { type: 'array' });
-        const sheet = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' }) as Record<string, any>[];
-        totalRows = rows.length;
-        if (selectedType === 'ncs') {
-          parsedNCs = parseNCsCSV(rows, periodo);
-        } else {
-          parsedScores = parseQAScoresCSV(rows, periodo);
-        }
+  const handleFileDrop = useCallback(
+    async (file: File) => {
+      setImportError(null);
+      const ext = file.name.split('.').pop()?.toLowerCase();
+      if (!['csv', 'xlsx', 'xls'].includes(ext || '')) {
+        toast.error('Formato inválido. Envie um arquivo .xlsx, .xls ou .csv.');
+        return;
       }
 
-      const qaAvg = parsedScores.length > 0 ? parsedScores.reduce((s, r) => s + r.nota_final_qa, 0) / parsedScores.length : null;
-      const iepcAvg = parsedScores.length > 0 ? parsedScores.reduce((s, r) => s + r.iepc_total, 0) / parsedScores.length : null;
-      const totalNCs = parsedNCs.length || (parsedScores.reduce((s, r) => s + (r.total_ncs || 0), 0) || null);
-      const ncTotalPontos = parsedNCs.length > 0 ? parsedNCs.reduce((s, r) => s + r.pontos_deduzidos, 0) : null;
+      try {
+        let parsedScores: CycleScoreRow[] = [];
+        let parsedNCs: NCRow[] = [];
+        let totalRows = 0;
 
-      // Ingestão canônica pré-validação
-      const canonicalPayload = parsedScores.map((s) => ({
-        equipe_nome: s.squad,
-        analista_identificador: s.analista.toLowerCase().replace(/\s+/g, '_'),
-        analista_nome: s.analista,
-        coordenador_nome: s.coordenador,
-        auditor_nome: s.auditor,
-        periodo: s.periodo || periodo,
-        nota_final_qa: s.nota_final_qa,
-        indice_iepc: s.iepc_total,
-        total_ncs: s.total_ncs || 0,
-        pontos_deduzidos_nc: s.pontos_deduzidos_nc || 0,
-      }));
+        if (selectedType === 'dataset_analitico' && (ext === 'xlsx' || ext === 'xls')) {
+          const result = await handleProcessWorkbook(file);
+          parsedScores = result.scores;
+          parsedNCs = result.ncs;
+          totalRows = parsedScores.length + parsedNCs.length;
+        } else if (ext === 'csv') {
+          const text = await file.text();
+          const results = await new Promise<Papa.ParseResult<Record<string, any>>>(
+            (resolve, reject) => {
+              Papa.parse(text, {
+                header: true,
+                skipEmptyLines: true,
+                complete: resolve,
+                error: reject,
+              });
+            }
+          );
+          const rows = results.data;
+          totalRows = rows.length;
+          if (selectedType === 'ncs') {
+            parsedNCs = parseNCsCSV(rows, periodo);
+          } else {
+            parsedScores = parseQAScoresCSV(rows, periodo);
+          }
+        } else {
+          // Fallback single sheet XLSX
+          const data = new Uint8Array(await file.arrayBuffer());
+          const wb = XLSX.read(data, { type: 'array' });
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' }) as Record<string, any>[];
+          totalRows = rows.length;
+          if (selectedType === 'ncs') {
+            parsedNCs = parseNCsCSV(rows, periodo);
+          } else {
+            parsedScores = parseQAScoresCSV(rows, periodo);
+          }
+        }
 
-      const canonicalCheck = await processarLoteIngestao('modal_upload', canonicalPayload);
+        const qaAvg =
+          parsedScores.length > 0
+            ? parsedScores.reduce((s, r) => s + r.nota_final_qa, 0) / parsedScores.length
+            : null;
+        const iepcAvg =
+          parsedScores.length > 0
+            ? parsedScores.reduce((s, r) => s + r.iepc_total, 0) / parsedScores.length
+            : null;
+        const totalNCs =
+          parsedNCs.length || parsedScores.reduce((s, r) => s + (r.total_ncs || 0), 0) || null;
+        const ncTotalPontos =
+          parsedNCs.length > 0 ? parsedNCs.reduce((s, r) => s + r.pontos_deduzidos, 0) : null;
 
-      setValidationSummary({
-        totalRows,
-        qaAvg,
-        iepcAvg,
-        totalNCs,
-        ncRows: parsedNCs.length || null,
-        ncTotalPontos,
-        parsedScores,
-        parsedNCs,
-        discardedRows: canonicalCheck.totalRejeitado,
-        canonicalErrors: canonicalCheck.erros,
-      });
+        // Ingestão canônica pré-validação
+        const canonicalPayload = parsedScores.map((s) => ({
+          equipe_nome: s.squad,
+          analista_identificador: s.analista.toLowerCase().replace(/\s+/g, '_'),
+          analista_nome: s.analista,
+          coordenador_nome: s.coordenador,
+          auditor_nome: s.auditor,
+          periodo: s.periodo || periodo,
+          nota_final_qa: s.nota_final_qa,
+          indice_iepc: s.iepc_total,
+          total_ncs: s.total_ncs || 0,
+          pontos_deduzidos_nc: s.pontos_deduzidos_nc || 0,
+        }));
 
-      setFileEntry({
-        type: selectedType || 'dataset_analitico',
-        label: FILE_TYPE_OPTIONS.find((t) => t.type === selectedType)?.label || 'Arquivo',
-        name: file.name,
-        status: 'pending',
-        rows: [],
-      });
+        const canonicalCheck = await processarLoteIngestao('modal_upload', canonicalPayload);
 
-      setStep('validate');
-    } catch (err: any) {
-      toast.error('Erro ao processar arquivo: ' + (err.message || 'Arquivo corrompido'));
-    }
-  }, [selectedType, periodo]);
+        setValidationSummary({
+          totalRows,
+          qaAvg,
+          iepcAvg,
+          totalNCs,
+          ncRows: parsedNCs.length || null,
+          ncTotalPontos,
+          parsedScores,
+          parsedNCs,
+          discardedRows: canonicalCheck.totalRejeitado,
+          canonicalErrors: canonicalCheck.erros,
+        });
+
+        setFileEntry({
+          type: selectedType || 'dataset_analitico',
+          label: FILE_TYPE_OPTIONS.find((t) => t.type === selectedType)?.label || 'Arquivo',
+          name: file.name,
+          status: 'pending',
+          rows: [],
+        });
+
+        setStep('validate');
+      } catch (err: any) {
+        toast.error('Erro ao processar arquivo: ' + (err.message || 'Arquivo corrompido'));
+      }
+    },
+    [selectedType, periodo]
+  );
 
   const handleConfirmImport = async () => {
     if (!validationSummary) return;
@@ -228,20 +279,55 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
     setImportError(null);
 
     try {
-      const result = await importCycleDataToSupabase(
-        validationSummary.parsedScores,
-        validationSummary.parsedNCs,
-        [], // strictly zero legacy elogios
+      // Preparar payload canônico unificado
+      const canonicalRows = validationSummary.parsedScores.map((s) => ({
+        equipe_nome: s.squad,
+        analista_identificador: s.analista.toLowerCase().replace(/\s+/g, '_'),
+        analista_nome: s.analista,
+        coordenador_nome: s.coordenador,
+        auditor_nome: s.auditor,
+        periodo: s.periodo || periodo,
+        data_registro: s.data_registro,
+        nota_final_qa: s.nota_final_qa,
+        indice_iepc: s.iepc_total,
+        total_ncs: s.total_ncs || 0,
+        pontos_deduzidos_nc: s.pontos_deduzidos_nc || 0,
+        p1: s.p1,
+        p2: s.p2,
+        p3: s.p3,
+        p4: s.p4,
+        p5: s.p5,
+        e1: s.e1,
+        e2: s.e2,
+        e3: s.e3,
+        e4: s.e4,
+        e5: s.e5,
+        nao_conformidades: validationSummary.parsedNCs
+          .filter((n) => n.analista === s.analista)
+          .map((n) => ({
+            tipo_nc: n.tipo_nc,
+            pontos_deduzidos: n.pontos_deduzidos,
+            protocolo_referencia: n.protocolo_referencia,
+            data_registro: n.data_registro,
+            evidencia_resumo: n.descricao,
+          })),
+      }));
+
+      const { executarIngestaoCanonicaLote } =
+        await import('@/lib/services/canonicalIngestionService');
+      const result = await executarIngestaoCanonicaLote(
+        'modal_upload',
         periodo,
-        fileEntry?.name || 'importacao'
+        canonicalRows,
+        fileEntry?.name || 'importacao.xlsx'
       );
 
-      if (!result.success) {
-        throw new Error(result.error || 'Erro ao persistir no Supabase');
+      if (!result.sucesso) {
+        throw new Error(result.erros.join(' | ') || result.mensagem);
       }
 
       setStep('done');
-      toast.success('Dados importados com sucesso para o QualiVisão!');
+      toast.success(result.mensagem);
       onImportSuccess?.();
     } catch (err: any) {
       setImportError(err.message || 'Erro durante a persistência.');
@@ -290,7 +376,8 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
               <div>
                 <p className="text-xs font-semibold text-red-800">Ciclo {periodo} Homologado</p>
                 <p className="text-xs text-red-700 mt-0.5">
-                  Este ciclo já foi fechado e homologado para integridade histórica. Reabra o ciclo na governança antes de importar novos dados.
+                  Este ciclo já foi fechado e homologado para integridade histórica. Reabra o ciclo
+                  na governança antes de importar novos dados.
                 </p>
               </div>
             </div>
@@ -363,7 +450,9 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-slate-500">
                   Ciclo: <strong className="text-slate-800">{periodo}</strong> | Tipo:{' '}
-                  <strong className="text-slate-800">{FILE_TYPE_OPTIONS.find(t => t.type === selectedType)?.label}</strong>
+                  <strong className="text-slate-800">
+                    {FILE_TYPE_OPTIONS.find((t) => t.type === selectedType)?.label}
+                  </strong>
                 </span>
                 <button
                   onClick={() => setStep('choose-mode')}
@@ -374,7 +463,10 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
               </div>
 
               <div
-                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={(e) => {
                   e.preventDefault();
@@ -383,7 +475,9 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
                   if (file) handleFileDrop(file);
                 }}
                 className={`border-2 border-dashed rounded-md p-8 text-center transition-colors cursor-pointer ${
-                  isDragging ? 'border-blue-600 bg-blue-50/50' : 'border-slate-300 hover:border-blue-500 bg-slate-50/50'
+                  isDragging
+                    ? 'border-blue-600 bg-blue-50/50'
+                    : 'border-slate-300 hover:border-blue-500 bg-slate-50/50'
                 }`}
                 onClick={() => {
                   const input = document.createElement('input');
@@ -401,7 +495,8 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
                   Clique ou arraste o arquivo XLSX / CSV aqui
                 </p>
                 <p className="text-[11px] text-slate-500 mt-1">
-                  Exemplo: <code className="text-blue-700 font-mono">dataset_analitico_qa_08-2026.xlsx</code>
+                  Exemplo:{' '}
+                  <code className="text-blue-700 font-mono">dataset_analitico_qa_08-2026.xlsx</code>
                 </p>
               </div>
             </div>
@@ -428,7 +523,9 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
                 <div className="p-3 bg-white border border-slate-200 rounded-md">
                   <p className="text-[10px] uppercase font-bold text-slate-400">Média QA</p>
                   <p className="text-base font-bold text-blue-700 mt-0.5">
-                    {validationSummary.qaAvg !== null ? `${validationSummary.qaAvg.toFixed(1)}%` : '—'}
+                    {validationSummary.qaAvg !== null
+                      ? `${validationSummary.qaAvg.toFixed(1)}%`
+                      : '—'}
                   </p>
                 </div>
                 <div className="p-3 bg-white border border-slate-200 rounded-md">
@@ -439,18 +536,19 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
                 </div>
               </div>
 
-              {validationSummary.canonicalErrors && validationSummary.canonicalErrors.length > 0 && (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
-                  <p className="text-xs font-bold text-amber-800 mb-1">
-                    Avisos de Ingestão ({validationSummary.canonicalErrors.length})
-                  </p>
-                  <ul className="text-[11px] text-amber-700 list-disc list-inside space-y-0.5 max-h-24 overflow-y-auto">
-                    {validationSummary.canonicalErrors.slice(0, 5).map((err, i) => (
-                      <li key={i}>{err}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              {validationSummary.canonicalErrors &&
+                validationSummary.canonicalErrors.length > 0 && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
+                    <p className="text-xs font-bold text-amber-800 mb-1">
+                      Avisos de Ingestão ({validationSummary.canonicalErrors.length})
+                    </p>
+                    <ul className="text-[11px] text-amber-700 list-disc list-inside space-y-0.5 max-h-24 overflow-y-auto">
+                      {validationSummary.canonicalErrors.slice(0, 5).map((err, i) => (
+                        <li key={i}>{err}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
               {importError && (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-md flex items-start gap-2">
@@ -490,11 +588,10 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
               <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-md flex items-center justify-center mx-auto">
                 <CheckCircle size={24} />
               </div>
-              <h3 className="text-sm font-bold text-slate-900">
-                Ingestão Concluída com Sucesso!
-              </h3>
+              <h3 className="text-sm font-bold text-slate-900">Ingestão Concluída com Sucesso!</h3>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                Os resultados de qualidade do ciclo {periodo} foram devidamente processados e estão disponíveis para medição, Pareto e diagnósticos.
+                Os resultados de qualidade do ciclo {periodo} foram devidamente processados e estão
+                disponíveis para medição, Pareto e diagnósticos.
               </p>
               <div className="pt-3">
                 <button

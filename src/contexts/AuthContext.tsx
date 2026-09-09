@@ -49,11 +49,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<any>(null);
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [userProfile, setUserProfile] = useState<{ full_name: string; role: string; avatar?: string } | null>(null);
+  const [userProfile, setUserProfile] = useState<{
+    full_name: string;
+    role: string;
+    avatar?: string;
+  } | null>(null);
 
   // Derive profile from auth user — no DB call needed for basic display
   const deriveProfile = (authUser: User | null) => {
-    if (!authUser) { setUserProfile(null); return; }
+    if (!authUser) {
+      setUserProfile(null);
+      return;
+    }
     const email: string = authUser.email || '';
     const metaName: string = authUser.user_metadata?.full_name || '';
     const role = ADMIN_EMAILS.includes(email.toLowerCase()) ? 'Admin' : 'Usuário';
@@ -69,35 +76,39 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
 
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }: { data: { session: Session | null } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-      deriveProfile(session?.user ?? null);
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }: { data: { session: Session | null } }) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setLoading(false);
+        deriveProfile(session?.user ?? null);
+      });
 
     // Listen for auth changes
     const {
-      data: { subscription }
-    } = supabase.auth.onAuthStateChange(async (_event: AuthChangeEvent, session: Session | null) => {
-      // On sign-in, verify whitelist
-      if (_event === 'SIGNED_IN' && session?.user) {
-        const allowed = await isEmailWhitelisted(supabase, session.user.email || '');
-        if (!allowed) {
-          console.warn('[AUTH] Email not whitelisted, signing out:', session.user.email);
-          await supabase.auth.signOut();
-          setSession(null);
-          setUser(null);
-          setLoading(false);
-          setUserProfile(null);
-          return;
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(
+      async (_event: AuthChangeEvent, session: Session | null) => {
+        // On sign-in, verify whitelist
+        if (_event === 'SIGNED_IN' && session?.user) {
+          const allowed = await isEmailWhitelisted(supabase, session.user.email || '');
+          if (!allowed) {
+            console.warn('[AUTH] Email not whitelisted, signing out:', session.user.email);
+            await supabase.auth.signOut();
+            setSession(null);
+            setUser(null);
+            setLoading(false);
+            setUserProfile(null);
+            return;
+          }
         }
+        setSession(session);
+        setUser(session?.user ?? null);
+        setLoading(false);
+        deriveProfile(session?.user ?? null);
       }
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-      deriveProfile(session?.user ?? null);
-    });
+    );
 
     return () => subscription.unsubscribe();
   }, []);
@@ -112,10 +123,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       options: {
         data: {
           full_name: (metadata as any)?.fullName || '',
-          avatar_url: (metadata as any)?.avatarUrl || ''
+          avatar_url: (metadata as any)?.avatarUrl || '',
         },
-        emailRedirectTo: `${window.location.origin}/auth/callback`
-      }
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
     });
     if (error) throw error;
     return data;
@@ -127,7 +138,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (!supabase) throw new Error('Supabase client not available');
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
-      password
+      password,
     });
     if (error) throw error;
     return data;
@@ -145,7 +156,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const getCurrentUser = async () => {
     const supabase = createClient();
     if (!supabase) throw new Error('Supabase client not available');
-    const { data: { user }, error } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
     if (error) throw error;
     return user;
   };
@@ -179,7 +193,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     signOut,
     getCurrentUser,
     isEmailVerified,
-    getUserProfile
+    getUserProfile,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

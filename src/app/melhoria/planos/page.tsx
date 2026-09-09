@@ -1,333 +1,569 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
-import { 
-  CheckSquare, 
-  Clock, 
-  AlertCircle, 
-  Plus, 
-  Calendar, 
-  User, 
-  Target, 
-  ArrowUpRight,
+import {
+  CheckSquare,
+  Clock,
+  AlertCircle,
+  Plus,
+  Calendar,
+  User,
+  Target,
   Filter,
   CheckCircle2,
-  ChevronRight,
   DollarSign,
-  HelpCircle
+  HelpCircle,
+  RefreshCw,
+  X,
+  Edit2,
+  Award,
 } from 'lucide-react';
-import Link from 'next/link';
+import {
+  fetchPlanos5W2H,
+  salvarPlano5W2H,
+  registrarResultadoEficacia,
+  fetchCiclos,
+} from '@/lib/services/qualityDataService';
+import { PlanoAcao5W2H, StatusPlano5W2H, Ciclo } from '@/lib/domain/types';
+import { toast } from 'sonner';
 
-interface Plano5W2H {
-  id: string;
-  what: string;
-  why: string;
-  where: string;
-  who: string;
-  when: string;
-  how: string;
-  howMuch: string;
-  indicadorAlvo: string;
-  status: 'em_execucao' | 'concluido' | 'aguardando_eficacia' | 'padronizado';
-  prazoEficaciaDias: number; // Configurável por ação (ex: 30, 45, 60 dias)
-}
+function PlanosMelhoriaContent() {
+  const searchParams = useSearchParams();
 
-const PLANOS_INICIAIS: Plano5W2H[] = [
-  {
-    id: 'ACT-2026-001',
-    what: 'Implementar checklist obrigatório de documentação técnica no encerramento de chamados fiscais',
-    why: 'Eliminar a causa raiz de Não Conformidades de Registro e Rastreabilidade no Suporte Fiscal',
-    where: 'Ferramenta de Atendimento (SPA / Suporte Fiscal)',
-    who: 'Amanda Cristina (Coordenação)',
-    when: '15/09/2026',
-    how: 'Parametrização de validação de campo técnico antes de permitir status "Resolvido" no chamado.',
-    howMuch: 'R$ 0 (Configuração interna de sistema)',
-    indicadorAlvo: 'Reduzir NCs da equipe Financeiro Fiscal para zero no ciclo 09/2026',
-    status: 'em_execucao',
-    prazoEficaciaDias: 30,
-  },
-  {
-    id: 'ACT-2026-002',
-    what: 'Treinamento e alinhamento prático sobre critérios de formalização de chamados em SUP',
-    why: 'Recuperar o aproveitamento do subcritério P1.2 (Uso e Formalização do SUP)',
-    where: 'Equipe de Atendimento PDV',
-    who: 'Ayron Silva (Coordenação)',
-    when: '10/09/2026',
-    how: 'Workshop de 45 minutos com análise comparativa de casos reais e apresentação do manual normativo.',
-    howMuch: '2 horas de equipe',
-    indicadorAlvo: 'Elevar aproveitamento de P1.2 de 72% para >= 90% no ciclo 09/2026',
-    status: 'concluido',
-    prazoEficaciaDias: 30,
-  },
-];
+  const investigacaoIdParam = searchParams.get('investigacao_id');
+  const tituloParam = searchParams.get('titulo');
+  const causaParam = searchParams.get('causa');
+  const periodoParam = searchParams.get('periodo');
 
-export default function PlanosMelhoriaPage() {
-  const [planos, setPlanos] = useState<Plano5W2H[]>(PLANOS_INICIAIS);
+  const [ciclos, setCiclos] = useState<Ciclo[]>([]);
+  const [cicloSelecionado, setCicloSelecionado] = useState<string>(periodoParam || '08/2026');
+  const [planos, setPlanos] = useState<PlanoAcao5W2H[]>([]);
   const [filtroStatus, setFiltroStatus] = useState<string>('todos');
-  const [modalAberto, setModalAberto] = useState(false);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  // Form state
-  const [novoWhat, setNovoWhat] = useState('');
-  const [novoWhy, setNovoWhy] = useState('');
-  const [novoWho, setNovoWho] = useState('');
-  const [novoWhen, setNovoWhen] = useState('');
-  const [novoWhere, setNovoWhere] = useState('');
-  const [novoHow, setNovoHow] = useState('');
-  const [novoHowMuch, setNovoHowMuch] = useState('R$ 0');
-  const [novoIndicador, setNovoIndicador] = useState('');
-  const [novoPrazoEficacia, setNovoPrazoEficacia] = useState(30);
+  // Modais
+  const [modalCriarAberta, setModalCriarAberta] = useState<boolean>(false);
+  const [modalEficaciaAberta, setModalEficaciaAberta] = useState<boolean>(false);
+  const [planoParaEficacia, setPlanoParaEficacia] = useState<PlanoAcao5W2H | null>(null);
 
-  const handleCriarPlano = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!novoWhat || !novoWho || !novoWhen) return;
+  // Form de criação 5W2H
+  const [formWhat, setFormWhat] = useState<string>('');
+  const [formWhy, setFormWhy] = useState<string>(
+    causaParam ? `Eliminar causa raiz: ${causaParam}` : ''
+  );
+  const [formWhere, setFormWhere] = useState<string>('Operação');
+  const [formWho, setFormWho] = useState<string>('');
+  const [formWhen, setFormWhen] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [formHow, setFormHow] = useState<string>('');
+  const [formHowMuch, setFormHowMuch] = useState<string>('R$ 0');
+  const [formIndicador, setFormIndicador] = useState<string>('');
+  const [formMeta, setFormMeta] = useState<string>('');
+  const [formPrazoEficacia, setFormPrazoEficacia] = useState<number>(30);
 
-    const novoPlano: Plano5W2H = {
-      id: `ACT-2026-${String(planos.length + 1).padStart(3, '0')}`,
-      what: novoWhat,
-      why: novoWhy || 'Melhoria contínua de processo',
-      where: novoWhere || 'Operação',
-      who: novoWho,
-      when: novoWhen,
-      how: novoHow || 'Execução de procedimento padrão',
-      howMuch: novoHowMuch || 'R$ 0',
-      indicadorAlvo: novoIndicador || 'Melhoria de indicador geral',
-      status: 'em_execucao',
-      prazoEficaciaDias: Number(novoPrazoEficacia),
-    };
+  // Form resultado eficácia
+  const [resultadoEficaciaTexto, setResultadoEficaciaTexto] = useState<string>('');
+  const [eficaciaAtingida, setEficaciaAtingida] = useState<boolean>(true);
 
-    setPlanos([novoPlano, ...planos]);
-    setModalAberto(false);
-    setNovoWhat('');
-    setNovoWhy('');
-    setNovoWho('');
-    setNovoWhen('');
-    setNovoWhere('');
-    setNovoHow('');
+  // Carregar ciclos
+  useEffect(() => {
+    fetchCiclos().then((lista) => {
+      setCiclos(lista);
+      if (lista.length > 0 && !periodoParam) {
+        setCicloSelecionado(lista[0].periodo);
+      }
+    });
+  }, [periodoParam]);
+
+  // Carregar planos reais do Supabase
+  const carregarPlanos = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchPlanos5W2H(cicloSelecionado);
+      setPlanos(data);
+    } catch (err) {
+      console.error('Erro ao carregar planos 5W2H:', err);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  useEffect(() => {
+    if (cicloSelecionado) {
+      carregarPlanos();
+    }
+  }, [cicloSelecionado]);
+
+  // Se veio redirecionado de uma investigação validada, abre o modal pré-preenchido
+  useEffect(() => {
+    if (investigacaoIdParam && !loading) {
+      setFormWhat(`Ação Corretiva: ${tituloParam || 'Tratativa de Não Conformidade'}`);
+      setFormWhy(causaParam ? `Eliminar causa raiz validada: ${causaParam}` : 'Melhoria contínua');
+      setModalCriarAberta(true);
+    }
+  }, [investigacaoIdParam, tituloParam, causaParam, loading]);
+
+  const handleSalvarPlano = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formWhat || !formWho || !formWhen) {
+      toast.error('Preencha os campos obrigatórios (O que, Quem, Quando).');
+      return;
+    }
+
+    try {
+      const res = await salvarPlano5W2H({
+        periodo: cicloSelecionado,
+        investigacao_id: investigacaoIdParam || undefined,
+        titulo: formWhat,
+        o_que: formWhat,
+        por_que: formWhy,
+        onde: formWhere,
+        quem: formWho,
+        quando: formWhen,
+        como: formHow,
+        quanto: formHowMuch,
+        indicador_alvo: formIndicador,
+        meta_alvo: formMeta,
+        prazo_eficacia_dias: formPrazoEficacia,
+        status: 'em_execucao',
+      });
+
+      if (res.success) {
+        toast.success('Plano de Ação 5W2H registrado com sucesso!');
+        setModalCriarAberta(false);
+        setFormWhat('');
+        setFormWhy('');
+        setFormWho('');
+        setFormHow('');
+        await carregarPlanos();
+      } else {
+        toast.error('Erro ao salvar plano: ' + res.error);
+      }
+    } catch (err: any) {
+      toast.error('Erro: ' + err.message);
+    }
+  };
+
+  const handleAtualizarStatus = async (plano: PlanoAcao5W2H, novoStatus: StatusPlano5W2H) => {
+    if (novoStatus === 'eficaz' || novoStatus === 'ineficaz') {
+      setPlanoParaEficacia(plano);
+      setModalEficaciaAberta(true);
+      return;
+    }
+
+    try {
+      await salvarPlano5W2H({
+        id: plano.id,
+        status: novoStatus,
+      });
+      toast.success(`Status atualizado para: ${novoStatus}`);
+      await carregarPlanos();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  const handleConfirmarEficacia = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!planoParaEficacia || !resultadoEficaciaTexto.trim()) return;
+
+    try {
+      const res = await registrarResultadoEficacia(
+        planoParaEficacia.id,
+        resultadoEficaciaTexto.trim(),
+        eficaciaAtingida
+      );
+
+      if (res.success) {
+        toast.success('Resultado de eficácia registrado com sucesso!');
+        setModalEficaciaAberta(false);
+        setPlanoParaEficacia(null);
+        setResultadoEficaciaTexto('');
+        await carregarPlanos();
+      } else {
+        toast.error('Erro ao registrar eficácia: ' + res.error);
+      }
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  const planosFiltrados = planos.filter((p) => {
+    return filtroStatus === 'todos' || p.status === filtroStatus;
+  });
 
   return (
     <EnterpriseLayout>
       <div className="p-6 max-w-7xl mx-auto space-y-6">
-        
-        {/* Banner de Cabeçalho */}
-        <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-slate-900 border border-slate-800 rounded-md">
+        {/* Banner de Contexto */}
+        <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-white border border-slate-200 rounded-md shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-md">
+            <div className="p-2 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-md">
               <CheckSquare size={18} />
             </div>
             <div>
-              <div className="text-xs text-slate-400 font-mono uppercase tracking-wider">Módulo de Melhoria Contínua</div>
-              <h1 className="text-sm font-semibold text-white">Planos de Ação 5W2H & Governança de Eficácia</h1>
+              <div className="text-xs text-slate-400 font-mono uppercase tracking-wider">
+                Módulo de Melhoria
+              </div>
+              <h1 className="text-sm font-bold text-slate-900">
+                Planos de Ação 5W2H & Aferição de Eficácia
+              </h1>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setModalAberto(true)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded-md transition-colors"
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs text-slate-700">
+              <Calendar size={14} className="text-slate-500" />
+              <span className="font-semibold">Ciclo:</span>
+              <select
+                value={cicloSelecionado}
+                onChange={(e) => setCicloSelecionado(e.target.value)}
+                className="bg-transparent text-slate-900 font-bold focus:outline-none cursor-pointer"
+              >
+                {ciclos.map((c) => (
+                  <option key={c.periodo} value={c.periodo}>
+                    {c.identificacao}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              onClick={() => setModalCriarAberta(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-md transition-colors"
             >
-              <Plus size={14} />
-              <span>Novo Plano 5W2H</span>
+              <Plus size={14} /> Novo Plano 5W2H
             </button>
           </div>
         </div>
 
-        {/* Resumo de Ações */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 bg-slate-900 border border-slate-800 rounded-md">
-            <div className="text-xs text-slate-400">Ações em Andamento</div>
-            <div className="text-2xl font-bold text-white mt-1">
+        {/* Barra de Filtros e Totalizadores */}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div className="p-3.5 bg-white border border-slate-200 rounded-md shadow-sm">
+            <span className="text-[11px] font-bold text-slate-500 uppercase">Total de Ações</span>
+            <p className="text-xl font-bold font-mono text-slate-900 mt-1">{planos.length}</p>
+          </div>
+          <div className="p-3.5 bg-white border border-slate-200 rounded-md shadow-sm">
+            <span className="text-[11px] font-bold text-blue-600 uppercase">Em Execução</span>
+            <p className="text-xl font-bold font-mono text-blue-700 mt-1">
               {planos.filter((p) => p.status === 'em_execucao').length}
-            </div>
-            <div className="text-xs text-blue-400 mt-1">Dentro dos prazos acordados</div>
+            </p>
           </div>
-
-          <div className="p-4 bg-slate-900 border border-slate-800 rounded-md">
-            <div className="text-xs text-slate-400">Ações Concluídas (Aguardando Ciclo)</div>
-            <div className="text-2xl font-bold text-white mt-1">
-              {planos.filter((p) => p.status === 'concluido').length}
-            </div>
-            <div className="text-xs text-amber-400 mt-1">Aferição no próximo fechamento</div>
+          <div className="p-3.5 bg-white border border-slate-200 rounded-md shadow-sm">
+            <span className="text-[11px] font-bold text-amber-600 uppercase">
+              Aguardando Eficácia
+            </span>
+            <p className="text-xl font-bold font-mono text-amber-700 mt-1">
+              {
+                planos.filter(
+                  (p) => p.status === 'em_afericao_eficacia' || p.status === 'concluido'
+                ).length
+              }
+            </p>
           </div>
-
-          <div className="p-4 bg-slate-900 border border-slate-800 rounded-md">
-            <div className="text-xs text-slate-400">Taxa de Eficácia Histórica</div>
-            <div className="text-2xl font-bold text-emerald-400 mt-1">100%</div>
-            <div className="text-xs text-slate-500 mt-1">Processos estabilizados pós-intervenção</div>
+          <div className="p-3.5 bg-white border border-slate-200 rounded-md shadow-sm">
+            <span className="text-[11px] font-bold text-emerald-600 uppercase">
+              Eficazes (Homologados)
+            </span>
+            <p className="text-xl font-bold font-mono text-emerald-700 mt-1">
+              {planos.filter((p) => p.status === 'eficaz').length}
+            </p>
           </div>
         </div>
 
-        {/* Tabela Canônica 5W2H */}
-        <div className="bg-slate-900 border border-slate-800 rounded-md overflow-hidden">
-          <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-white">Matriz 5W2H de Ações Corretivas e Preventivas</h3>
-            <div className="flex items-center gap-2 text-xs">
-              <Filter size={14} className="text-slate-400" />
+        {/* Tabela Matriz 5W2H */}
+        <div className="bg-white border border-slate-200 rounded-md overflow-hidden shadow-sm">
+          <div className="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50">
+            <div className="flex items-center gap-2">
+              <Filter size={15} className="text-slate-500" />
+              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Matriz de Ações de Melhoria
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3">
               <select
                 value={filtroStatus}
                 onChange={(e) => setFiltroStatus(e.target.value)}
-                className="bg-slate-800 text-slate-300 border border-slate-700 px-2.5 py-1 rounded-md focus:outline-none"
+                className="px-2.5 py-1 text-xs border border-slate-300 rounded-md text-slate-700 font-medium focus:outline-none"
               >
                 <option value="todos">Todos os Status</option>
                 <option value="em_execucao">Em Execução</option>
                 <option value="concluido">Concluído</option>
+                <option value="em_afericao_eficacia">Em Aferição</option>
+                <option value="eficaz">Eficaz</option>
+                <option value="ineficaz">Ineficaz</option>
               </select>
+
+              <button onClick={carregarPlanos} className="text-slate-400 hover:text-slate-600">
+                <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+              </button>
             </div>
           </div>
 
-          <div className="divide-y divide-slate-800">
-            {planos.map((plano) => (
-              <div key={plano.id} className="p-5 hover:bg-slate-800/30 transition-colors space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2.5">
-                    <span className="font-mono text-xs font-bold text-blue-400">{plano.id}</span>
-                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium uppercase tracking-wider ${
-                      plano.status === 'em_execucao'
-                        ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                        : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                    }`}>
-                      {plano.status === 'em_execucao' ? 'Em Execução' : 'Concluído'}
-                    </span>
-                  </div>
-                  <div className="text-xs text-slate-400 flex items-center gap-3">
-                    <span className="flex items-center gap-1"><User size={12} /> {plano.who}</span>
-                    <span className="flex items-center gap-1 font-mono text-white"><Calendar size={12} /> Até {plano.when}</span>
-                  </div>
-                </div>
-
-                <div className="text-sm font-semibold text-white">{plano.what}</div>
-
-                {/* Grade 5W2H detalhada */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs pt-2">
-                  <div className="p-2.5 bg-slate-950/60 border border-slate-800/80 rounded-md">
-                    <span className="text-slate-500 block font-mono text-[10px] uppercase">Why (Por quê / Causa)</span>
-                    <span className="text-slate-300 mt-0.5 block">{plano.why}</span>
-                  </div>
-                  <div className="p-2.5 bg-slate-950/60 border border-slate-800/80 rounded-md">
-                    <span className="text-slate-500 block font-mono text-[10px] uppercase">How (Como / Método)</span>
-                    <span className="text-slate-300 mt-0.5 block">{plano.how}</span>
-                  </div>
-                  <div className="p-2.5 bg-slate-950/60 border border-slate-800/80 rounded-md">
-                    <span className="text-slate-500 block font-mono text-[10px] uppercase">Where (Onde / Célula)</span>
-                    <span className="text-slate-300 mt-0.5 block">{plano.where}</span>
-                  </div>
-                  <div className="p-2.5 bg-slate-950/60 border border-slate-800/80 rounded-md">
-                    <span className="text-slate-500 block font-mono text-[10px] uppercase">Meta de Eficácia ({plano.prazoEficaciaDias}d)</span>
-                    <span className="text-emerald-400 font-medium mt-0.5 block">{plano.indicadorAlvo}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-4 py-3">O quê (What) & Por quê (Why)</th>
+                  <th className="px-4 py-3">Quem (Who)</th>
+                  <th className="px-4 py-3">Quando (When)</th>
+                  <th className="px-4 py-3">Como (How) & Quanto (Cost)</th>
+                  <th className="px-4 py-3">Meta & Eficácia</th>
+                  <th className="px-4 py-3 text-center">Status</th>
+                  <th className="px-4 py-3 text-right">Ação</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loading ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
+                      Carregando planos do banco de dados...
+                    </td>
+                  </tr>
+                ) : planosFiltrados.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
+                      Nenhum plano 5W2H cadastrado para este ciclo.
+                    </td>
+                  </tr>
+                ) : (
+                  planosFiltrados.map((plano) => (
+                    <tr key={plano.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="px-4 py-3 max-w-xs">
+                        <div className="font-bold text-slate-900">{plano.o_que}</div>
+                        <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">
+                          <strong>Motivo:</strong> {plano.por_que}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 font-medium text-slate-700">{plano.quem}</td>
+                      <td className="px-4 py-3 font-mono text-slate-600">{plano.quando}</td>
+                      <td className="px-4 py-3 max-w-xs">
+                        <div className="text-slate-800 line-clamp-1">{plano.como}</div>
+                        <div className="text-[11px] text-slate-500 font-mono">
+                          Custo: {plano.quanto}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-semibold text-blue-700">{plano.indicador_alvo}</div>
+                        <div className="text-[11px] text-slate-500">
+                          Prazo: {plano.prazo_eficacia_dias} dias
+                          {plano.data_limite_eficacia && ` (até ${plano.data_limite_eficacia})`}
+                        </div>
+                        {plano.resultado_eficacia && (
+                          <div className="text-[11px] font-medium text-emerald-800 mt-1 bg-emerald-50 p-1 rounded">
+                            Res: {plano.resultado_eficacia}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            plano.status === 'eficaz'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : plano.status === 'ineficaz'
+                                ? 'bg-red-50 text-red-700 border border-red-200'
+                                : plano.status === 'em_execucao'
+                                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                  : 'bg-amber-50 text-amber-700 border border-amber-200'
+                          }`}
+                        >
+                          {plano.status.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {plano.status !== 'eficaz' && plano.status !== 'ineficaz' && (
+                            <button
+                              onClick={() => {
+                                setPlanoParaEficacia(plano);
+                                setModalEficaciaAberta(true);
+                              }}
+                              className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded text-[11px] font-bold"
+                              title="Avaliar se a ação atingiu o resultado esperado"
+                            >
+                              Aferir Eficácia
+                            </button>
+                          )}
+                          <select
+                            value={plano.status}
+                            onChange={(e) =>
+                              handleAtualizarStatus(plano, e.target.value as StatusPlano5W2H)
+                            }
+                            className="text-[11px] border border-slate-200 rounded p-1 bg-white"
+                          >
+                            <option value="planejado">Planejado</option>
+                            <option value="em_execucao">Em Execução</option>
+                            <option value="concluido">Concluído</option>
+                            <option value="em_afericao_eficacia">Em Aferição</option>
+                          </select>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
 
-        {/* Modal para Novo Plano 5W2H */}
-        {modalAberto && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-md max-w-xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <h3 className="text-sm font-semibold text-white">Novo Plano de Ação 5W2H</h3>
-                <button onClick={() => setModalAberto(false)} className="text-slate-400 hover:text-white">&times;</button>
+        {/* Modal Novo Plano 5W2H */}
+        {modalCriarAberta && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div className="w-full max-w-lg bg-white border border-slate-200 rounded-md shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                  Novo Plano de Ação 5W2H
+                </h3>
+                <button
+                  onClick={() => setModalCriarAberta(false)}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X size={16} />
+                </button>
               </div>
 
-              <form onSubmit={handleCriarPlano} className="space-y-3 text-xs">
+              <form
+                onSubmit={handleSalvarPlano}
+                className="p-6 space-y-3.5 text-xs overflow-y-auto flex-1"
+              >
                 <div>
-                  <label className="block text-slate-400 mb-1">What (O que será feito?)</label>
-                  <input 
-                    type="text" 
-                    required 
-                    value={novoWhat} 
-                    onChange={(e) => setNovoWhat(e.target.value)}
-                    placeholder="Ex: Treinamento prático sobre documentação de chamados"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-md p-2 text-white focus:outline-none focus:border-blue-500" 
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    O que será feito (What)? *
+                  </label>
+                  <input
+                    type="text"
+                    value={formWhat}
+                    onChange={(e) => setFormWhat(e.target.value)}
+                    placeholder="Ex: Criar checklist de validação no sistema"
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-md"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Por que será feito (Why)? *
+                  </label>
+                  <input
+                    type="text"
+                    value={formWhy}
+                    onChange={(e) => setFormWhy(e.target.value)}
+                    placeholder="Ex: Eliminar causa raiz de desvios no pilar P2"
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-md"
+                    required
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-slate-400 mb-1">Who (Quem é o responsável?)</label>
-                    <input 
-                      type="text" 
-                      required 
-                      value={novoWho} 
-                      onChange={(e) => setNovoWho(e.target.value)}
-                      placeholder="Nome do responsável"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-md p-2 text-white focus:outline-none" 
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Quem executará (Who)? *
+                    </label>
+                    <input
+                      type="text"
+                      value={formWho}
+                      onChange={(e) => setFormWho(e.target.value)}
+                      placeholder="Ex: Coordenação de Atendimento"
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-md"
+                      required
                     />
                   </div>
                   <div>
-                    <label className="block text-slate-400 mb-1">When (Data limite)</label>
-                    <input 
-                      type="date" 
-                      required 
-                      value={novoWhen} 
-                      onChange={(e) => setNovoWhen(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-md p-2 text-white focus:outline-none" 
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Prazo Limite (When)? *
+                    </label>
+                    <input
+                      type="date"
+                      value={formWhen}
+                      onChange={(e) => setFormWhen(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-md font-mono"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Onde será aplicado (Where)?
+                    </label>
+                    <input
+                      type="text"
+                      value={formWhere}
+                      onChange={(e) => setFormWhere(e.target.value)}
+                      placeholder="Ex: Squad Financeiro Fiscal"
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Quanto custará (How Much)?
+                    </label>
+                    <input
+                      type="text"
+                      value={formHowMuch}
+                      onChange={(e) => setFormHowMuch(e.target.value)}
+                      placeholder="Ex: R$ 0 ou 4 horas"
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-md"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 mb-1">Why (Qual causa raiz este plano resolve?)</label>
-                  <textarea 
-                    value={novoWhy} 
-                    onChange={(e) => setNovoWhy(e.target.value)}
-                    placeholder="Causa validada no Ishikawa/5 Porquês..."
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Como será executado (How)?
+                  </label>
+                  <textarea
                     rows={2}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-md p-2 text-white focus:outline-none" 
+                    value={formHow}
+                    onChange={(e) => setFormHow(e.target.value)}
+                    placeholder="Detalhamento técnico da execução da ação..."
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-md"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
                   <div>
-                    <label className="block text-slate-400 mb-1">Where (Onde / Operação ou Equipe)</label>
-                    <input 
-                      type="text" 
-                      value={novoWhere} 
-                      onChange={(e) => setNovoWhere(e.target.value)}
-                      placeholder="Ex: Suporte Fiscal"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-md p-2 text-white focus:outline-none" 
+                    <label className="block font-semibold text-blue-700 mb-1">Indicador Alvo</label>
+                    <input
+                      type="text"
+                      value={formIndicador}
+                      onChange={(e) => setFormIndicador(e.target.value)}
+                      placeholder="Ex: Não Conformidades / P2.4"
+                      className="w-full px-3 py-1.5 border border-blue-200 rounded-md"
                     />
                   </div>
                   <div>
-                    <label className="block text-slate-400 mb-1">Prazo de Aferição de Eficácia</label>
-                    <select 
-                      value={novoPrazoEficacia} 
-                      onChange={(e) => setNovoPrazoEficacia(Number(e.target.value))}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-md p-2 text-white focus:outline-none"
+                    <label className="block font-semibold text-blue-700 mb-1">
+                      Janela de Eficácia (Dias)
+                    </label>
+                    <select
+                      value={formPrazoEficacia}
+                      onChange={(e) => setFormPrazoEficacia(Number(e.target.value))}
+                      className="w-full px-3 py-1.5 border border-blue-200 rounded-md"
                     >
-                      <option value={30}>30 dias (Próximo ciclo)</option>
-                      <option value={45}>45 dias</option>
-                      <option value={60}>60 dias (2 ciclos)</option>
+                      <option value={30}>30 Dias</option>
+                      <option value={45}>45 Dias</option>
+                      <option value={60}>60 Dias</option>
                     </select>
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-slate-400 mb-1">Indicador Alvo & Meta de Impacto</label>
-                  <input 
-                    type="text" 
-                    value={novoIndicador} 
-                    onChange={(e) => setNovoIndicador(e.target.value)}
-                    placeholder="Ex: Reduzir NCs de registro para 0"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-md p-2 text-white focus:outline-none" 
-                  />
-                </div>
-
-                <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
-                  <button 
-                    type="button" 
-                    onClick={() => setModalAberto(false)}
-                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md"
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setModalCriarAberta(false)}
+                    className="px-3 py-1.5 border border-slate-300 text-slate-600 rounded-md"
                   >
                     Cancelar
                   </button>
-                  <button 
-                    type="submit" 
-                    className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-md"
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-md"
                   >
-                    Salvar Plano 5W2H
+                    Gravar Plano 5W2H
                   </button>
                 </div>
               </form>
@@ -335,7 +571,102 @@ export default function PlanosMelhoriaPage() {
           </div>
         )}
 
+        {/* Modal Registrar Eficácia */}
+        {modalEficaciaAberta && planoParaEficacia && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div className="w-full max-w-md bg-white border border-slate-200 rounded-md shadow-2xl overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/50">
+                <div className="flex items-center gap-2">
+                  <Award size={16} className="text-emerald-600" />
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                    Registro de Eficácia da Ação
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setModalEficaciaAberta(false)}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleConfirmarEficacia} className="p-5 space-y-3.5 text-xs">
+                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded text-slate-700">
+                  <p className="font-bold text-slate-900">{planoParaEficacia.o_que}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Responsável: {planoParaEficacia.quem} | Indicador:{' '}
+                    {planoParaEficacia.indicador_alvo}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    A ação atingiu o resultado esperado?
+                  </label>
+                  <div className="flex gap-3">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        checked={eficaciaAtingida === true}
+                        onChange={() => setEficaciaAtingida(true)}
+                      />
+                      <span className="font-bold text-emerald-700">Sim (Eficaz)</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        checked={eficaciaAtingida === false}
+                        onChange={() => setEficaciaAtingida(false)}
+                      />
+                      <span className="font-bold text-red-600">Não (Ineficaz)</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Comprovação e Resultado Mensurado *
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={resultadoEficaciaTexto}
+                    onChange={(e) => setResultadoEficaciaTexto(e.target.value)}
+                    placeholder="Ex: No ciclo 09/2026, as NCs deste tipo caíram para zero e a equipe atingiu conformidade total."
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-md"
+                    required
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setModalEficaciaAberta(false)}
+                    className="px-3 py-1.5 border border-slate-300 text-slate-600 rounded-md"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-md"
+                  >
+                    Homologar Eficácia
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </EnterpriseLayout>
+  );
+}
+
+export default function PlanosMelhoriaPage() {
+  return (
+    <Suspense
+      fallback={<div className="p-6 text-xs text-slate-400">Carregando planos 5W2H...</div>}
+    >
+      <PlanosMelhoriaContent />
+    </Suspense>
   );
 }

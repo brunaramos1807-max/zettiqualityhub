@@ -1,1031 +1,449 @@
 'use client';
+
 import React, { useState, useEffect, useCallback } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
-import { fetchCycleScores, fetchAllPeriodos, fetchNCRecords, fetchElogios, buildAnalystsFromScores, syncClosedCyclesFromSupabase, deletePeriodDataFromDB, sortPeriodosDesc } from '@/lib/services/dataService';
-import { createClient } from '@/lib/supabase/client';
-import { RefreshCw, Lock, Unlock, BarChart2, ChevronRight, Activity, CheckCircle, X, Clock, History, Loader2, Trash2, RotateCcw, Shield } from 'lucide-react';
+import { fetchCiclos, salvarCiclo, homologarCiclo } from '@/lib/services/qualityDataService';
+import { Ciclo, CicloStatus } from '@/lib/domain/types';
+import { isCicloHomologado } from '@/lib/domain/cycleGovernance';
+import {
+  RefreshCw,
+  Lock,
+  Unlock,
+  Calendar,
+  Plus,
+  ShieldCheck,
+  AlertCircle,
+  CheckCircle2,
+  X,
+  Edit3,
+  Activity,
+  Layers,
+  FileSpreadsheet,
+} from 'lucide-react';
 import Link from 'next/link';
-import { useSystemAuth } from '@/contexts/SystemAuthContext';
+import { toast } from 'sonner';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+export default function CiclosPage() {
+  const [ciclos, setCiclos] = useState<Ciclo[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
 
-type CycleStatus = 'aberto' | 'em_andamento' | 'fechado' | 'reaberto';
+  // Modal Criar/Editar Ciclo
+  const [modalAberta, setModalAberta] = useState<boolean>(false);
+  const [cicloEditando, setCicloEditando] = useState<Ciclo | null>(null);
+  const [formIdentificacao, setFormIdentificacao] = useState<string>('Ciclo 09/2026');
+  const [formDataInicio, setFormDataInicio] = useState<string>('');
+  const [formDataFim, setFormDataFim] = useState<string>('');
+  const [formStatus, setFormStatus] = useState<CicloStatus>('aberto');
+  const [salvando, setSalvando] = useState<boolean>(false);
 
-interface ImportCycleRow {
-  id?: string;
-  periodo: string;
-  is_closed?: boolean | null;
-  status?: CycleStatus | string | null;
-  closed_at?: string | null;
-  closed_by_email?: string | null;
-  reopened_at?: string | null;
-  reopened_by_email?: string | null;
-}
+  // Modal Homologação
+  const [modalHomologarAberta, setModalHomologarAberta] = useState<boolean>(false);
+  const [cicloParaHomologar, setCicloParaHomologar] = useState<Ciclo | null>(null);
+  const [homologando, setHomologando] = useState<boolean>(false);
 
-interface CycleSummary {
-  periodo: string;
-  analistas: number;
-  qa: number;
-  iepc: number;
-  ncs: number;
-  elogios: number;
-  isClosed: boolean;
-  status: CycleStatus;
-  cycleId?: string;
-  closed_at?: string;
-  closed_by_email?: string;
-  reopened_at?: string;
-  reopened_by_email?: string;
-}
-
-interface ClosureHistoryEntry {
-  id: string;
-  periodo: string;
-  action: string;
-  actor_email: string;
-  actor_name: string;
-  notes: string;
-  created_at: string;
-}
-
-interface EvaluationCorrectionRow {
-  id: string;
-  periodo: string;
-  analista: string;
-  squad: string;
-  data_registro?: string | null;
-  nota_final_qa?: number | null;
-  iepc_total?: number | null;
-  total_ncs?: number | null;
-  source?: string | null;
-  protocolo?: string | null;
-  created_at?: string | null;
-  duplicateKey: string;
-  isDuplicate: boolean;
-  keepRecommended: boolean;
-  feedbackCount: number;
-  ncCount: number;
-  pdiCount: number;
-}
-
-// ─── Status Config ────────────────────────────────────────────────────────────
-
-const STATUS_CONFIG: Record<CycleStatus, { label: string; color: string; bg: string; border: string; icon: React.ReactNode }> = {
-  aberto: { label: 'Aberto', color: '#F59E0B', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.25)', icon: <Unlock size={10} /> },
-  em_andamento: { label: 'Em Andamento', color: '#38BDF8', bg: 'rgba(56,189,248,0.1)', border: 'rgba(56,189,248,0.25)', icon: <Activity size={10} /> },
-  fechado: { label: 'Fechado', color: '#22C55E', bg: 'rgba(34,197,94,0.1)', border: 'rgba(34,197,94,0.25)', icon: <Lock size={10} /> },
-  reaberto: { label: 'Reaberto', color: '#A78BFA', bg: 'rgba(167,139,250,0.1)', border: 'rgba(167,139,250,0.25)', icon: <RotateCcw size={10} /> },
-};
-
-function normalizeCycleStatus(cycle?: ImportCycleRow): CycleStatus {
-  if (!cycle) return 'aberto';
-  if (cycle.is_closed || cycle.status === 'fechado') return 'fechado';
-  if (cycle.status === 'reaberto') return 'reaberto';
-  if (cycle.status === 'em_andamento') return 'em_andamento';
-  return 'aberto';
-}
-
-function parsePeriodoOrder(periodo: string): number {
-  const [month, year] = periodo.split('/').map((part) => Number(part));
-  if (!month || !year) return 0;
-  return year * 100 + month;
-}
-
-// ─── Close Cycle Modal ────────────────────────────────────────────────────────
-
-interface CloseCycleModalProps {
-  periodo: string;
-  onConfirm: (notes: string) => void;
-  onClose: () => void;
-  loading: boolean;
-}
-
-function CloseCycleModal({ periodo, onConfirm, onClose, loading }: CloseCycleModalProps) {
-  const [notes, setNotes] = useState('');
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.85)' }}>
-      <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ backgroundColor: '#0A1628', border: '1px solid rgba(34,197,94,0.2)', boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}>
-        <div className="flex items-center justify-between p-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(34,197,94,0.1)' }}>
-              <Lock size={18} style={{ color: '#22C55E' }} />
-            </div>
-            <div>
-              <h3 className="font-bold text-white">Fechar Ciclo</h3>
-              <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{periodo}</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#94A3B8' }}><X size={16} /></button>
-        </div>
-        <div className="p-5 space-y-4">
-          <div className="p-4 rounded-xl space-y-2" style={{ backgroundColor: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)' }}>
-            <p className="text-xs font-semibold" style={{ color: '#F59E0B' }}>⚠️ Atenção — Ação irreversível sem autorização</p>
-            <p className="text-xs" style={{ color: '#94A3B8' }}>Ao fechar o ciclo, as seguintes ações serão bloqueadas para usuários comuns:</p>
-            <ul className="text-xs space-y-1 mt-2" style={{ color: '#94A3B8' }}>
-              {['Edição de dados', 'Exclusão de registros', 'Importação de planilhas', 'Alteração de rankings', 'Alteração de analytics'].map((item) => (
-                <li key={item} className="flex items-center gap-2"><span style={{ color: '#EF4444' }}>✗</span> {item}</li>
-              ))}
-            </ul>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-white mb-2">Observações do fechamento (opcional)</label>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ex: Ciclo ABR/2026 encerrado com consolidação completa..." rows={3}
-              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '0.625rem', color: '#F8FAFC', padding: '0.625rem 0.875rem', fontSize: '0.875rem', width: '100%', outline: 'none', resize: 'none' }} />
-          </div>
-        </div>
-        <div className="flex gap-3 p-5" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
-          <button onClick={() => onConfirm(notes)} disabled={loading} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60" style={{ backgroundColor: '#166534', border: '1px solid rgba(34,197,94,0.3)' }}>
-            {loading ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />}
-            {loading ? 'Fechando...' : 'Confirmar Fechamento'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Reopen Cycle Modal ───────────────────────────────────────────────────────
-
-interface ReopenCycleModalProps {
-  periodo: string;
-  onConfirm: (notes: string) => void;
-  onClose: () => void;
-  loading: boolean;
-}
-
-function ReopenCycleModal({ periodo, onConfirm, onClose, loading }: ReopenCycleModalProps) {
-  const [notes, setNotes] = useState('');
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.85)' }}>
-      <div className="w-full max-w-md rounded-2xl overflow-hidden" style={{ backgroundColor: '#0A1628', border: '1px solid rgba(167,139,250,0.2)', boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}>
-        <div className="flex items-center justify-between p-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(167,139,250,0.1)' }}>
-              <RotateCcw size={18} style={{ color: '#A78BFA' }} />
-            </div>
-            <div>
-              <h3 className="font-bold text-white">Reabrir Ciclo</h3>
-              <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{periodo}</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#94A3B8' }}><X size={16} /></button>
-        </div>
-        <div className="p-5 space-y-4">
-          <div className="p-4 rounded-xl" style={{ backgroundColor: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.15)' }}>
-            <p className="text-xs" style={{ color: '#94A3B8' }}>Reabrir o ciclo permitirá edições e importações novamente. O histórico de fechamento será preservado.</p>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-white mb-2">Motivo da reabertura *</label>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Informe o motivo da reabertura..." rows={3}
-              style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '0.625rem', color: '#F8FAFC', padding: '0.625rem 0.875rem', fontSize: '0.875rem', width: '100%', outline: 'none', resize: 'none' }} />
-          </div>
-        </div>
-        <div className="flex gap-3 p-5" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
-          <button onClick={() => onConfirm(notes)} disabled={loading || !notes.trim()} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60" style={{ backgroundColor: '#5B21B6' }}>
-            {loading ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
-            {loading ? 'Reabrindo...' : 'Reabrir Ciclo'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Data Cleanup Modal ───────────────────────────────────────────────────────
-
-interface CleanupModalProps {
-  onClose: () => void;
-  onSuccess: () => void;
-  actorEmail: string;
-}
-
-function CleanupModal({ onClose, onSuccess, actorEmail }: CleanupModalProps) {
-  const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState<'confirm' | 'running' | 'done'>('confirm');
-  const [log, setLog] = useState<string[]>([]);
-  const [confirm, setConfirm] = useState('');
-
-  const runCleanup = async () => {
-    if (confirm !== 'LIMPAR') return;
-    setStep('running');
-    const msgs: string[] = [];
+  const carregarCiclos = useCallback(async () => {
     setLoading(true);
     try {
-      const supabase = createClient();
-      if (supabase) {
-        // Delete operational data — preserve structure, users, permissions, squads
-        const tables = [
-          { name: 'cycle_scores', label: 'Avaliações QA/IEPC' },
-          { name: 'nc_records', label: 'Não Conformidades' },
-          { name: 'elogios', label: 'Elogios' },
-          { name: 'import_cycles', label: 'Ciclos de importação' },
-          { name: 'cycle_summaries', label: 'Resumos de ciclos' },
-          { name: 'strategic_indicators', label: 'Indicadores estratégicos' },
-          { name: 'manual_evaluations', label: 'Avaliações manuais' },
-          { name: 'cycle_closure_history', label: 'Histórico de fechamentos' },
-        ];
-        for (const t of tables) {
-          try {
-            const { error } = await supabase.from(t.name).delete().neq('id', '00000000-0000-0000-0000-000000000000');
-            if (error) { msgs.push(`⚠️ ${t.label}: ${error.message}`); }
-            else { msgs.push(`✓ ${t.label} limpo`); }
-          } catch { msgs.push(`⚠️ ${t.label}: tabela não encontrada (ok)`); }
-          setLog([...msgs]);
-        }
-        // Log the cleanup action
-        await supabase.from('permission_logs').insert({ actor_email: actorEmail, action: 'limpeza_dados_operacionais', entity_type: 'sistema', details: 'Limpeza completa de dados operacionais realizada' });
-        msgs.push('✓ Ação registrada nos logs de auditoria');
-      }
-      // Clear localStorage operational keys
-      if (typeof window !== 'undefined') {
-        const keysToRemove = ['zetti_cycle_scores', 'zetti_nc_records', 'zetti_elogios', 'zetti_import_cycles', 'zetti_closed_cycles', 'zetti_manual_cycles', 'zetti_andamento_scores', 'zetti_andamento_ncs'];
-        keysToRemove.forEach((k) => { localStorage.removeItem(k); msgs.push(`✓ Cache local "${k}" removido`); });
-      }
-      msgs.push('');
-      msgs.push('✅ Limpeza concluída. Sistema pronto para operação oficial.');
-      setLog([...msgs]);
-      setStep('done');
-    } catch (e: any) {
-      msgs.push(`❌ Erro: ${e?.message}`);
-      setLog([...msgs]);
+      const lista = await fetchCiclos();
+      setCiclos(lista);
+    } catch (err) {
+      console.error('Erro ao buscar ciclos:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    carregarCiclos();
+  }, [carregarCiclos]);
+
+  const handleAbrirCriar = () => {
+    setCicloEditando(null);
+    setFormIdentificacao('Ciclo 10/2026');
+    setFormDataInicio('');
+    setFormDataFim('');
+    setFormStatus('aberto');
+    setModalAberta(true);
+  };
+
+  const handleAbrirEditar = (ciclo: Ciclo) => {
+    if (isCicloHomologado(ciclo)) {
+      toast.error('Ciclos homologados não podem ser editados (imutabilidade histórica).');
+      return;
+    }
+    setCicloEditando(ciclo);
+    setFormIdentificacao(ciclo.identificacao);
+    setFormDataInicio(ciclo.data_inicio || '');
+    setFormDataFim(ciclo.data_fim || '');
+    setFormStatus(ciclo.status);
+    setModalAberta(true);
+  };
+
+  const handleSalvarCiclo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formIdentificacao || !formDataInicio || !formDataFim) {
+      toast.error('Informe a identificação do ciclo (Mês/Ano) e as datas de início e fim.');
+      return;
+    }
+
+    if (formDataInicio > formDataFim) {
+      toast.error('A data de início não pode ser posterior à data final.');
+      return;
+    }
+
+    setSalvando(true);
+    try {
+      const res = await salvarCiclo({
+        id: cicloEditando?.id,
+        identificacao: formIdentificacao,
+        periodo: formIdentificacao,
+        data_inicio: formDataInicio,
+        data_fim: formDataFim,
+        status: formStatus,
+      });
+
+      if (res.success) {
+        toast.success(`Ciclo ${formIdentificacao} gravado com sucesso!`);
+        setModalAberta(false);
+        carregarCiclos();
+      } else {
+        toast.error('Erro ao salvar ciclo: ' + res.error);
+      }
+    } catch (err: any) {
+      toast.error('Falha: ' + err.message);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const handleHomologar = async () => {
+    if (!cicloParaHomologar) return;
+    setHomologando(true);
+    try {
+      const res = await homologarCiclo(cicloParaHomologar.periodo);
+      if (res.success) {
+        toast.success(
+          `O ${cicloParaHomologar.identificacao} foi HOMOLOGADO. Dados e datas agora estão bloqueados contra alterações.`
+        );
+        setModalHomologarAberta(false);
+        setCicloParaHomologar(null);
+        carregarCiclos();
+      } else {
+        toast.error('Erro ao homologar ciclo: ' + res.error);
+      }
+    } catch (err: any) {
+      toast.error('Erro: ' + err.message);
+    } finally {
+      setHomologando(false);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.9)' }}>
-      <div className="w-full max-w-lg rounded-2xl overflow-hidden" style={{ backgroundColor: '#0A1628', border: '1px solid rgba(239,68,68,0.25)', boxShadow: '0 24px 64px rgba(0,0,0,0.8)' }}>
-        <div className="flex items-center justify-between p-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+    <EnterpriseLayout>
+      <div className="p-6 max-w-7xl mx-auto space-y-6">
+        {/* Banner de Cabeçalho */}
+        <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-white border border-slate-200 rounded-md shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(239,68,68,0.1)' }}>
-              <Trash2 size={18} style={{ color: '#EF4444' }} />
+            <div className="p-2 bg-blue-50 border border-blue-100 text-blue-700 rounded-md">
+              <Calendar size={18} />
             </div>
             <div>
-              <h3 className="font-bold text-white">Limpeza de Dados Operacionais</h3>
-              <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Preparar sistema para operação oficial</p>
-            </div>
-          </div>
-          {step !== 'running' && <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#94A3B8' }}><X size={16} /></button>}
-        </div>
-
-        {step === 'confirm' && (
-          <div className="p-5 space-y-4">
-            <div className="p-4 rounded-xl space-y-3" style={{ backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}>
-              <p className="text-xs font-semibold" style={{ color: '#EF4444' }}>🗑️ Será excluído:</p>
-              <div className="grid grid-cols-2 gap-1">
-                {['Avaliações QA', 'Avaliações IEPC', 'Não Conformidades', 'Elogios', 'Ciclos de teste', 'Rankings', 'Analytics', 'Insights IA', 'Imports antigos', 'Cache local'].map((item) => (
-                  <span key={item} className="text-xs flex items-center gap-1.5" style={{ color: '#94A3B8' }}><span style={{ color: '#EF4444' }}>✗</span> {item}</span>
-                ))}
+              <div className="text-xs text-slate-400 font-mono uppercase tracking-wider">
+                Governança de Ciclos
               </div>
-            </div>
-            <div className="p-4 rounded-xl space-y-3" style={{ backgroundColor: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.15)' }}>
-              <p className="text-xs font-semibold" style={{ color: '#22C55E' }}>✅ Será mantido:</p>
-              <div className="grid grid-cols-2 gap-1">
-                {['Usuários', 'Cargos', 'Permissões', 'Squads', 'Configurações', 'Layout', 'Autenticação', 'Supabase', 'Gemini', 'Regras RBAC'].map((item) => (
-                  <span key={item} className="text-xs flex items-center gap-1.5" style={{ color: '#94A3B8' }}><span style={{ color: '#22C55E' }}>✓</span> {item}</span>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-white mb-2">Digite <strong style={{ color: '#EF4444' }}>LIMPAR</strong> para confirmar</label>
-              <input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="LIMPAR" style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: `1px solid ${confirm === 'LIMPAR' ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '0.625rem', color: '#F8FAFC', padding: '0.625rem 0.875rem', fontSize: '0.875rem', width: '100%', outline: 'none', height: '44px' }} />
-            </div>
-            <div className="flex gap-3">
-              <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
-              <button onClick={runCleanup} disabled={confirm !== 'LIMPAR'} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: '#DC2626' }}>
-                <Trash2 size={14} /> Executar Limpeza
-              </button>
+              <h1 className="text-sm font-bold text-slate-900">
+                Gestão de Ciclos de Competência (Mês/Ano & Datas Manuais)
+              </h1>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Não utilizamos períodos fixos automáticos. As datas de início e fim cadastradas
+                governam os filtros e a validação de dados.
+              </p>
             </div>
           </div>
-        )}
 
-        {(step === 'running' || step === 'done') && (
-          <div className="p-5 space-y-4">
-            <div className="p-4 rounded-xl font-mono text-xs space-y-1 max-h-64 overflow-y-auto" style={{ backgroundColor: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.06)' }}>
-              {log.map((line, i) => (
-                <p key={i} style={{ color: line.startsWith('✓') ? '#22C55E' : line.startsWith('⚠️') ? '#F59E0B' : line.startsWith('❌') ? '#EF4444' : line.startsWith('✅') ? '#22C55E' : '#94A3B8' }}>{line || '\u00A0'}</p>
-              ))}
-              {step === 'running' && <p className="animate-pulse" style={{ color: '#38BDF8' }}>Processando...</p>}
-            </div>
-            {step === 'done' && (
-              <button onClick={() => { onSuccess(); onClose(); }} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: '#166534' }}>
-                <CheckCircle size={14} className="inline mr-2" />Concluído
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Main Component ───────────────────────────────────────────────────────────
-
-function CiclosContent() {
-  const { session, isAdmin, canCloseCycle } = useSystemAuth();
-  const [cycles, setCycles] = useState<CycleSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [aiSummary, setAiSummary] = useState<Record<string, string>>({});
-  const [aiLoadingPeriodo, setAiLoadingPeriodo] = useState<string | null>(null);
-  const [closingCycle, setClosingCycle] = useState<string | null>(null);
-  const [reopeningCycle, setReopeningCycle] = useState<string | null>(null);
-  const [deletingCycle, setDeletingCycle] = useState<string | null>(null);
-  const [showCleanup, setShowCleanup] = useState(false);
-  const [closureHistory, setClosureHistory] = useState<ClosureHistoryEntry[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
-  const [correctionPeriodo, setCorrectionPeriodo] = useState('');
-  const [correctionRows, setCorrectionRows] = useState<EvaluationCorrectionRow[]>([]);
-  const [correctionLoading, setCorrectionLoading] = useState(false);
-
-  const actorEmail = session?.email || 'sistema';
-  const actorName = session?.nome || 'Sistema';
-
-  // Can close/reopen: Admin, explicit cycle permission, or legacy quality/coordinator cargos.
-  const sessionCargo = String(session?.cargo || '');
-  const canManageCycles =
-    isAdmin ||
-    canCloseCycle() ||
-    ['Administrador', 'Coordenadora Qualidade', 'Coordenador Geral'].includes(sessionCargo);
-
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [scores, periodos, ncs, elogios] = await Promise.all([
-        fetchCycleScores(),
-        fetchAllPeriodos(),
-        fetchNCRecords(),
-        fetchElogios(),
-      ]);
-
-      const supabase = createClient();
-      let cycleData: Record<string, ImportCycleRow> = {};
-      if (supabase) {
-        const { data } = await supabase.from('import_cycles').select('periodo, is_closed, status, closed_at, closed_by_email, reopened_at, reopened_by_email, id');
-        if (data) {
-          (data as ImportCycleRow[]).forEach((d) => { cycleData[d.periodo] = d; });
-        }
-      }
-
-      // Supabase/import_cycles is authoritative for status. Periods with scores but
-      // no import_cycles row are treated as open, which also clears stale LS cache.
-      syncClosedCyclesFromSupabase(periodos.map((periodo) => {
-        const cd = cycleData[periodo];
-        const status = normalizeCycleStatus(cd);
-        return {
-          periodo,
-          is_closed: status === 'fechado',
-          closed_at: cd?.closed_at || undefined,
-          status,
-        };
-      }));
-
-      const orderedPeriodos = sortPeriodosDesc(periodos);
-      const summaries: CycleSummary[] = orderedPeriodos.map((periodo) => {
-        const pScores = scores.filter((s: any) => s.periodo === periodo);
-        const pNCs = ncs.filter((n: any) => n.periodo === periodo);
-        const pElogios = elogios.filter((e: any) => e.periodo === periodo);
-        const analysts = buildAnalystsFromScores(pScores);
-        const qa = analysts.length > 0 ? analysts.reduce((s: number, a: any) => s + a.qaScore, 0) / analysts.length : 0;
-        const iepc = analysts.length > 0 ? analysts.reduce((s: number, a: any) => s + a.iepcScore, 0) / analysts.length : 0;
-        const cd = cycleData[periodo];
-        const status = normalizeCycleStatus(cd);
-        const isClosed = status === 'fechado';
-        return {
-          periodo, analistas: analysts.length,
-          qa: parseFloat(qa.toFixed(2)), iepc: parseFloat(iepc.toFixed(2)),
-          ncs: pNCs.length, elogios: pElogios.length,
-          isClosed, status, cycleId: cd?.id,
-          closed_at: cd?.closed_at || undefined, closed_by_email: cd?.closed_by_email || undefined,
-          reopened_at: cd?.reopened_at || undefined, reopened_by_email: cd?.reopened_by_email || undefined,
-        };
-      });
-
-      setCycles(summaries);
-    } catch { /* ignore */ }
-    setLoading(false);
-  }, []);
-
-  const loadHistory = useCallback(async () => {
-    try {
-      const supabase = createClient();
-      if (!supabase) return;
-      const { data } = await supabase.from('cycle_closure_history').select('*').order('created_at', { ascending: false }).limit(50);
-      if (data) setClosureHistory(data as ClosureHistoryEntry[]);
-    } catch { /* ignore */ }
-  }, []);
-
-  const loadCorrectionRows = useCallback(async (periodo: string) => {
-    if (!periodo) return;
-    setCorrectionLoading(true);
-    try {
-      const supabase = createClient();
-      if (!supabase) return;
-      const { data } = await supabase
-        .from('cycle_scores')
-        .select('id, periodo, analista, squad, data_registro, nota_final_qa, iepc_total, total_ncs, source, protocolo, created_at')
-        .eq('periodo', periodo)
-        .order('created_at', { ascending: false });
-
-      const [feedbackRes, ncRes, pdiRecordsRes, feedbackPdiRes] = await Promise.all([
-        supabase.from('feedbacks').select('id, ciclo, analistas(nome)').eq('ciclo', periodo),
-        supabase.from('nc_records').select('id, periodo, analista').eq('periodo', periodo),
-        supabase.from('pdi_records').select('id, periodo, analista').eq('periodo', periodo),
-        supabase.from('feedback_pdi').select('id, feedbacks(ciclo, analistas(nome))'),
-      ]);
-
-      const normalizeName = (value: string | null | undefined) => (value || '').trim().toLowerCase();
-      const countByAnalista = (items: any[], getName: (item: any) => string | null | undefined) =>
-        items.reduce<Record<string, number>>((acc, item) => {
-          const key = normalizeName(getName(item));
-          if (key) acc[key] = (acc[key] || 0) + 1;
-          return acc;
-        }, {});
-
-      const feedbackCounts = countByAnalista((feedbackRes.data || []) as any[], (item) => item.analistas?.nome);
-      const ncCounts = countByAnalista((ncRes.data || []) as any[], (item) => item.analista);
-      const pdiRecordCounts = countByAnalista((pdiRecordsRes.data || []) as any[], (item) => item.analista);
-      const feedbackPdiCounts = countByAnalista(
-        ((feedbackPdiRes.data || []) as any[]).filter((item) => item.feedbacks?.ciclo === periodo),
-        (item) => item.feedbacks?.analistas?.nome
-      );
-
-      const rows = ((data || []) as Array<Omit<EvaluationCorrectionRow, 'duplicateKey' | 'isDuplicate' | 'keepRecommended' | 'feedbackCount' | 'ncCount' | 'pdiCount'>>)
-        .map((row) => ({
-          ...row,
-          duplicateKey: `${row.periodo}|${(row.analista || '').trim().toLowerCase()}|${(row.squad || '').trim().toLowerCase()}|${row.protocolo || 'consolidado'}`,
-          isDuplicate: false,
-          keepRecommended: false,
-          feedbackCount: feedbackCounts[normalizeName(row.analista)] || 0,
-          ncCount: ncCounts[normalizeName(row.analista)] || 0,
-          pdiCount: (pdiRecordCounts[normalizeName(row.analista)] || 0) + (feedbackPdiCounts[normalizeName(row.analista)] || 0),
-        }));
-
-      const counts = rows.reduce<Record<string, number>>((acc, row) => {
-        acc[row.duplicateKey] = (acc[row.duplicateKey] || 0) + 1;
-        return acc;
-      }, {});
-      const firstByKey = new Set<string>();
-      setCorrectionRows(rows.map((row) => {
-        const isDuplicate = counts[row.duplicateKey] > 1;
-        const keepRecommended = isDuplicate && !firstByKey.has(row.duplicateKey);
-        if (keepRecommended) firstByKey.add(row.duplicateKey);
-        return { ...row, isDuplicate, keepRecommended };
-      }));
-    } finally {
-      setCorrectionLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadData();
-    loadHistory();
-    const handler = () => { loadData(); loadHistory(); };
-    window.addEventListener('zetti_data_changed', handler);
-    return () => window.removeEventListener('zetti_data_changed', handler);
-  }, [loadData, loadHistory]);
-
-  useEffect(() => {
-    if (!correctionPeriodo && cycles[0]?.periodo) {
-      setCorrectionPeriodo(cycles[0].periodo);
-    }
-  }, [cycles, correctionPeriodo]);
-
-  useEffect(() => {
-    if (correctionPeriodo) loadCorrectionRows(correctionPeriodo);
-  }, [correctionPeriodo, loadCorrectionRows]);
-
-  const handleCloseCycle = async (periodo: string, notes: string) => {
-    if (!canManageCycles) return;
-    setActionLoading(periodo);
-    try {
-      const supabase = createClient();
-      if (supabase) {
-        const now = new Date().toISOString();
-        const existingCycle = cycles.find((c) => c.periodo === periodo);
-        const closePayload = {
-          is_closed: true,
-          status: 'fechado',
-          closed_at: now,
-          closed_by_email: actorEmail,
-          closure_notes: notes,
-        };
-
-        if (existingCycle?.cycleId) {
-          await supabase.from('import_cycles').update(closePayload).eq('id', existingCycle.cycleId);
-        } else {
-          await supabase.from('import_cycles').upsert(
-            {
-              periodo,
-              ...closePayload,
-              file_name: 'Ciclo',
-              record_count: 0,
-            },
-            { onConflict: 'periodo' }
-          );
-        }
-
-        // Log to closure history
-        const cycle = cycles.find((c) => c.periodo === periodo);
-        await supabase.from('cycle_closure_history').insert({
-          periodo, action: 'fechado',
-          actor_email: actorEmail, actor_name: actorName,
-          notes: notes || 'Ciclo fechado',
-          snapshot: { qa: cycle?.qa, iepc: cycle?.iepc, ncs: cycle?.ncs, elogios: cycle?.elogios, analistas: cycle?.analistas },
-          created_at: now,
-        });
-
-        // Audit log
-        await supabase.from('permission_logs').insert({ actor_email: actorEmail, action: 'ciclo_fechado', entity_type: 'ciclo', entity_id: periodo, details: `Ciclo ${periodo} fechado por ${actorEmail}` });
-      } else {
-        window.alert('Supabase indisponível. Não foi possível fechar o ciclo.');
-        setActionLoading(null);
-        return;
-      }
-      // Sync localStorage cache so isCycleClosed() works everywhere without a full reload
-      syncClosedCyclesFromSupabase([{ periodo, is_closed: true, closed_at: new Date().toISOString(), status: 'fechado' }]);
-      setClosingCycle(null);
-      await loadData(); await loadHistory();
-      window.alert(`Ciclo ${periodo} fechado com sucesso.`);
-    } catch (err) {
-      console.error('Erro ao fechar ciclo:', err);
-      window.alert('Erro ao fechar ciclo. Verifique permissões/RLS e tente novamente.');
-    }
-    setActionLoading(null);
-  };
-
-  const handleReopenCycle = async (periodo: string, notes: string) => {
-    if (!canManageCycles) return;
-    setActionLoading(periodo);
-    try {
-      const supabase = createClient();
-      if (supabase) {
-        const now = new Date().toISOString();
-        const existingCycle = cycles.find((c) => c.periodo === periodo);
-        const reopenPayload = {
-          is_closed: false,
-          status: 'reaberto',
-          reopened_at: now,
-          reopened_by_email: actorEmail,
-        };
-
-        if (existingCycle?.cycleId) {
-          await supabase.from('import_cycles').update(reopenPayload).eq('id', existingCycle.cycleId);
-        } else {
-          await supabase.from('import_cycles').upsert(
-            {
-              periodo,
-              ...reopenPayload,
-              file_name: 'Ciclo',
-              record_count: 0,
-            },
-            { onConflict: 'periodo' }
-          );
-        }
-
-        await supabase.from('cycle_closure_history').insert({
-          periodo, action: 'reaberto',
-          actor_email: actorEmail, actor_name: actorName,
-          notes, created_at: now,
-        });
-
-        await supabase.from('permission_logs').insert({ actor_email: actorEmail, action: 'ciclo_reaberto', entity_type: 'ciclo', entity_id: periodo, details: `Ciclo ${periodo} reaberto por ${actorEmail}. Motivo: ${notes}` });
-      } else {
-        window.alert('Supabase indisponível. Não foi possível reabrir o ciclo.');
-        setActionLoading(null);
-        return;
-      }
-      // Sync localStorage cache
-      syncClosedCyclesFromSupabase([{ periodo, is_closed: false, status: 'reaberto' }]);
-      setReopeningCycle(null);
-      await loadData(); await loadHistory();
-      window.alert(`Ciclo ${periodo} reaberto com sucesso.`);
-    } catch (err) {
-      console.error('Erro ao reabrir ciclo:', err);
-      window.alert('Erro ao reabrir ciclo. Verifique permissões/RLS e tente novamente.');
-    }
-    setActionLoading(null);
-  };
-
-  const handleDeleteCycle = async (periodo: string) => {
-    if (!isAdmin) return;
-    setActionLoading(periodo);
-    try {
-      const result = await deletePeriodDataFromDB(periodo);
-      if (result.success) {
-        setDeletingCycle(null);
-        await loadData();
-        await loadHistory();
-      }
-    } catch { /* ignore */ }
-    setActionLoading(null);
-  };
-
-  const handleRemoveDuplicateScores = async (duplicateKey: string) => {
-    if (!canManageCycles) return;
-    const group = correctionRows.filter((row) => row.duplicateKey === duplicateKey);
-    const keep = group.find((row) => row.keepRecommended);
-    const remove = group.filter((row) => row.id !== keep?.id);
-    if (remove.length === 0) return;
-    const ok = window.confirm(`Excluir ${remove.length} avaliação(ões) duplicada(s) de ${keep?.analista || 'analista'} em ${correctionPeriodo}? Há ${keep?.feedbackCount || 0} feedback(s), ${keep?.ncCount || 0} NC(s) e ${keep?.pdiCount || 0} PDI(s) relacionados no diagnóstico. Esta ação remove apenas cycle_scores duplicado(s), não apaga vínculos relacionados, não apaga o ciclo e ficará registrada em log.`);
-    if (!ok) return;
-
-    setActionLoading(duplicateKey);
-    try {
-      const supabase = createClient();
-      if (!supabase) return;
-      const ids = remove.map((row) => row.id);
-      const { error } = await supabase.from('cycle_scores').delete().in('id', ids);
-      if (error) {
-        window.alert(`Erro ao excluir duplicidades: ${error.message}`);
-        return;
-      }
-      await supabase.from('permission_logs').insert({
-        actor_email: actorEmail,
-        action: 'avaliacoes_duplicadas_excluidas',
-        entity_type: 'cycle_scores',
-        entity_id: correctionPeriodo,
-        details: JSON.stringify({ periodo: correctionPeriodo, kept_id: keep?.id, removed_ids: ids, duplicate_key: duplicateKey }),
-      });
-      await loadCorrectionRows(correctionPeriodo);
-      await loadData();
-      window.alert('Duplicidades excluídas com sucesso.');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleGenerateSummary = async (cycle: CycleSummary) => {
-    if (aiLoadingPeriodo) return;
-    setAiLoadingPeriodo(cycle.periodo);
-    try {
-      const { getChatCompletion } = await import('@/lib/ai/chatCompletion');
-      const prompt = `Gere um resumo executivo em 2 frases do ciclo ${cycle.periodo}: QA ${cycle.qa.toFixed(1)}%, IEPC ${cycle.iepc.toFixed(1)}%, ${cycle.ncs} NCs, ${cycle.elogios} elogios, ${cycle.analistas} analistas. Seja objetivo e destaque o ponto mais crítico.`;
-      const result = await getChatCompletion('GEMINI', 'gemini/gemini-2.5-flash', [{ role: 'user', content: prompt }], { temperature: 0.5, max_tokens: 150 });
-      const content = result?.choices?.[0]?.message?.content;
-      if (content) {
-        setAiSummary((prev) => ({ ...prev, [cycle.periodo]: content }));
-      }
-    } catch {
-      // AI is optional — silently ignore errors
-    } finally {
-      setAiLoadingPeriodo(null);
-    }
-  };
-
-  const ACTION_LABELS: Record<string, { label: string; color: string }> = {
-    fechado: { label: 'Fechado', color: '#22C55E' },
-    reaberto: { label: 'Reaberto', color: '#A78BFA' },
-    editado: { label: 'Editado', color: '#F59E0B' },
-  };
-
-  const inconsistentCycles = cycles.filter((cycle) =>
-    cycle.status === 'fechado' &&
-    cycles.some((candidate) =>
-      candidate.periodo !== cycle.periodo &&
-      candidate.status !== 'fechado' &&
-      parsePeriodoOrder(candidate.periodo) < parsePeriodoOrder(cycle.periodo)
-    )
-  );
-
-  return (
-    <div className="p-6 max-w-screen-2xl mx-auto w-full">
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-white">Gestão de Ciclos</h1>
-          <p className="text-sm mt-0.5" style={{ color: '#94A3B8' }}>Gestão e acompanhamento de ciclos operacionais</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {isAdmin && (
-            <button onClick={() => setShowCleanup(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>
-              <Trash2 size={13} /> Limpar Dados
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={carregarCiclos}
+              className="p-2 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-md transition-colors"
+              title="Recarregar ciclos"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>
-          )}
-          <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all" style={{ backgroundColor: showHistory ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.05)', color: showHistory ? '#38BDF8' : '#94A3B8', border: `1px solid ${showHistory ? 'rgba(56,189,248,0.3)' : 'rgba(255,255,255,0.08)'}` }}>
-            <History size={13} /> Histórico
-          </button>
-          <button onClick={loadData} className="p-2 rounded-lg transition-colors" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <RefreshCw size={14} />
-          </button>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {[
-          { label: 'Total Ciclos', value: cycles.length, color: '#38BDF8', icon: <Activity size={16} /> },
-          { label: 'Fechados', value: cycles.filter((c) => c.status === 'fechado').length, color: '#22C55E', icon: <Lock size={16} /> },
-          { label: 'Abertos', value: cycles.filter((c) => c.status === 'aberto' || c.status === 'em_andamento').length, color: '#F59E0B', icon: <Unlock size={16} /> },
-          { label: 'Reabertos', value: cycles.filter((c) => c.status === 'reaberto').length, color: '#A78BFA', icon: <RotateCcw size={16} /> },
-        ].map((s) => (
-          <div key={s.label} className="rounded-xl p-5" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-medium" style={{ color: '#94A3B8' }}>{s.label}</span>
-              <span style={{ color: s.color }}>{s.icon}</span>
-            </div>
-            <p className="text-2xl font-bold text-white">{s.value}</p>
+            <button
+              onClick={handleAbrirCriar}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-md shadow-sm transition-colors"
+            >
+              <Plus size={14} /> Novo Ciclo de Qualidade
+            </button>
           </div>
-        ))}
-      </div>
-
-      {inconsistentCycles.length > 0 && (
-        <div className="mb-6 rounded-xl p-4" style={{ backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.18)' }}>
-          <p className="text-sm font-semibold" style={{ color: '#F59E0B' }}>⚠️ Possível inconsistência de ciclo</p>
-          <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
-            Existe ciclo mais recente fechado enquanto ciclo anterior permanece aberto. Use as ações confirmadas desta tela para reabrir o ciclo mais recente ou fechar o ciclo anterior, sem alterar dados históricos.
-          </p>
         </div>
-      )}
 
-      {/* Central de Correção do Ciclo */}
-      <div className="mb-6 rounded-xl overflow-hidden" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
-        <div className="flex items-center justify-between gap-3 p-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <div>
-            <h3 className="text-sm font-semibold text-white">Central de Correção do Ciclo</h3>
-            <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>Diagnóstico de avaliações que alimentam os indicadores, com correção manual e auditada.</p>
+        {/* Tabela Oficial de Ciclos */}
+        <div className="bg-white border border-slate-200 rounded-md overflow-hidden shadow-sm">
+          <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+              Ciclos Cadastrados no Sistema
+            </h3>
+            <span className="text-xs font-semibold text-slate-500">{ciclos.length} ciclo(s)</span>
           </div>
-          <select
-            value={correctionPeriodo}
-            onChange={(e) => setCorrectionPeriodo(e.target.value)}
-            className="px-3 py-2 rounded-lg text-xs text-white outline-none"
-            style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
-          >
-            {cycles.map((cycle) => <option key={cycle.periodo} value={cycle.periodo}>{cycle.periodo}</option>)}
-          </select>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr style={{ backgroundColor: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                {['Status', 'Analista', 'Squad', 'Data', 'Origem', 'SUP/Protocolo', 'QA', 'IEPC', 'NCs', 'Feedbacks', 'PDIs', 'Ação'].map((h) => (
-                  <th key={h} className="text-left py-3 px-4 font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {correctionLoading ? (
-                <tr><td colSpan={12} className="py-6 text-center" style={{ color: '#94A3B8' }}>Carregando avaliações...</td></tr>
-              ) : correctionRows.length === 0 ? (
-                <tr><td colSpan={12} className="py-6 text-center" style={{ color: '#94A3B8' }}>Nenhuma avaliação encontrada para o ciclo selecionado.</td></tr>
-              ) : correctionRows.map((row) => (
-                <tr key={row.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                  <td className="py-3 px-4">
-                    <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: row.isDuplicate ? 'rgba(245,158,11,0.12)' : 'rgba(34,197,94,0.1)', color: row.isDuplicate ? '#F59E0B' : '#22C55E', border: `1px solid ${row.isDuplicate ? 'rgba(245,158,11,0.25)' : 'rgba(34,197,94,0.2)'}` }}>
-                      {row.isDuplicate ? (row.keepRecommended ? 'Manter' : 'Duplicado') : 'Ativo'}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-white">{row.analista}</td>
-                  <td className="py-3 px-4" style={{ color: '#94A3B8' }}>{row.squad}</td>
-                  <td className="py-3 px-4" style={{ color: '#94A3B8' }}>{row.data_registro || '—'}</td>
-                  <td className="py-3 px-4" style={{ color: '#94A3B8' }}>{row.source || '—'}</td>
-                  <td className="py-3 px-4" style={{ color: '#94A3B8' }}>{row.protocolo || 'consolidado'}</td>
-                  <td className="py-3 px-4 text-white">{row.nota_final_qa ?? '—'}</td>
-                  <td className="py-3 px-4 text-white">{row.iepc_total ?? '—'}</td>
-                  <td className="py-3 px-4 text-white">{row.total_ncs ?? 0}</td>
-                  <td className="py-3 px-4" style={{ color: row.feedbackCount > 1 ? '#F59E0B' : '#94A3B8' }}>{row.feedbackCount}</td>
-                  <td className="py-3 px-4" style={{ color: row.pdiCount > 1 ? '#F59E0B' : '#94A3B8' }}>{row.pdiCount}</td>
-                  <td className="py-3 px-4">
-                    {canManageCycles && row.isDuplicate && row.keepRecommended && (
-                      <button
-                        onClick={() => handleRemoveDuplicateScores(row.duplicateKey)}
-                        disabled={actionLoading === row.duplicateKey}
-                        className="px-2 py-1 rounded-lg text-xs font-medium disabled:opacity-50"
-                        style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}
-                      >
-                        {actionLoading === row.duplicateKey ? 'Corrigindo...' : 'Excluir duplicadas'}
-                      </button>
-                    )}
-                    {row.isDuplicate && row.keepRecommended && (
-                      <p className="mt-1 max-w-40" style={{ color: '#94A3B8' }}>
-                        Relacionados: {row.feedbackCount} feedback(s), {row.ncCount} NC(s), {row.pdiCount} PDI(s). A exclusão remove apenas o score duplicado.
-                      </p>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
 
-      {/* Closure History Panel */}
-      {showHistory && (
-        <div className="mb-6 rounded-xl overflow-hidden" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(56,189,248,0.15)' }}>
-          <div className="flex items-center justify-between p-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-            <h3 className="text-sm font-semibold text-white flex items-center gap-2"><History size={14} style={{ color: '#38BDF8' }} /> Histórico de Fechamentos</h3>
-            <button onClick={() => setShowHistory(false)} className="p-1 rounded hover:bg-white/10" style={{ color: '#94A3B8' }}><X size={14} /></button>
-          </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+            <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr style={{ backgroundColor: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  {['Data/Hora', 'Ciclo', 'Ação', 'Responsável', 'Observações'].map((h) => (
-                    <th key={h} className="text-left py-3 px-4 font-semibold uppercase tracking-wide" style={{ color: '#94A3B8' }}>{h}</th>
-                  ))}
+                <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-4 py-3">Identificação (Mês/Ano)</th>
+                  <th className="px-4 py-3">Data de Início</th>
+                  <th className="px-4 py-3">Data Final</th>
+                  <th className="px-4 py-3 text-right">Avaliações</th>
+                  <th className="px-4 py-3 text-center">Status do Ciclo</th>
+                  <th className="px-4 py-3 text-center">Governança</th>
+                  <th className="px-4 py-3 text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody>
-                {closureHistory.map((entry) => {
-                  const actionMeta = ACTION_LABELS[entry.action] || { label: entry.action, color: '#94A3B8' };
-                  return (
-                    <tr key={entry.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                      <td className="py-3 px-4" style={{ color: '#94A3B8' }}>
-                        <span className="flex items-center gap-1"><Clock size={11} />{new Date(entry.created_at).toLocaleString('pt-BR')}</span>
-                      </td>
-                      <td className="py-3 px-4 font-semibold text-white">{entry.periodo}</td>
-                      <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: `${actionMeta.color}15`, color: actionMeta.color, border: `1px solid ${actionMeta.color}25` }}>{actionMeta.label}</span>
-                      </td>
-                      <td className="py-3 px-4" style={{ color: '#94A3B8' }}>{entry.actor_name || entry.actor_email || '—'}</td>
-                      <td className="py-3 px-4" style={{ color: '#94A3B8' }}>{entry.notes || '—'}</td>
-                    </tr>
-                  );
-                })}
-                {closureHistory.length === 0 && (
-                  <tr><td colSpan={5} className="py-8 text-center" style={{ color: '#94A3B8' }}>Nenhum histórico registrado</td></tr>
+              <tbody className="divide-y divide-slate-100">
+                {loading ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
+                      Carregando ciclos do banco...
+                    </td>
+                  </tr>
+                ) : ciclos.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
+                      Nenhum ciclo cadastrado. Clique em &quot;Novo Ciclo&quot; para iniciar.
+                    </td>
+                  </tr>
+                ) : (
+                  ciclos.map((c) => {
+                    const homologado = isCicloHomologado(c);
+                    return (
+                      <tr key={c.periodo} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="px-4 py-3 font-bold text-slate-900 font-mono">
+                          {c.identificacao}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-slate-700">
+                          {c.data_inicio || (
+                            <span className="text-slate-400 italic">Não informada</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-slate-700">
+                          {c.data_fim || (
+                            <span className="text-slate-400 italic">Não informada</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono font-semibold text-slate-800">
+                          {c.total_avaliacoes}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              c.status === 'fechado_homologado'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : c.status === 'em_validacao'
+                                  ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                  : c.status === 'em_apuracao'
+                                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                    : 'bg-amber-50 text-amber-700 border border-amber-200'
+                            }`}
+                          >
+                            {c.status.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {homologado ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700">
+                              <Lock size={12} /> Homologado
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500">
+                              <Unlock size={12} /> Editável
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {!homologado ? (
+                              <>
+                                <button
+                                  onClick={() => handleAbrirEditar(c)}
+                                  className="p-1 text-slate-500 hover:text-blue-700 rounded transition-colors"
+                                  title="Editar datas e identificação"
+                                >
+                                  <Edit3 size={13} />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setCicloParaHomologar(c);
+                                    setModalHomologarAberta(true);
+                                  }}
+                                  className="px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded text-[10px] font-bold transition-colors"
+                                  title="Homologar e fechar ciclo de forma imutável"
+                                >
+                                  Homologar
+                                </button>
+                              </>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 font-mono italic">
+                                Imutável
+                              </span>
+                            )}
+                            <Link
+                              href={`/medicoes?periodo=${c.periodo}`}
+                              className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-semibold"
+                            >
+                              Ver Medição
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
         </div>
-      )}
 
-      {/* Cycles List */}
-      {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-6 h-6 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
-        </div>
-      ) : cycles.length === 0 ? (
-        <div className="text-center py-16">
-          <BarChart2 size={40} className="mx-auto mb-3" style={{ color: 'rgba(255,255,255,0.1)' }} />
-          <p className="text-sm" style={{ color: '#94A3B8' }}>Nenhum ciclo encontrado. Importe dados para começar.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {cycles.map((cycle) => {
-            const statusCfg = STATUS_CONFIG[cycle.status] || STATUS_CONFIG.aberto;
-            const isClosed = cycle.status === 'fechado';
-            const isReaberto = cycle.status === 'reaberto';
-            return (
-              <div key={cycle.periodo} className="rounded-xl p-5 transition-all" style={{ backgroundColor: '#0F1B31', border: `1px solid ${isClosed ? 'rgba(34,197,94,0.15)' : isReaberto ? 'rgba(167,139,250,0.15)' : 'rgba(255,255,255,0.06)'}` }}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-sm font-bold text-white">{cycle.periodo}</h3>
-                        {/* Status Badge */}
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold" style={{ backgroundColor: statusCfg.bg, color: statusCfg.color, border: `1px solid ${statusCfg.border}` }}>
-                          {statusCfg.icon}{statusCfg.label}
-                        </span>
-                        {isClosed && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs" style={{ backgroundColor: 'rgba(34,197,94,0.08)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.15)' }}>
-                            <Shield size={9} /> Bloqueado
-                          </span>
-                        )}
-                        {cycle.periodo === cycles[0]?.periodo && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs" style={{ backgroundColor: 'rgba(56,189,248,0.08)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.15)' }}>
-                            Ciclo mais recente
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>
-                        {cycle.analistas} analistas avaliados
-                        {cycle.closed_at && isClosed && <span> · Fechado em {new Date(cycle.closed_at).toLocaleDateString('pt-BR')} por {cycle.closed_by_email}</span>}
-                        {cycle.reopened_at && isReaberto && <span> · Reaberto em {new Date(cycle.reopened_at).toLocaleDateString('pt-BR')}</span>}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap justify-end">
-                    {canManageCycles && !isClosed && (
-                      <button onClick={() => setClosingCycle(cycle.periodo)} disabled={actionLoading === cycle.periodo}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
-                        style={{ backgroundColor: 'rgba(34,197,94,0.1)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.2)' }}>
-                        {actionLoading === cycle.periodo ? <Loader2 size={11} className="animate-spin" /> : <Lock size={11} />}
-                        Fechar Ciclo
-                      </button>
-                    )}
-                    {canManageCycles && (isClosed || isReaberto) && (
-                      <button onClick={() => setReopeningCycle(cycle.periodo)} disabled={actionLoading === cycle.periodo}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
-                        style={{ backgroundColor: 'rgba(167,139,250,0.1)', color: '#A78BFA', border: '1px solid rgba(167,139,250,0.2)' }}>
-                        {actionLoading === cycle.periodo ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />}
-                        Reabrir
-                      </button>
-                    )}
-                    {isAdmin && (
-                      <button onClick={() => setDeletingCycle(cycle.periodo)} disabled={actionLoading === cycle.periodo}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
-                        style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>
-                        <Trash2 size={11} /> Excluir
-                      </button>
-                    )}
-                    <button onClick={() => handleGenerateSummary(cycle)} disabled={aiLoadingPeriodo === cycle.periodo}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
-                      style={{ backgroundColor: 'rgba(56,189,248,0.1)', color: '#38BDF8', border: '1px solid rgba(56,189,248,0.2)' }}>
-                      {aiLoadingPeriodo === cycle.periodo ? <Loader2 size={11} className="animate-spin" /> : <Activity size={11} />} IA
-                    </button>
-                    <Link href={`/cycle-dashboard?periodo=${encodeURIComponent(cycle.periodo)}`}
-                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-                      style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: '#94A3B8' }}>
-                      Detalhes <ChevronRight size={11} />
-                    </Link>
-                  </div>
-                </div>
-
-                {/* Metrics */}
-                <div className="grid grid-cols-4 gap-4">
-                  {[
-                    { label: 'QA Médio', value: `${cycle.qa.toFixed(1)}%`, color: cycle.qa >= 85 ? '#22C55E' : cycle.qa >= 70 ? '#F59E0B' : '#EF4444' },
-                    { label: 'IEPC Médio', value: `${cycle.iepc.toFixed(1)}%`, color: cycle.iepc >= 85 ? '#22C55E' : cycle.iepc >= 70 ? '#F59E0B' : '#EF4444' },
-                    { label: 'NCs', value: cycle.ncs, color: cycle.ncs > 10 ? '#EF4444' : '#94A3B8' },
-                    { label: 'Elogios', value: cycle.elogios, color: '#F59E0B' },
-                  ].map((m) => (
-                    <div key={m.label}>
-                      <p className="text-xs" style={{ color: '#94A3B8' }}>{m.label}</p>
-                      <p className="text-sm font-bold mt-0.5" style={{ color: m.color }}>{m.value}</p>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Closed overlay message */}
-                {isClosed && (
-                  <div className="mt-3 flex items-center gap-2 p-2.5 rounded-lg" style={{ backgroundColor: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.12)' }}>
-                    <Lock size={12} style={{ color: '#22C55E', flexShrink: 0 }} />
-                    <p className="text-xs" style={{ color: '#22C55E' }}>Ciclo fechado — edições, importações e exclusões bloqueadas para usuários comuns</p>
-                  </div>
-                )}
-
-                {aiSummary[cycle.periodo] && (
-                  <div className="mt-3 p-3 rounded-lg" style={{ backgroundColor: 'rgba(56,189,248,0.05)', border: '1px solid rgba(56,189,248,0.1)' }}>
-                    <p className="text-xs" style={{ color: '#94A3B8' }}><span style={{ color: '#38BDF8' }}>IA:</span> {aiSummary[cycle.periodo]}</p>
-                  </div>
-                )}
+        {/* Modal Criar / Editar Ciclo */}
+        {modalAberta && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div className="w-full max-w-md bg-white border border-slate-200 rounded-md shadow-2xl overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/50">
+                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                  {cicloEditando
+                    ? `Editar ${cicloEditando.identificacao}`
+                    : 'Novo Ciclo de Competência'}
+                </h3>
+                <button
+                  onClick={() => setModalAberta(false)}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X size={16} />
+                </button>
               </div>
-            );
-          })}
-        </div>
-      )}
 
-      {/* Modals */}
-      {closingCycle && (
-        <CloseCycleModal periodo={closingCycle} loading={actionLoading === closingCycle}
-          onConfirm={(notes) => handleCloseCycle(closingCycle, notes)}
-          onClose={() => setClosingCycle(null)} />
-      )}
-
-      {reopeningCycle && (
-        <ReopenCycleModal periodo={reopeningCycle} loading={actionLoading === reopeningCycle}
-          onConfirm={(notes) => handleReopenCycle(reopeningCycle, notes)}
-          onClose={() => setReopeningCycle(null)} />
-      )}
-
-      {showCleanup && (
-        <CleanupModal actorEmail={actorEmail} onClose={() => setShowCleanup(false)} onSuccess={() => { loadData(); loadHistory(); }} />
-      )}
-
-      {deletingCycle && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.85)' }}>
-          <div className="w-full max-w-sm rounded-2xl overflow-hidden" style={{ backgroundColor: '#0A1628', border: '1px solid rgba(239,68,68,0.25)' }}>
-            <div className="p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(239,68,68,0.1)' }}>
-                  <Trash2 size={18} style={{ color: '#EF4444' }} />
-                </div>
+              <form onSubmit={handleSalvarCiclo} className="p-5 space-y-3.5 text-xs">
                 <div>
-                  <h3 className="font-bold text-white">Excluir Ciclo</h3>
-                  <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{deletingCycle}</p>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Identificação do Ciclo (Mês e Ano) *
+                  </label>
+                  <input
+                    type="text"
+                    value={formIdentificacao}
+                    onChange={(e) => setFormIdentificacao(e.target.value)}
+                    placeholder="Ex: Ciclo 09/2026 ou 09/2026"
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-md font-mono"
+                    required
+                  />
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    Identificador canônico exibido em todas as telas analíticas.
+                  </p>
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Data de Início *
+                    </label>
+                    <input
+                      type="date"
+                      value={formDataInicio}
+                      onChange={(e) => setFormDataInicio(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-md font-mono"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Data Final *</label>
+                    <input
+                      type="date"
+                      value={formDataFim}
+                      onChange={(e) => setFormDataFim(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-md font-mono"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Estado do Ciclo</label>
+                  <select
+                    value={formStatus}
+                    onChange={(e) => setFormStatus(e.target.value as CicloStatus)}
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-md font-medium"
+                  >
+                    <option value="aberto">Aberto (Em coleta inicial)</option>
+                    <option value="em_apuracao">Em Apuração (Cálculo de conformidade)</option>
+                    <option value="em_validacao">Em Validação (Auditoria final)</option>
+                  </select>
+                </div>
+
+                <div className="p-2.5 bg-blue-50 border border-blue-200 rounded text-[11px] text-blue-800">
+                  Importações e lançamentos deste ciclo serão validados contra o intervalo de datas
+                  informado acima.
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setModalAberta(false)}
+                    className="px-3 py-1.5 border border-slate-300 text-slate-600 rounded-md"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={salvando}
+                    className="px-4 py-1.5 bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white font-bold rounded-md"
+                  >
+                    {salvando ? 'Gravando...' : 'Gravar Ciclo'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Homologar Ciclo */}
+        {modalHomologarAberta && cicloParaHomologar && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div className="w-full max-w-sm bg-white border border-slate-200 rounded-md shadow-2xl overflow-hidden p-5 space-y-4">
+              <div className="flex items-center gap-2.5 text-red-600">
+                <ShieldCheck size={20} />
+                <h3 className="text-xs font-bold text-slate-900 uppercase">
+                  Homologar {cicloParaHomologar.identificacao}
+                </h3>
               </div>
-              {cycles.find((c) => c.periodo === deletingCycle)?.isClosed && (
-                <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
-                  <p className="text-xs font-semibold" style={{ color: '#F59E0B' }}>⚠️ Ciclo fechado — exclusão como Admin</p>
-                  <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>Este ciclo está fechado. Como administrador, você pode excluí-lo mesmo assim.</p>
-                </div>
-              )}
-              <p className="text-sm mb-5" style={{ color: '#94A3B8' }}>Todos os dados deste ciclo (avaliações, NCs, elogios, PDIs) serão excluídos permanentemente do banco de dados.</p>
-              <div className="flex gap-3">
-                <button onClick={() => setDeletingCycle(null)} className="flex-1 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5" style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}>Cancelar</button>
-                <button onClick={() => handleDeleteCycle(deletingCycle)} disabled={actionLoading === deletingCycle}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
-                  style={{ backgroundColor: '#DC2626' }}>
-                  {actionLoading === deletingCycle ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                  Excluir
+
+              <p className="text-xs text-slate-600 leading-relaxed">
+                A homologação é um ato formal de governança. Ao homologar, o ciclo é fechado em
+                definitivo e{' '}
+                <strong className="text-slate-900">
+                  nenhuma data, identificação ou registro poderá ser alterado ou reinserido
+                </strong>
+                , preservando a rastreabilidade forense da qualidade.
+              </p>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={() => setModalHomologarAberta(false)}
+                  className="px-3 py-1.5 border border-slate-300 text-slate-600 rounded-md text-xs font-medium"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleHomologar}
+                  disabled={homologando}
+                  className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-md text-xs"
+                >
+                  {homologando ? 'Homologando...' : 'Confirmar Homologação'}
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function CiclosPage() {
-  return (
-    <EnterpriseLayout>
-      <CiclosContent />
+        )}
+      </div>
     </EnterpriseLayout>
   );
 }

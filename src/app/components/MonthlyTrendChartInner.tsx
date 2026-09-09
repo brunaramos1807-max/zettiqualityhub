@@ -21,7 +21,15 @@ interface Props {
   data: DataPoint[];
 }
 
-function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: { name: string; value: number; color: string }[]; label?: string }) {
+function CustomTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: { name: string; value: number; color: string }[];
+  label?: string;
+}) {
   if (!active || !payload?.length) return null;
   return (
     <div
@@ -63,7 +71,12 @@ export default function MonthlyTrendChartInner({ data }: Props) {
           axisLine={false}
           tickLine={false}
         />
-        <ReferenceLine y={85} stroke="rgba(34,197,94,0.3)" strokeDasharray="4 4" label={{ value: 'Meta 85', fill: '#22C55E', fontSize: 10, position: 'right' }} />
+        <ReferenceLine
+          y={85}
+          stroke="rgba(34,197,94,0.3)"
+          strokeDasharray="4 4"
+          label={{ value: 'Meta 85', fill: '#22C55E', fontSize: 10, position: 'right' }}
+        />
         <Tooltip content={<CustomTooltip />} />
         <Line
           type="monotone"

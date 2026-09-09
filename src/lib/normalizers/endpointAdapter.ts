@@ -1,16 +1,16 @@
 /**
  * Integration Adapter for normalizePayload
- * 
+ *
  * This file adapts the comprehensive normalizePayload from @/lib/normalizers/normalizePayload.ts
  * to the specific data structures needed by receber-avaliacao endpoint.
- * 
+ *
  * It bridges between:
  * - New normalized format (rich types, variable penalties, new fields)
  * - Existing cycle_scores schema (legacy p1-p5, e1-e5, fixed -20 penalty)
  * - Existing dashboard queries (assumes no breaking changes)
- * 
+ *
  * NO refactoring of frontend, NO recalculation of history, NO breaking changes.
- * 
+ *
  * CORREÇÕES IMPLEMENTADAS (v1.1):
  * 1. IEPC: Leitura correta de iepc_pilares[], persistência de iepc_total e e1-e5
  * 2. NCs: Flatten correto com fallback entre atendimentos[].nao_conformidades[] e nao_conformidades[]
@@ -23,7 +23,14 @@
  * 9. Validação de persistência final
  */
 
-import { normalizePayload as normalizePayloadCore, NormalizedPayload, getQAScore, getIEPCScore, getAderenciaScore, isValidNormalizedPayload,  } from '@/lib/normalizers/normalizePayload';
+import {
+  normalizePayload as normalizePayloadCore,
+  NormalizedPayload,
+  getQAScore,
+  getIEPCScore,
+  getAderenciaScore,
+  isValidNormalizedPayload,
+} from '@/lib/normalizers/normalizePayload';
 
 /**
  * Represents the internal data structure the endpoint works with.
@@ -107,7 +114,11 @@ function extractPilares(
  * - Valida origem real (scores.iepc, indice_satisfacao, iepc_pilares[])
  * - Garante persistência correta de iepc_total e e1-e5
  */
-function validateAndLogIEPC(normalized: NormalizedPayload, rawPayload: any, debugContext: string = ''): void {
+function validateAndLogIEPC(
+  normalized: NormalizedPayload,
+  rawPayload: any,
+  debugContext: string = ''
+): void {
   console.log(`[endpointAdapter${debugContext}] IEPC Validation:`, {
     iepc_score: normalized.scores.iepc.value,
     iepc_source: normalized.scores.iepc.source,
@@ -124,10 +135,7 @@ function validateAndLogIEPC(normalized: NormalizedPayload, rawPayload: any, debu
  * - Suporta nao_conformidades[] achatado (fallback)
  * - Preserva todos os campos: protocolo, tipo_nc, descricao, severidade, pontos, aplicar_pontos, etc
  */
-function flattenNonConformities(
-  normalized: NormalizedPayload,
-  rawPayload: any
-): Array<any> {
+function flattenNonConformities(normalized: NormalizedPayload, rawPayload: any): Array<any> {
   const flattened: Array<any> = [];
   const seen = new Set<string>(); // Para evitar duplicatas
 
@@ -150,7 +158,12 @@ function flattenNonConformities(
               tipo_nc: nc.tipo_nc || nc.type,
               descricao: nc.descricao || nc.description,
               severidade: nc.severity || nc.severidade,
-              pontos: typeof nc.pontos === 'number' ? nc.pontos : (typeof nc.points === 'number' ? nc.points : -20),
+              pontos:
+                typeof nc.pontos === 'number'
+                  ? nc.pontos
+                  : typeof nc.points === 'number'
+                    ? nc.points
+                    : -20,
               aplicar_pontos: nc.aplicar_pontos !== false,
               categoria: nc.categoria,
               impacto_operacional: nc.impacto_operacional,
@@ -179,7 +192,12 @@ function flattenNonConformities(
           tipo_nc: nc.tipo_nc || nc.type,
           descricao: nc.descricao || nc.description,
           severidade: nc.severity || nc.severidade,
-          pontos: typeof nc.pontos === 'number' ? nc.pontos : (typeof nc.points === 'number' ? nc.points : -20),
+          pontos:
+            typeof nc.pontos === 'number'
+              ? nc.pontos
+              : typeof nc.points === 'number'
+                ? nc.points
+                : -20,
           aplicar_pontos: nc.aplicar_pontos !== false,
           categoria: nc.categoria,
           impacto_operacional: nc.impacto_operacional,
@@ -195,7 +213,9 @@ function flattenNonConformities(
     });
   }
 
-  console.log(`[endpointAdapter] NC Flatten Result: ${flattened.length} NCs após flatten e deduplicação`);
+  console.log(
+    `[endpointAdapter] NC Flatten Result: ${flattened.length} NCs após flatten e deduplicação`
+  );
   return flattened;
 }
 
@@ -235,13 +255,15 @@ function calculateTotalNCs(rawPayload: any, normalized: NormalizedPayload): numb
  * - Soma apenas nc.pontos quando aplicar_pontos === true
  */
 function calculatePontosDeduzidos(flattened: Array<any>): number {
-  let total = flattened.reduce((sum, nc) => {
+  const total = flattened.reduce((sum, nc) => {
     const aplicar = nc.aplicar_pontos !== false;
     const pontos = typeof nc.pontos === 'number' ? nc.pontos : 0;
     return sum + (aplicar ? pontos : 0);
   }, 0);
 
-  console.log(`[endpointAdapter] pontos_deduzidos_nc calculated: ${total} (aplicando apenas quando aplicar_pontos=true)`);
+  console.log(
+    `[endpointAdapter] pontos_deduzidos_nc calculated: ${total} (aplicando apenas quando aplicar_pontos=true)`
+  );
   return total;
 }
 
@@ -274,14 +296,17 @@ function extractCoachingComplete(rawPayload: any, normalized: NormalizedPayload)
  * - Valida arrays antes de usar .join()
  * - Suporta tanto string[] quanto string
  */
-function extractFeedbackBlocksSafe(rawPayload: any, normalized: NormalizedPayload): Record<string, any> | null {
+function extractFeedbackBlocksSafe(
+  rawPayload: any,
+  normalized: NormalizedPayload
+): Record<string, any> | null {
   const blocks: Record<string, any> = {};
 
   if (normalized.feedback_blocks && typeof normalized.feedback_blocks === 'object') {
     Object.entries(normalized.feedback_blocks).forEach(([key, value]) => {
       if (Array.isArray(value)) {
         // Se for array, fazer join seguro
-        blocks[key] = value.map(v => String(v)).join('\n');
+        blocks[key] = value.map((v) => String(v)).join('\n');
       } else if (typeof value === 'string') {
         // Se for string, usar direto
         blocks[key] = value;
@@ -299,7 +324,7 @@ function extractFeedbackBlocksSafe(rawPayload: any, normalized: NormalizedPayloa
 /**
  * Main adapter function.
  * Normalizes any payload (old or new) and returns structured data for the endpoint.
- * 
+ *
  * This is the single point of integration for the normalizePayload layer.
  */
 export function normalizePayloadForEndpoint(rawPayload: any): NormalizedEndpointPayload {
@@ -309,7 +334,9 @@ export function normalizePayloadForEndpoint(rawPayload: any): NormalizedEndpoint
     normalized = normalizePayloadCore(rawPayload);
   } catch (err) {
     console.error('[normalizePayloadForEndpoint] Core normalization error:', err);
-    throw new Error(`Payload normalization failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    throw new Error(
+      `Payload normalization failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+    );
   }
 
   // ─── Step 2: Validate normalized payload ───
@@ -321,8 +348,17 @@ export function normalizePayloadForEndpoint(rawPayload: any): NormalizedEndpoint
   const analistaNome = normalized.analista || normalized.analyst?.nome || '';
   const analistaEmail = normalized.analyst?.email || null;
   // FIX: coordenador fallback should NOT use cycle.nome — use empty string
-  const coordenador = normalized.analyst?.coordenador || (rawPayload?.analista as any)?.coordenador || rawPayload?.coordenador || '';
-  const squad = normalized.analyst?.squad || normalized.analyst?.equipe || (rawPayload?.analista as any)?.equipe || rawPayload?.squad || '';
+  const coordenador =
+    normalized.analyst?.coordenador ||
+    (rawPayload?.analista as any)?.coordenador ||
+    rawPayload?.coordenador ||
+    '';
+  const squad =
+    normalized.analyst?.squad ||
+    normalized.analyst?.equipe ||
+    (rawPayload?.analista as any)?.equipe ||
+    rawPayload?.squad ||
+    '';
   const auditor = normalized.analyst?.auditor || null;
   const cicloNome = normalized.cycle?.periodo || normalized.cycle?.nome || normalized.periodo || '';
   const cicloInicio = normalized.cycle?.data_inicio || null;
@@ -360,21 +396,23 @@ export function normalizePayloadForEndpoint(rawPayload: any): NormalizedEndpoint
 
   // ─── Step 12: Analytics (sem pontos_fortes/pontos_a_melhorar) ───
   // CORREÇÃO #7: Remoção de dependências falsas
-  const analytics = normalized.analytics ? {
-    percentual_aderencia: normalized.analytics.percentual_aderencia,
-    quantidade_aderidos: normalized.analytics.quantidade_aderidos,
-    quantidade_parcial: normalized.analytics.quantidade_parcial,
-    quantidade_nao_evidenciado: normalized.analytics.quantidade_nao_evidenciado,
-    total_atendimentos: normalized.analytics.total_atendimentos,
-    media_nota_atendimento: normalized.analytics.media_nota_atendimento,
-    feedback_final: normalized.analytics.feedback_final,
-    analise_estrategica: normalized.analytics.analise_estrategica,
-    tags: normalized.analytics.tags,
-    origem: normalized.analytics.origem,
-    avaliacao_id: normalized.analytics.avaliacao_id,
-    avaliador: normalized.analytics.avaliador,
-    data_registro: normalized.analytics.data_registro,
-  } : null;
+  const analytics = normalized.analytics
+    ? {
+        percentual_aderencia: normalized.analytics.percentual_aderencia,
+        quantidade_aderidos: normalized.analytics.quantidade_aderidos,
+        quantidade_parcial: normalized.analytics.quantidade_parcial,
+        quantidade_nao_evidenciado: normalized.analytics.quantidade_nao_evidenciado,
+        total_atendimentos: normalized.analytics.total_atendimentos,
+        media_nota_atendimento: normalized.analytics.media_nota_atendimento,
+        feedback_final: normalized.analytics.feedback_final,
+        analise_estrategica: normalized.analytics.analise_estrategica,
+        tags: normalized.analytics.tags,
+        origem: normalized.analytics.origem,
+        avaliacao_id: normalized.analytics.avaliacao_id,
+        avaliador: normalized.analytics.avaliador,
+        data_registro: normalized.analytics.data_registro,
+      }
+    : null;
 
   // ─── Step 13: Backward compatibility: flatten NCs com campos completos ───
   const ncs = ncFlattened.map((nc) => ({
@@ -540,9 +578,15 @@ export function buildCycleScoresRow(
 /**
  * Helper: Log warnings from normalization process
  */
-export function logNormalizationWarnings(normalized: NormalizedEndpointPayload, logContext: string = ''): void {
+export function logNormalizationWarnings(
+  normalized: NormalizedEndpointPayload,
+  logContext: string = ''
+): void {
   if (normalized.warnings.length > 0) {
-    console.warn(`[normalizePayloadForEndpoint${logContext}] Normalization warnings:`, normalized.warnings);
+    console.warn(
+      `[normalizePayloadForEndpoint${logContext}] Normalization warnings:`,
+      normalized.warnings
+    );
   }
 }
 
@@ -571,7 +615,9 @@ export function auditPayloadCompatibility(normalized: NormalizedEndpointPayload)
 
   if (normalized.hasNewFormat && normalized.hasLegacyFormat) {
     // Mixed format — may have conflicts, new takes precedence
-    issues.push('Mixed payload format detected: both new and legacy fields present. New format will be used.');
+    issues.push(
+      'Mixed payload format detected: both new and legacy fields present. New format will be used.'
+    );
     return { isFullyNew: false, isFullyLegacy: false, isMixed: true, issues };
   }
 
@@ -583,21 +629,27 @@ export function auditPayloadCompatibility(normalized: NormalizedEndpointPayload)
 /**
  * Validate that the normalized endpoint payload is safe to save
  */
-export function validateEndpointPayload(payload: NormalizedEndpointPayload): { valid: boolean; errors: string[] } {
+export function validateEndpointPayload(payload: NormalizedEndpointPayload): {
+  valid: boolean;
+  errors: string[];
+} {
   const errors: string[] = [];
 
   // Required fields
   if (!payload.analistaNome) errors.push('Missing analistaNome');
   if (!payload.cicloNome) errors.push('Missing cicloNome');
-  if (payload.qaScore < 0 || payload.qaScore > 100) errors.push(`Invalid qaScore: ${payload.qaScore}`);
-  if (payload.iepcScore < 0 || payload.iepcScore > 100) errors.push(`Invalid iepcScore: ${payload.iepcScore}`);
+  if (payload.qaScore < 0 || payload.qaScore > 100)
+    errors.push(`Invalid qaScore: ${payload.qaScore}`);
+  if (payload.iepcScore < 0 || payload.iepcScore > 100)
+    errors.push(`Invalid iepcScore: ${payload.iepcScore}`);
 
   // Pillars
   if (payload.pilaresQA.length === 0) errors.push('No QA pillars provided');
   if (payload.pilaresIEPC.length === 0) errors.push('No IEPC pillars provided');
 
   // Penalty consistency
-  if (Math.abs(payload.pontosDeduzidosNC) > 1000) errors.push(`Suspiciously high penalty: ${payload.pontosDeduzidosNC}`);
+  if (Math.abs(payload.pontosDeduzidosNC) > 1000)
+    errors.push(`Suspiciously high penalty: ${payload.pontosDeduzidosNC}`);
 
   return { valid: errors.length === 0, errors };
 }

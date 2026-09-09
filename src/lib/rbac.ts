@@ -31,7 +31,7 @@ export interface UserScopePermission {
 }
 
 const DEFAULT_PERMISSIONS: RBACPermissions = {
-  can_view: true,   // fallback conservador legado para não quebrar telas nesta fase
+  can_view: true, // fallback conservador legado para não quebrar telas nesta fase
   can_create: false,
   can_edit: false,
   can_delete: false,
@@ -54,7 +54,10 @@ const permCache = new Map<string, RBACPermissions>();
 const scopeCache = new Map<string, UserScopePermission>();
 
 // ─── Load permissions for a user + module from DB ────────────────────────────
-export async function loadUserPermissions(userId: string, moduleName: string): Promise<RBACPermissions> {
+export async function loadUserPermissions(
+  userId: string,
+  moduleName: string
+): Promise<RBACPermissions> {
   const cacheKey = `${userId}:${moduleName}`;
   if (permCache.has(cacheKey)) return permCache.get(cacheKey)!;
 
@@ -62,7 +65,9 @@ export async function loadUserPermissions(userId: string, moduleName: string): P
 
   const { data } = await supabase
     .from('user_permissions')
-    .select('can_view, can_create, can_edit, can_delete, can_import, can_export, can_send, can_sync, can_manage_permissions, can_cancel, can_generate_link, can_present, can_close_cycle, can_reopen_cycle, can_approve, can_admin')
+    .select(
+      'can_view, can_create, can_edit, can_delete, can_import, can_export, can_send, can_sync, can_manage_permissions, can_cancel, can_generate_link, can_present, can_close_cycle, can_reopen_cycle, can_approve, can_admin'
+    )
     .eq('user_profile_id', userId)
     .eq('module_name', moduleName)
     .maybeSingle();
@@ -188,7 +193,10 @@ export function isAdmin(perms: RBACPermissions): boolean {
   return perms.can_admin;
 }
 
-export function hasActionPermission(perms: RBACPermissions, action: keyof RBACPermissions): boolean {
+export function hasActionPermission(
+  perms: RBACPermissions,
+  action: keyof RBACPermissions
+): boolean {
   return Boolean(perms[action]);
 }
 

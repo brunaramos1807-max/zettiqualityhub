@@ -34,13 +34,7 @@ interface InsightItemProps {
   };
 }
 
-export function InsightItem({
-  icon,
-  text,
-  context,
-  type = 'positive',
-  metric,
-}: InsightItemProps) {
+export function InsightItem({ icon, text, context, type = 'positive', metric }: InsightItemProps) {
   const iconElement = ICON_MAP[icon] || <Star size={18} />;
 
   const getIconColor = () => {
@@ -60,28 +54,18 @@ export function InsightItem({
       {/* Content */}
       <div className="flex-1 min-w-0">
         {/* Main text */}
-        <p className="text-sm font-medium text-slate-900 dark:text-white">
-          {text}
-        </p>
+        <p className="text-sm font-medium text-slate-900 dark:text-white">{text}</p>
 
         {/* Context (secondary text) */}
-        {context && (
-          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-            {context}
-          </p>
-        )}
+        {context && <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">{context}</p>}
       </div>
 
       {/* Metric (optional) */}
       {metric && (
         <div className="flex-shrink-0 text-right">
-          <div className="text-sm font-bold text-slate-900 dark:text-white">
-            {metric.value}
-          </div>
+          <div className="text-sm font-bold text-slate-900 dark:text-white">{metric.value}</div>
           {metric.unit && (
-            <div className="text-xs text-slate-600 dark:text-slate-400">
-              {metric.unit}
-            </div>
+            <div className="text-xs text-slate-600 dark:text-slate-400">{metric.unit}</div>
           )}
         </div>
       )}
