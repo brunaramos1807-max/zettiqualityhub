@@ -33,9 +33,7 @@ export const EventoNCSchema = z.object({
   pontos_deduzidos: numericCoerce.default(20),
   protocolo_referencia: z.string().optional().nullable(),
   data_registro: z.string().default(() => new Date().toISOString()),
-  evidencia_resumo: z.string().optional().nullable(),
-  justificativa: z.string().optional().nullable(),
-  impacto: z.string().optional().nullable(),
+  origem: z.string().optional().nullable(),
 });
 
 export const AvaliacaoIngestaoSchema = z.object({

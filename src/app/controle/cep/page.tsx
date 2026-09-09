@@ -132,7 +132,7 @@ export default function CEPPage() {
               </span>
               <span className="text-xs text-slate-500">não-conformes</span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">Média ponderada do processo</p>
+            <p className="text-[11px] text-slate-400 mt-1">Linha central do processo (p̄)</p>
           </div>
 
           <div className="p-4 bg-white border border-slate-200 rounded-md shadow-sm">

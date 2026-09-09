@@ -7,18 +7,11 @@ import { createClient } from '@/lib/supabase/client';
 import {
   FileSpreadsheet,
   Upload,
-  Plus,
-  Trash2,
-  Download,
   CheckCircle2,
-  AlertCircle,
-  Clock,
-  Layers,
-  Activity,
   ShieldCheck,
   RefreshCw,
-  X,
 } from 'lucide-react';
+import Link from 'next/link';
 import { toast } from 'sonner';
 
 interface ImportRecord {
@@ -32,50 +25,10 @@ interface ImportRecord {
   status: string;
 }
 
-interface ManualEvalForm {
-  periodo: string;
-  analista: string;
-  squad: string;
-  coordenador: string;
-  auditor: string;
-  nota_final_qa: string;
-  iepc_total: string;
-  total_ncs: string;
-  pontos_deduzidos_nc: string;
-  p1: string;
-  p2: string;
-  p3: string;
-  p4: string;
-  p5: string;
-}
-
-const EMPTY_FORM: ManualEvalForm = {
-  periodo: '08/2026',
-  analista: '',
-  squad: 'PDV',
-  coordenador: '',
-  auditor: '',
-  nota_final_qa: '85',
-  iepc_total: '85',
-  total_ncs: '0',
-  pontos_deduzidos_nc: '0',
-  p1: '20',
-  p2: '30',
-  p3: '16',
-  p4: '12',
-  p5: '10',
-};
-
-const SQUADS = ['PDV', 'PDV N1', 'Compras e Estoque', 'Financeiro Fiscal'];
-
 export default function ImportacoesPage() {
   const [importOpen, setImportOpen] = useState(false);
-  const [manualOpen, setManualOpen] = useState(false);
   const [imports, setImports] = useState<ImportRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState<ManualEvalForm>(EMPTY_FORM);
-  const [savingManual, setSavingManual] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const { session } = useSystemAuth();
 
@@ -126,65 +79,7 @@ export default function ImportacoesPage() {
     loadImports();
   }, [loadImports]);
 
-  const handleSaveManual = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.analista || !form.periodo) {
-      toast.error('Preencha ao menos o analista e o ciclo.');
-      return;
-    }
 
-    setSavingManual(true);
-    try {
-      const supabase = createClient();
-      if (supabase) {
-        await supabase.from('cycle_scores').upsert(
-          {
-            periodo: form.periodo,
-            analista: form.analista,
-            squad: form.squad,
-            coordenador: form.coordenador || null,
-            auditor: form.auditor || null,
-            nota_final_qa: parseFloat(form.nota_final_qa) || 0,
-            iepc_total: parseFloat(form.iepc_total) || 0,
-            total_ncs: parseInt(form.total_ncs) || 0,
-            pontos_deduzidos_nc: parseFloat(form.pontos_deduzidos_nc) || 0,
-            p1: parseFloat(form.p1) || 0,
-            p2: parseFloat(form.p2) || 0,
-            p3: parseFloat(form.p3) || 0,
-            p4: parseFloat(form.p4) || 0,
-            p5: parseFloat(form.p5) || 0,
-            source: 'manual',
-          },
-          { onConflict: 'periodo,analista,squad' }
-        );
-      }
-
-      toast.success(`Avaliação de ${form.analista} registrada com sucesso!`);
-      setManualOpen(false);
-      setForm(EMPTY_FORM);
-      loadImports();
-    } catch (err: any) {
-      toast.error('Erro ao registrar avaliação manual: ' + err.message);
-    } finally {
-      setSavingManual(false);
-    }
-  };
-
-  const handleDeleteCycle = async (id: string, periodo: string) => {
-    try {
-      const supabase = createClient();
-      if (supabase) {
-        await supabase.from('cycle_scores').delete().eq('periodo', periodo);
-        await supabase.from('nc_records').delete().eq('periodo', periodo);
-        await supabase.from('import_cycles').delete().eq('id', id);
-      }
-      toast.success(`Dados do ciclo ${periodo} removidos.`);
-      setDeleteConfirm(null);
-      loadImports();
-    } catch (err: any) {
-      toast.error('Erro ao excluir: ' + err.message);
-    }
-  };
 
   return (
     <EnterpriseLayout>
@@ -214,13 +109,12 @@ export default function ImportacoesPage() {
             >
               <RefreshCw size={14} />
             </button>
-            <button
-              onClick={() => setManualOpen(true)}
+            <Link
+              href="/ciclos"
               className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-300 hover:bg-slate-50 text-xs font-semibold text-slate-700 rounded-md transition-colors"
             >
-              <Plus size={14} />
-              Registro Pontual
-            </button>
+              Governança de Ciclos
+            </Link>
             <button
               onClick={() => setImportOpen(true)}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-700 hover:bg-blue-800 text-xs font-semibold text-white rounded-md transition-colors shadow-sm"
@@ -325,31 +219,12 @@ export default function ImportacoesPage() {
                         </span>
                       </td>
                       <td className="px-5 py-3 text-right">
-                        {deleteConfirm === imp.id ? (
-                          <div className="flex items-center justify-end gap-1.5">
-                            <span className="text-[11px] text-red-600 font-bold">Excluir?</span>
-                            <button
-                              onClick={() => handleDeleteCycle(imp.id, imp.periodo)}
-                              className="px-2 py-0.5 bg-red-600 text-white rounded text-[11px] font-bold"
-                            >
-                              Sim
-                            </button>
-                            <button
-                              onClick={() => setDeleteConfirm(null)}
-                              className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded text-[11px]"
-                            >
-                              Não
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setDeleteConfirm(imp.id)}
-                            className="p-1 text-slate-400 hover:text-red-600 rounded transition-colors"
-                            title="Remover dados do lote"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
+                        <Link
+                          href={`/medicoes?periodo=${imp.periodo}`}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[11px] font-semibold transition-colors"
+                        >
+                          Ver Medição
+                        </Link>
                       </td>
                     </tr>
                   ))
@@ -366,157 +241,7 @@ export default function ImportacoesPage() {
           onImportSuccess={() => loadImports()}
         />
 
-        {/* Modal de Registro Pontual */}
-        {manualOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-            <div className="w-full max-w-lg bg-white border border-slate-200 rounded-md shadow-2xl overflow-hidden flex flex-col">
-              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-                <div>
-                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                    Registro Pontual de Avaliação
-                  </h3>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Inserção manual de resultado individual para contingência
-                  </p>
-                </div>
-                <button
-                  onClick={() => setManualOpen(false)}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  <X size={16} />
-                </button>
-              </div>
 
-              <form onSubmit={handleSaveManual} className="p-6 space-y-4 text-xs">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Ciclo *</label>
-                    <input
-                      type="text"
-                      value={form.periodo}
-                      onChange={(e) => setForm({ ...form, periodo: e.target.value })}
-                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded-md font-mono"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Squad / Equipe *
-                    </label>
-                    <select
-                      value={form.squad}
-                      onChange={(e) => setForm({ ...form, squad: e.target.value })}
-                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded-md"
-                    >
-                      {SQUADS.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Analista *</label>
-                    <input
-                      type="text"
-                      value={form.analista}
-                      onChange={(e) => setForm({ ...form, analista: e.target.value })}
-                      placeholder="Nome do analista"
-                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded-md"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Coordenador</label>
-                    <input
-                      type="text"
-                      value={form.coordenador}
-                      onChange={(e) => setForm({ ...form, coordenador: e.target.value })}
-                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded-md"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
-                  <div>
-                    <label className="block font-semibold text-blue-700 mb-1">
-                      Nota Final QA (0–100) *
-                    </label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="100"
-                      value={form.nota_final_qa}
-                      onChange={(e) => setForm({ ...form, nota_final_qa: e.target.value })}
-                      className="w-full px-2.5 py-1.5 border border-blue-200 rounded-md font-mono font-bold"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold text-sky-700 mb-1">
-                      Índice IEPC (0–100) *
-                    </label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="100"
-                      value={form.iepc_total}
-                      onChange={(e) => setForm({ ...form, iepc_total: e.target.value })}
-                      className="w-full px-2.5 py-1.5 border border-sky-200 rounded-md font-mono font-bold"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-semibold text-red-600 mb-1">Total de NCs</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={form.total_ncs}
-                      onChange={(e) => setForm({ ...form, total_ncs: e.target.value })}
-                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded-md font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold text-red-600 mb-1">
-                      Pontos Deduzidos NC
-                    </label>
-                    <input
-                      type="number"
-                      value={form.pontos_deduzidos_nc}
-                      onChange={(e) => setForm({ ...form, pontos_deduzidos_nc: e.target.value })}
-                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded-md font-mono"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => setManualOpen(false)}
-                    className="px-3 py-1.5 border border-slate-300 text-slate-600 rounded-md"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={savingManual}
-                    className="px-4 py-1.5 bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white font-bold rounded-md"
-                  >
-                    {savingManual ? 'Gravando...' : 'Gravar Avaliação'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
       </div>
     </EnterpriseLayout>
   );

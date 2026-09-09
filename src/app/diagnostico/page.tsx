@@ -79,6 +79,13 @@ function DiagnosticoContent() {
   const [novaPerguntaPorque, setNovaPerguntaPorque] = useState<string>('');
   const [novaRespostaPorque, setNovaRespostaPorque] = useState<string>('');
 
+  // Validação formal de causa raiz com fundamentação
+  const [modalValidarAberta, setModalValidarAberta] = useState(false);
+  const [causaParaValidar, setCausaParaValidar] = useState('');
+  const [fundamentacaoValidacao, setFundamentacaoValidacao] = useState('');
+  const [metodoValidacao, setMetodoValidacao] = useState('Análise de Dados Históricos');
+  const [validandoCausa, setValidandoCausa] = useState(false);
+
   // Carregar ciclos
   useEffect(() => {
     fetchCiclos().then((lista) => {
@@ -215,18 +222,39 @@ function DiagnosticoContent() {
     }
   };
 
-  const handleValidarCausa = async (causaTexto: string) => {
-    if (!investigacaoAtiva) return;
+  const handleAbrirValidacao = (causaTexto: string) => {
+    setCausaParaValidar(causaTexto);
+    setFundamentacaoValidacao('');
+    setMetodoValidacao('Análise de Dados Históricos');
+    setModalValidarAberta(true);
+  };
+
+  const handleConfirmarValidacaoCausa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!investigacaoAtiva || !causaParaValidar.trim() || !fundamentacaoValidacao.trim()) {
+      toast.error('Informe a causa raiz e a fundamentação técnica observada.');
+      return;
+    }
+
+    setValidandoCausa(true);
     try {
-      const res = await validarCausaRaiz(investigacaoAtiva.id, causaTexto);
+      const res = await validarCausaRaiz(
+        investigacaoAtiva.id,
+        causaParaValidar.trim(),
+        fundamentacaoValidacao.trim(),
+        metodoValidacao
+      );
       if (res.success) {
-        toast.success('Causa raiz validada com sucesso!');
+        toast.success('Causa raiz formalmente validada com evidência registrada!');
+        setModalValidarAberta(false);
         await carregarInvestigacoes();
       } else {
         toast.error('Erro: ' + res.error);
       }
     } catch (err: any) {
       toast.error(err.message);
+    } finally {
+      setValidandoCausa(false);
     }
   };
 
@@ -387,6 +415,37 @@ function DiagnosticoContent() {
                     <strong>Desvio Detectado:</strong> {investigacaoAtiva.desvio_detectado}
                   </p>
 
+                  {/* Banner de Causa Raiz Validada com Evidência */}
+                  {investigacaoAtiva.status === 'causa_validada' && (
+                    <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-md space-y-2 mt-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1.5">
+                          <CheckCircle2 size={14} className="text-emerald-600" />
+                          Causa Raiz Validada e Comprovada
+                        </span>
+                        <Link
+                          href={`/melhoria/planos?investigacao_id=${investigacaoAtiva.id}&titulo=${encodeURIComponent(investigacaoAtiva.titulo)}&causa=${encodeURIComponent(investigacaoAtiva.causa_raiz_validada || '')}&periodo=${cicloSelecionado}`}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-md shadow-sm"
+                        >
+                          Transformar em Plano 5W2H <ArrowRight size={13} />
+                        </Link>
+                      </div>
+                      <p className="text-xs font-bold text-slate-900">
+                        {investigacaoAtiva.causa_raiz_validada}
+                      </p>
+                      {investigacaoAtiva.fundamentacao_validacao && (
+                        <p className="text-[11px] text-slate-700">
+                          <strong>Fundamentação / Evidência:</strong> {investigacaoAtiva.fundamentacao_validacao}
+                        </p>
+                      )}
+                      {investigacaoAtiva.metodo_validacao && (
+                        <p className="text-[10px] text-slate-500 font-mono">
+                          Método de Validação: {investigacaoAtiva.metodo_validacao}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   {/* Abas Ishikawa vs 5 Porquês */}
                   <div className="flex gap-2 pt-3">
                     <button
@@ -443,9 +502,9 @@ function DiagnosticoContent() {
                                   >
                                     <span>{item}</span>
                                     <button
-                                      onClick={() => handleValidarCausa(item)}
+                                      onClick={() => handleAbrirValidacao(item)}
                                       className="text-[10px] text-purple-700 font-bold hover:underline flex-shrink-0"
-                                      title="Definir este fator como causa raiz validada"
+                                      title="Submeter hipótese para validação formal de causa raiz"
                                     >
                                       Validar Causa
                                     </button>
@@ -519,7 +578,7 @@ function DiagnosticoContent() {
                                 #{item.nivel} PORQUÊ
                               </span>
                               <button
-                                onClick={() => handleValidarCausa(item.resposta)}
+                                onClick={() => handleAbrirValidacao(item.resposta)}
                                 className="text-[11px] font-bold text-emerald-700 hover:underline inline-flex items-center gap-1"
                               >
                                 <CheckCircle2 size={12} /> Validar como Causa Raiz
@@ -665,6 +724,94 @@ function DiagnosticoContent() {
                     className="px-4 py-1.5 bg-purple-700 hover:bg-purple-800 text-white font-bold rounded-md"
                   >
                     Abrir Investigação
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+        {/* Modal de Validação Rigorosa de Causa Raiz */}
+        {modalValidarAberta && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div className="w-full max-w-lg bg-white border border-slate-200 rounded-md shadow-2xl overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/50">
+                <div>
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                    Validação Formal de Causa Raiz
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    A causa raiz requer fundamentação e evidência antes de gerar plano de ação.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setModalValidarAberta(false)}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleConfirmarValidacaoCausa} className="p-5 space-y-4 text-xs">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Causa Raiz Identificada *
+                  </label>
+                  <input
+                    type="text"
+                    value={causaParaValidar}
+                    onChange={(e) => setCausaParaValidar(e.target.value)}
+                    placeholder="Descrição precisa da causa raiz confirmada"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md font-semibold text-slate-900"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Método de Validação Aplicado *
+                  </label>
+                  <select
+                    value={metodoValidacao}
+                    onChange={(e) => setMetodoValidacao(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white font-medium"
+                    required
+                  >
+                    <option value="Análise de Dados Históricos">Análise de Dados Históricos e Métricas</option>
+                    <option value="Auditoria In Loco / Gemba">Auditoria In Loco (Gemba / Observação)</option>
+                    <option value="Teste Amostral Controlado">Teste Amostral Controlado / Piloto</option>
+                    <option value="Mapeamento de Processo">Mapeamento de Fluxo e Processo</option>
+                    <option value="Entrevista Técnica com Equipe">Entrevista Técnica com Especialistas da Equipe</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Fundamentação e Evidência Observada *
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={fundamentacaoValidacao}
+                    onChange={(e) => setFundamentacaoValidacao(e.target.value)}
+                    placeholder="Quais dados, ocorrências ou evidências comprovam que este fator é a causa raiz e não apenas um sintoma?"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md resize-none"
+                    required
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setModalValidarAberta(false)}
+                    className="px-3 py-1.5 border border-slate-300 text-slate-600 rounded-md"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={validandoCausa}
+                    className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold rounded-md"
+                  >
+                    {validandoCausa ? 'Validando...' : 'Confirmar e Validar Causa'}
                   </button>
                 </div>
               </form>

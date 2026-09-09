@@ -32,12 +32,13 @@ export interface IngestaoPersistidaResult extends IngestaoResult {
 }
 
 /**
- * Pré-validação canônica em memória para exibição em modal ou preview
+ * Pré-validação canônica ESTRITAMENTE EM MEMÓRIA.
+ * NÃO grava no banco, NÃO altera estado, NÃO gera efeitos colaterais.
+ * Usado exclusivamente para preview e feedback de erros antes da confirmação do usuário.
  */
-export async function processarLoteIngestao(
-  origem: string,
+export function validarLoteCanonicoEmMemoria(
   registrosBrutos: unknown[]
-): Promise<{ totalRecebido: number; totalAceito: number; totalRejeitado: number; erros: string[] }> {
+): { totalRecebido: number; totalAceito: number; totalRejeitado: number; erros: string[] } {
   let totalAceito = 0;
   let totalRejeitado = 0;
   const erros: string[] = [];
@@ -47,7 +48,9 @@ export async function processarLoteIngestao(
     const parseResult = AvaliacaoIngestaoSchema.safeParse(raw);
     if (!parseResult.success) {
       totalRejeitado++;
-      erros.push(`Linha ${i + 1}: ${parseResult.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`);
+      erros.push(
+        `Linha ${i + 1}: ${parseResult.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`
+      );
     } else {
       totalAceito++;
     }
@@ -55,6 +58,14 @@ export async function processarLoteIngestao(
 
   return { totalRecebido: registrosBrutos.length, totalAceito, totalRejeitado, erros };
 }
+
+/**
+ * @deprecated Use validarLoteCanonicoEmMemoria para deixar explícito que não há ingestão durante o preview.
+ */
+export const processarLoteIngestao = async (
+  _origem: string,
+  registrosBrutos: unknown[]
+) => validarLoteCanonicoEmMemoria(registrosBrutos);
 
 /**
  * Executa a validação e persistência unificada de um lote de ingestão.
@@ -181,14 +192,11 @@ export async function executarIngestaoCanonicaLote(
           equipe_nome: data.equipe_nome,
           analista_nome: data.analista_nome,
           coordenador_nome: data.coordenador_nome || undefined,
-          auditor_nome: data.auditor_nome || undefined,
           tipo_nc: nc.tipo_nc,
           pontos_deduzidos: nc.pontos_deduzidos,
           protocolo_referencia: nc.protocolo_referencia || undefined,
           data_registro: nc.data_registro || new Date().toISOString().split('T')[0],
-          evidencia_resumo: nc.evidencia_resumo || undefined,
-          justificativa: nc.justificativa || undefined,
-          impacto: nc.impacto || undefined,
+          origem: 'canonical_batch_import',
         });
       }
     }
@@ -283,11 +291,9 @@ export async function executarIngestaoCanonicaLote(
       analista: nc.analista_nome,
       squad: nc.equipe_nome,
       coordenador: nc.coordenador_nome || null,
-      auditor: nc.auditor_nome || null,
       tipo_nc: nc.tipo_nc,
       pontos_deduzidos: nc.pontos_deduzidos,
       protocolo_referencia: nc.protocolo_referencia || null,
-      descricao: nc.evidencia_resumo || nc.justificativa || null,
       source: 'canonical_batch_import',
     }));
 

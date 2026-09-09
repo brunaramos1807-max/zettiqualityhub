@@ -178,7 +178,7 @@ export default function MedicoesPage() {
               <span className="text-2xl font-bold font-mono text-blue-700">
                 {resumoGeral.mediaQA > 0 ? `${resumoGeral.mediaQA}%` : '—'}
               </span>
-              <span className="text-xs text-slate-500">média ponderada</span>
+              <span className="text-xs text-slate-500">média oficial</span>
             </div>
             <p className="text-[11px] text-slate-500 mt-2">
               Conformidade com os padrões operacionais

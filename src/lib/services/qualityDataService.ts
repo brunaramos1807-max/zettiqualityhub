@@ -454,6 +454,8 @@ export async function fetchInvestigacoes(periodo?: string): Promise<Investigacao
       squad: inv.squad,
       status: inv.status,
       causa_raiz_validada: inv.causa_raiz_validada,
+      fundamentacao_validacao: inv.fundamentacao_validacao,
+      metodo_validacao: inv.metodo_validacao,
       ishikawa: inv.ishikawa || [],
       cinco_porques: inv.cinco_porques || [],
       hipoteses: inv.hipoteses || [],
@@ -472,15 +474,21 @@ export async function salvarInvestigacao(
   const supabase = getSupabase();
   if (!supabase) return { success: false, error: 'Supabase indisponível' };
 
+  if (!inv.periodo) {
+    return { success: false, error: 'O ciclo/período é obrigatório para registrar a investigação.' };
+  }
+
   try {
     const payload = {
-      periodo: extrairPeriodoMesAno(inv.periodo || '08/2026'),
+      periodo: extrairPeriodoMesAno(inv.periodo),
       titulo: inv.titulo || 'Nova Investigação',
       desvio_detectado: inv.desvio_detectado || '',
       indicador_afetado: inv.indicador_afetado || '',
       squad: inv.squad || null,
       status: inv.status || 'aberta',
       causa_raiz_validada: inv.causa_raiz_validada || null,
+      fundamentacao_validacao: inv.fundamentacao_validacao || null,
+      metodo_validacao: inv.metodo_validacao || null,
       ishikawa: inv.ishikawa || [],
       cinco_porques: inv.cinco_porques || [],
       hipoteses: inv.hipoteses || [],
@@ -508,7 +516,9 @@ export async function salvarInvestigacao(
 
 export async function validarCausaRaiz(
   id: string,
-  causaRaiz: string
+  causaRaiz: string,
+  fundamentacao?: string,
+  metodoValidacao?: string
 ): Promise<{ success: boolean; error?: string }> {
   const supabase = getSupabase();
   if (!supabase) return { success: false, error: 'Supabase indisponível' };
@@ -518,6 +528,8 @@ export async function validarCausaRaiz(
       .from('investigacoes')
       .update({
         causa_raiz_validada: causaRaiz,
+        fundamentacao_validacao: fundamentacao || null,
+        metodo_validacao: metodoValidacao || null,
         status: 'causa_validada',
         updated_at: new Date().toISOString(),
       })
@@ -583,6 +595,10 @@ export async function salvarPlano5W2H(
   const supabase = getSupabase();
   if (!supabase) return { success: false, error: 'Supabase indisponível' };
 
+  if (!plano.periodo) {
+    return { success: false, error: 'O ciclo/período é obrigatório para registrar o plano 5W2H.' };
+  }
+
   try {
     const prazoDias = plano.prazo_eficacia_dias || 30;
     const quandoDate = plano.quando ? new Date(plano.quando) : new Date();
@@ -591,7 +607,7 @@ export async function salvarPlano5W2H(
       .split('T')[0];
 
     const payload = {
-      periodo: extrairPeriodoMesAno(plano.periodo || '08/2026'),
+      periodo: extrairPeriodoMesAno(plano.periodo),
       investigacao_id: plano.investigacao_id || null,
       titulo: plano.titulo || 'Plano de Ação de Melhoria',
       o_que: plano.o_que || '',

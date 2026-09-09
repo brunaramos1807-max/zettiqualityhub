@@ -23,11 +23,7 @@ import {
   type CycleScoreRow,
   type NCRow,
 } from '@/lib/services/dataService';
-import {
-  importCycleDataToSupabase,
-  isCycleClosedInSupabase,
-} from '@/lib/services/supabaseDataService';
-import { processarLoteIngestao } from '@/lib/services/canonicalIngestionService';
+import { validarLoteCanonicoEmMemoria } from '@/lib/services/canonicalIngestionService';
 
 interface ImportModalProps {
   isOpen: boolean;
@@ -242,7 +238,7 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
           pontos_deduzidos_nc: s.pontos_deduzidos_nc || 0,
         }));
 
-        const canonicalCheck = await processarLoteIngestao('modal_upload', canonicalPayload);
+        const canonicalCheck = validarLoteCanonicoEmMemoria(canonicalPayload);
 
         setValidationSummary({
           totalRows,
@@ -309,7 +305,6 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }: Import
             pontos_deduzidos: n.pontos_deduzidos,
             protocolo_referencia: n.protocolo_referencia,
             data_registro: n.data_registro,
-            evidencia_resumo: n.descricao,
           })),
       }));
 

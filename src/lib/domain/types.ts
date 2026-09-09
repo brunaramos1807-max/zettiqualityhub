@@ -143,16 +143,11 @@ export interface EventoNaoConformidade {
   equipe_nome: string;
   analista_nome: string;
   coordenador_nome?: string;
-  auditor_nome?: string;
   tipo_nc: string;
   pontos_deduzidos: number;
   protocolo_referencia?: string;
   data_registro: string;
-
-  // Estrutura trifásica de auditoria
-  evidencia_resumo?: string;
-  justificativa?: string;
-  impacto?: string;
+  origem?: string;
 }
 
 // ─── 6. Indicadores Derivados e Agregações de Medição ─────────────────────────
@@ -203,6 +198,8 @@ export interface InvestigacaoQualidade {
   squad?: string;
   status: 'aberta' | 'em_analise' | 'causa_validada' | 'convertida_plano' | 'encerrada';
   causa_raiz_validada?: string;
+  fundamentacao_validacao?: string;
+  metodo_validacao?: string;
   ishikawa?: IshikawaCategoria[];
   cinco_porques?: CincoPorquesItem[];
   hipoteses?: Array<{ id: string; texto: string; validada: boolean }>;

@@ -185,11 +185,11 @@ export default function ParetoPage() {
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <div>
               <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                Diagrama de Pareto — Perda Ponderada (Pontos) vs Acumulado (%)
+                Diagrama de Pareto — Perda de Pontos vs Concentração Acumulada (%)
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Cálculo dinâmico sobre os registros reais do banco. A linha tracejada vermelha
-                representa a referência de corte de 80%.
+                Cálculo dinâmico sobre os registros reais do banco. Priorização fundamentada na
+                concentração observada de perdas no ciclo com linha de referência em 80%.
               </p>
             </div>
           </div>
@@ -293,7 +293,12 @@ export default function ParetoPage() {
                     y={80}
                     stroke="#DC2626"
                     strokeDasharray="4 4"
-                    label={{ value: 'Corte 80%', fill: '#DC2626', fontSize: 10, position: 'right' }}
+                    label={{
+                      value: 'Concentração Observada (80%)',
+                      fill: '#DC2626',
+                      fontSize: 10,
+                      position: 'right',
+                    }}
                   />
                   <Bar
                     yAxisId="left"
@@ -322,11 +327,11 @@ export default function ParetoPage() {
           <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
             <div>
               <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                Priorização para Diagnóstico de Causa Raiz
+                Principais Fatores Concentradores para Diagnóstico de Causa Raiz
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Fatores ordenados por severidade. Inicie uma investigação imediata nos desvios
-                concentrados.
+                Fatores priorizados pela concentração observada de perdas. Inicie uma investigação
+                estruturada nos maiores desvios.
               </p>
             </div>
           </div>
@@ -356,8 +361,8 @@ export default function ParetoPage() {
                         <div className="flex items-center gap-2">
                           {item.fator}
                           {ehCritico && (
-                            <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase bg-red-50 text-red-700 border border-red-200 rounded">
-                              Zona 80%
+                            <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase bg-amber-50 text-amber-800 border border-amber-200 rounded">
+                              Fator Concentrador
                             </span>
                           )}
                         </div>
