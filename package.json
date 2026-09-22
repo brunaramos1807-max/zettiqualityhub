@@ -1,6 +1,6 @@
 {
-  "name": "zettiqualityhub",
-  "version": "0.1.0",
+  "name": "qualivisao",
+  "version": "0.2.0",
   "private": true,
   "rocketCritical": {
     "dependencies": [
@@ -39,9 +39,9 @@
     "warning": "🚨 CRITICAL: DO NOT REMOVE OR MODIFY ABOVE DEPENDENCIES - Required for Next.js 15 TypeScript app functionality"
   },
   "scripts": {
-    "dev": "next dev -p 4028",
+    "dev": "next dev",
     "build": "next build",
-    "start": "next dev -p 4028",
+    "start": "next start",
     "lint": "next lint",
     "lint:fix": "next lint --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,md,json}\"",
@@ -51,7 +51,6 @@
   "dependencies": {
     "@dhiwise/component-tagger": "^1.0.15",
     "@heroicons/react": "^2.2.0",
-    "@rocketnew/llm-sdk": "^1.1.0",
     "@supabase/supabase-js": "2.105.3",
     "@tailwindcss/forms": "^0.5.10",
     "@tailwindcss/typography": "^0.5.16",
@@ -67,11 +66,13 @@
     "react-hook-form": "^7.75.0",
     "recharts": "^2.15.2",
     "sonner": "^1.7.4",
-    "xlsx": "0.18.5"
+    "xlsx": "0.18.5",
+    "zod": "^4.6.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@netlify/plugin-nextjs": "^5.11.1",
+    "@playwright/test": "^1.61.1",
     "@types/node": "^20",
     "@types/papaparse": "5.5.2",
     "@types/react": "19.0.3",

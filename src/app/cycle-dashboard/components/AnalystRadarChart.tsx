@@ -20,7 +20,13 @@ interface Props {
   analystName: string;
 }
 
-function CustomTooltip({ active, payload }: { active?: boolean; payload?: { payload: RadarDataPoint }[] }) {
+function CustomTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: { payload: RadarDataPoint }[];
+}) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
   return (
@@ -29,7 +35,9 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: { payl
       style={{ backgroundColor: '#1C2333', border: '1px solid rgba(255,255,255,0.1)' }}
     >
       <p className="font-semibold text-white mb-1">{d.label}</p>
-      <p className="metric-value" style={{ color: '#22C55E' }}>{d.value.toFixed(1)}%</p>
+      <p className="metric-value" style={{ color: '#22C55E' }}>
+        {d.value.toFixed(1)}%
+      </p>
     </div>
   );
 }
@@ -39,10 +47,7 @@ export default function AnalystRadarChart({ data, analystName }: Props) {
     <ResponsiveContainer width="100%" height={220}>
       <RadarChart data={data} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
         <PolarGrid stroke="rgba(255,255,255,0.08)" />
-        <PolarAngleAxis
-          dataKey="label"
-          tick={{ fill: '#8B949E', fontSize: 11 }}
-        />
+        <PolarAngleAxis dataKey="label" tick={{ fill: '#8B949E', fontSize: 11 }} />
         <Tooltip content={<CustomTooltip />} />
         <Radar
           name={analystName}

@@ -1,18 +1,20 @@
 'use client';
 
 // ─── localStorage keys ───────────────────────────────────────────────────────
-const LS_SCORES   = 'zetti_cycle_scores';
-const LS_NCS      = 'zetti_nc_records';
-const LS_ELOGIOS  = 'zetti_elogios';
-const LS_CYCLES   = 'zetti_import_cycles';
-const LS_USERS    = 'zetti_user_profiles';
+const LS_SCORES = 'zetti_cycle_scores';
+const LS_NCS = 'zetti_nc_records';
+const LS_ELOGIOS = 'zetti_elogios';
+const LS_CYCLES = 'zetti_import_cycles';
+const LS_USERS = 'zetti_user_profiles';
 const LS_CLOSED_CYCLES = 'zetti_closed_cycles';
 const LS_ANALYST_PROFILES = 'zetti_analyst_profiles';
 const LS_MANUAL_CYCLES = 'zetti_manual_cycles';
 
 /** Parse MM/YYYY or M/YYYY into sortable YYYYMM number. */
 export function parsePeriodoMMYYYY(periodo: string): number {
-  const m = String(periodo || '').trim().match(/^(\d{1,2})\/(\d{4})$/);
+  const m = String(periodo || '')
+    .trim()
+    .match(/^(\d{1,2})\/(\d{4})$/);
   if (!m) return 0;
   return parseInt(m[2], 10) * 100 + parseInt(m[1], 10);
 }
@@ -58,9 +60,7 @@ export interface NCRow {
   auditor?: string;
   tipo_nc: string;
   descricao?: string;
-  pontos_deduzidos?: number | null;
-  severidade?: string | null;
-  penalidade?: number | null;
+  pontos_deduzidos: number;
   protocolo_referencia?: string;
   avaliacao_id?: string;
 }
@@ -132,9 +132,9 @@ function buildRowMap(row: Record<string, any>): Record<string, any> {
   const r: Record<string, any> = {};
   Object.keys(row).forEach((k) => {
     const cleaned = cleanKey(k);
-    r[cleaned] = row[k];                        // exact cleaned key
-    r[cleaned.toLowerCase()] = row[k];          // lowercase key
-    r[normalizeKey(cleaned)] = row[k];          // accent-normalized key
+    r[cleaned] = row[k]; // exact cleaned key
+    r[cleaned.toLowerCase()] = row[k]; // lowercase key
+    r[normalizeKey(cleaned)] = row[k]; // accent-normalized key
   });
   return r;
 }
@@ -156,243 +156,313 @@ function lsSet<T>(key: string, data: T[]): void {
 
 // ─── CSV Parsers ──────────────────────────────────────────────────────────────
 
-export function parseQAScoresCSV(rows: Record<string, any>[], fallbackPeriodo?: string): CycleScoreRow[] {
-  return rows.map((row) => {
-    const r = buildRowMap(row);
+export function parseQAScoresCSV(
+  rows: Record<string, any>[],
+  fallbackPeriodo?: string
+): CycleScoreRow[] {
+  return rows
+    .map((row) => {
+      const r = buildRowMap(row);
 
-    // Helper: get value by trying multiple key variants (exact, lowercase, normalized)
-    const get = (...keys: string[]): any => {
-      for (const k of keys) {
-        const v = r[k] ?? r[k.toLowerCase()] ?? r[normalizeKey(k)];
-        if (v !== undefined && v !== null) return v;
-      }
-      return undefined;
-    };
+      // Helper: get value by trying multiple key variants (exact, lowercase, normalized)
+      const get = (...keys: string[]): any => {
+        for (const k of keys) {
+          const v = r[k] ?? r[k.toLowerCase()] ?? r[normalizeKey(k)];
+          if (v !== undefined && v !== null) return v;
+        }
+        return undefined;
+      };
 
-    // Period: accept Período, Periodo, competencia, ciclo, mes/ano combo
-    const rowPeriodo = String(get('Período', 'Periodo', 'período', 'periodo', 'competencia', 'ciclo') ?? '').trim();
+      // Period: accept Período, Periodo, competencia, ciclo, mes/ano combo
+      const rowPeriodo = String(
+        get('Período', 'Periodo', 'período', 'periodo', 'competencia', 'ciclo') ?? ''
+      ).trim();
 
-    const qtdRaw = get(
-      'Qtd de Atendimentos Avaliados', 'Qtd Atendimentos Avaliados',
-      'Quantidade de Atendimentos Avaliados',
-      'qtd_atendimentos', 'qtd_protocolos'
-    );
-    const qtdNum = parseNum(qtdRaw);
+      const qtdRaw = get(
+        'Qtd de Atendimentos Avaliados',
+        'Qtd Atendimentos Avaliados',
+        'Quantidade de Atendimentos Avaliados',
+        'qtd_atendimentos',
+        'qtd_protocolos'
+      );
+      const qtdNum = parseNum(qtdRaw);
 
-    const tipoDemanda = String(get('Tipo de Demanda', 'Tipo Demanda') ?? '').trim();
+      const tipoDemanda = String(get('Tipo de Demanda', 'Tipo Demanda') ?? '').trim();
 
-    // Analista: accept old "Analista" or new "analista_nome" / "analista"
-    const analista = String(get('Analista', 'analista_nome', 'analista') ?? '').trim();
+      // Analista: accept old "Analista" or new "analista_nome" / "analista"
+      const analista = String(get('Analista', 'analista_nome', 'analista') ?? '').trim();
 
-    // Squad / coordenador
-    const squad = String(get('Squad', 'squad') ?? '').trim();
-    const coordenador = String(get('Coordenador', 'coordenador') ?? '').trim();
-    const auditor = String(get('Auditor', 'auditor') ?? '').trim();
+      // Squad / coordenador
+      const squad = String(get('Squad', 'squad') ?? '').trim();
+      const coordenador = String(get('Coordenador', 'coordenador') ?? '').trim();
+      const auditor = String(get('Auditor', 'auditor') ?? '').trim();
 
-    // Data: accept old "Data do Registro" or new "data_avaliacao"
-    const dataRegistro = String(get('Data do Registro', 'data_avaliacao', 'data_registro') ?? '').trim();
+      // Data: accept old "Data do Registro" or new "data_avaliacao"
+      const dataRegistro = String(
+        get('Data do Registro', 'data_avaliacao', 'data_registro') ?? ''
+      ).trim();
 
-    // Nota Final QA: accept old verbose name or new short name
-    const notaFinalQA = parseNum(get(
-      'Nota Final QA (0-100)',
-      'nota_final_qa',
-      'nota final qa'
-    ));
+      // Nota Final QA: accept old verbose name or new short name
+      const notaFinalQA = parseNum(
+        get('Nota Final QA (0-100)', 'nota_final_qa', 'nota final qa', 'qa_score', 'nota_qa')
+      );
 
-    // IEPC total: accept old verbose name or new short "iepc"
-    const iepcTotal = parseNum(get(
-      'IEPC - Índice de Experiência Percebida pelo Cliente (0-100)',
-      'IEPC - Indice de Experiencia Percebida pelo Cliente (0-100)',
-      'IEPC',
-      'iepc'
-    ));
+      // IEPC total: accept old verbose name or new short "iepc"
+      const iepcTotal = parseNum(
+        get(
+          'IEPC - Índice de Experiência Percebida pelo Cliente (0-100)',
+          'IEPC - Indice de Experiencia Percebida pelo Cliente (0-100)',
+          'Indice_Satisfacao_IEPC',
+          'indice_satisfacao_iepc',
+          'indice_iepc',
+          'IEPC',
+          'iepc',
+          'iepc_total'
+        )
+      );
 
-    // Total NCs
-    const totalNCs = parseNum(get(
-      'Total de Não Conformidades', 'Total de Nao Conformidades', 'Total NCs',
-      'total_nao_conformidades', 'total_ncs'
-    ));
+      // Total NCs
+      const totalNCs = parseNum(
+        get(
+          'Total de Não Conformidades',
+          'Total de Nao Conformidades',
+          'Total NCs',
+          'total_nao_conformidades',
+          'total_ncs'
+        )
+      );
 
-    // Pontos deduzidos NC
-    const pontosDeduzidosNC = parseNum(get(
-      'Pontos Deduzidos por NC', 'Pontos Deduzidos',
-      'pontos_deduzidos_nc'
-    ));
+      // Pontos deduzidos NC
+      const pontosDeduzidosNC = parseNum(
+        get('Pontos Deduzidos por NC', 'Pontos Deduzidos', 'pontos_deduzidos_nc')
+      );
 
-    // QA Pillars — accept old verbose names OR new short names
-    const p1 = parseNum(get(
-      'QA P1 | Gestão do Fluxo e Rastreabilidade do Atendimento - Pontos',
-      'QA P1 | Gestao do Fluxo e Rastreabilidade do Atendimento - Pontos',
-      'qa_atendimento_pontos'
-    ));
-    const p2 = parseNum(get(
-      'QA P2 | Gestão da Tratativa da Demanda - Pontos',
-      'QA P2 | Gestao da Tratativa da Demanda - Pontos',
-      'qa_solucao_pontos'
-    ));
-    const p3 = parseNum(get(
-      'QA P3 | Análise e Assertividade Técnica da Demanda - Pontos',
-      'QA P3 | Analise e Assertividade Tecnica da Demanda - Pontos',
-      'qa_precisao_pontos'
-    ));
-    const p4 = parseNum(get(
-      'QA P4 | Qualidade da Comunicação no Atendimento - Pontos',
-      'QA P4 | Qualidade da Comunicacao no Atendimento - Pontos',
-      'qa_comunicacao_pontos'
-    ));
-    const p5 = parseNum(get(
-      'QA P5 | Conduta Relacional no Atendimento - Pontos',
-      'qa_relacionamento_pontos'
-    ));
+      // QA Pillars — accept old verbose names OR new short names OR analytical dataset names
+      const p1 = parseNum(
+        get(
+          'QA P1 | Gestão do Fluxo e Rastreabilidade do Atendimento - Pontos',
+          'QA P1 | Gestao do Fluxo e Rastreabilidade do Atendimento - Pontos',
+          'qa_atendimento_pontos',
+          'qa_atendimento_nota',
+          'p1'
+        )
+      );
+      const p2 = parseNum(
+        get(
+          'QA P2 | Gestão da Tratativa da Demanda - Pontos',
+          'QA P2 | Gestao da Tratativa da Demanda - Pontos',
+          'qa_solucao_pontos',
+          'qa_solucao_nota',
+          'p2'
+        )
+      );
+      const p3 = parseNum(
+        get(
+          'QA P3 | Análise e Assertividade Técnica da Demanda - Pontos',
+          'QA P3 | Analise e Assertividade Tecnica da Demanda - Pontos',
+          'qa_precisao_pontos',
+          'qa_precisao_nota',
+          'p3'
+        )
+      );
+      const p4 = parseNum(
+        get(
+          'QA P4 | Qualidade da Comunicação no Atendimento - Pontos',
+          'QA P4 | Qualidade da Comunicacao no Atendimento - Pontos',
+          'qa_comunicacao_pontos',
+          'qa_comunicacao_nota',
+          'p4'
+        )
+      );
+      const p5 = parseNum(
+        get(
+          'QA P5 | Conduta Relacional no Atendimento - Pontos',
+          'qa_relacionamento_pontos',
+          'qa_relacionamento_nota',
+          'p5'
+        )
+      );
 
-    // IEPC dimensions — accept old verbose names OR new short names
-    const e1 = parseNum(get(
-      'IEPC E1 – Resolução Percebida - Pontos',
-      'IEPC E1 - Resolução Percebida - Pontos',
-      'IEPC E1 – Resolucao Percebida - Pontos',
-      'IEPC E1 - Resolucao Percebida - Pontos',
-      'iepc_resolucaoPercebida_pontos',
-      'iepc_resolucaopercebida_pontos'
-    ));
-    const e2 = parseNum(get(
-      'IEPC E2 – Compreensão e Segurança - Pontos',
-      'IEPC E2 - Compreensão e Segurança - Pontos',
-      'IEPC E2 – Compreensao e Seguranca - Pontos',
-      'IEPC E2 - Compreensao e Seguranca - Pontos',
-      'iepc_clarezaConfianca_pontos',
-      'iepc_clarezaconfianca_pontos'
-    ));
-    const e3 = parseNum(get(
-      'IEPC E3 – Esforço do Cliente - Pontos',
-      'IEPC E3 - Esforço do Cliente - Pontos',
-      'IEPC E3 – Esforco do Cliente - Pontos',
-      'IEPC E3 - Esforco do Cliente - Pontos',
-      'iepc_esforcoCliente_pontos',
-      'iepc_esforcocliente_pontos'
-    ));
-    const e4 = parseNum(get(
-      'IEPC E4 – Tempo e Fluidez - Pontos',
-      'IEPC E4 - Tempo e Fluidez - Pontos',
-      'iepc_tempoFluidez_pontos',
-      'iepc_tempofluidez_pontos'
-    ));
-    const e5 = parseNum(get(
-      'IEPC E5 – Experiência Relacional - Pontos',
-      'IEPC E5 - Experiência Relacional - Pontos',
-      'IEPC E5 – Experiencia Relacional - Pontos',
-      'IEPC E5 - Experiencia Relacional - Pontos',
-      'iepc_experienciaRelacional_pontos',
-      'iepc_experienciarelacional_pontos'
-    ));
+      // IEPC dimensions — accept old verbose names OR new short names OR analytical dataset names
+      const e1 = parseNum(
+        get(
+          'IEPC E1 – Resolução Percebida - Pontos',
+          'IEPC E1 - Resolução Percebida - Pontos',
+          'IEPC E1 – Resolucao Percebida - Pontos',
+          'IEPC E1 - Resolucao Percebida - Pontos',
+          'iepc_resolucaoPercebida_pontos',
+          'iepc_resolucaopercebida_pontos',
+          'iepc_resolucaopercebida_pts',
+          'e1'
+        )
+      );
+      const e2 = parseNum(
+        get(
+          'IEPC E2 – Compreensão e Segurança - Pontos',
+          'IEPC E2 - Compreensão e Segurança - Pontos',
+          'IEPC E2 – Compreensao e Seguranca - Pontos',
+          'IEPC E2 - Compreensao e Seguranca - Pontos',
+          'iepc_clarezaConfianca_pontos',
+          'iepc_clarezaconfianca_pontos',
+          'iepc_clarezaconfianca_pts',
+          'e2'
+        )
+      );
+      const e3 = parseNum(
+        get(
+          'IEPC E3 – Esforço do Cliente - Pontos',
+          'IEPC E3 - Esforço do Cliente - Pontos',
+          'IEPC E3 – Esforco do Cliente - Pontos',
+          'IEPC E3 - Esforco do Cliente - Pontos',
+          'iepc_esforcoCliente_pontos',
+          'iepc_esforcocliente_pontos',
+          'iepc_esforcocliente_pts',
+          'e3'
+        )
+      );
+      const e4 = parseNum(
+        get(
+          'IEPC E4 – Tempo e Fluidez - Pontos',
+          'IEPC E4 - Tempo e Fluidez - Pontos',
+          'iepc_tempoFluidez_pontos',
+          'iepc_tempofluidez_pontos'
+        )
+      );
+      const e5 = parseNum(
+        get(
+          'IEPC E5 – Experiência Relacional - Pontos',
+          'IEPC E5 - Experiência Relacional - Pontos',
+          'IEPC E5 – Experiencia Relacional - Pontos',
+          'IEPC E5 - Experiencia Relacional - Pontos',
+          'iepc_experienciaRelacional_pontos',
+          'iepc_experienciarelacional_pontos'
+        )
+      );
 
-    return {
-      periodo: rowPeriodo || fallbackPeriodo || '',
-      data_registro: dataRegistro,
-      analista,
-      squad,
-      coordenador,
-      auditor: auditor || undefined,
-      nota_final_qa: notaFinalQA,
-      iepc_total: iepcTotal,
-      total_ncs: totalNCs,
-      pontos_deduzidos_nc: pontosDeduzidosNC,
-      p1,
-      p2,
-      p3,
-      p4,
-      p5,
-      e1,
-      e2,
-      e3,
-      e4,
-      e5,
-      tipo_demanda: tipoDemanda || undefined,
-      qtd_atendimentos_avaliados: qtdNum > 0 ? qtdNum : undefined,
-    };
-  }).filter((r) => r.analista && r.squad);
+      return {
+        periodo: rowPeriodo || fallbackPeriodo || '',
+        data_registro: dataRegistro,
+        analista,
+        squad,
+        coordenador,
+        auditor: auditor || undefined,
+        nota_final_qa: notaFinalQA,
+        iepc_total: iepcTotal,
+        total_ncs: totalNCs,
+        pontos_deduzidos_nc: pontosDeduzidosNC,
+        p1,
+        p2,
+        p3,
+        p4,
+        p5,
+        e1,
+        e2,
+        e3,
+        e4,
+        e5,
+        tipo_demanda: tipoDemanda || undefined,
+        qtd_atendimentos_avaliados: qtdNum > 0 ? qtdNum : undefined,
+      };
+    })
+    .filter((r) => r.analista && r.squad);
 }
 
 export function parseNCsCSV(rows: Record<string, any>[], fallbackPeriodo?: string): NCRow[] {
-  return rows.map((row) => {
-    const r = buildRowMap(row);
+  return rows
+    .map((row) => {
+      const r = buildRowMap(row);
 
-    const get = (...keys: string[]): any => {
-      for (const k of keys) {
-        const v = r[k] ?? r[k.toLowerCase()] ?? r[normalizeKey(k)];
-        if (v !== undefined && v !== null) return v;
-      }
-      return undefined;
-    };
+      const get = (...keys: string[]): any => {
+        for (const k of keys) {
+          const v = r[k] ?? r[k.toLowerCase()] ?? r[normalizeKey(k)];
+          if (v !== undefined && v !== null) return v;
+        }
+        return undefined;
+      };
 
-    const rowPeriodo = String(get('Período', 'Periodo') ?? '').trim();
+      const rowPeriodo = String(get('Período', 'Periodo') ?? '').trim();
 
-    const tipo_nc_raw = String(get(
-      'Tipo de Não Conformidade',
-      'Tipo de Nao Conformidade',
-      'Tipo NC',
-      'Tipo de NC',
-      'Tipo Não Conformidade',
-      'Tipo Nao Conformidade',
-      'NC',
-      'Tipo',
-    ) ?? '').trim();
+      const tipo_nc_raw = String(
+        get(
+          'Tipo de Não Conformidade',
+          'Tipo de Nao Conformidade',
+          'Tipo NC',
+          'Tipo de NC',
+          'Tipo Não Conformidade',
+          'Tipo Nao Conformidade',
+          'NC',
+          'Tipo' ) ??''
+      ).trim();
 
-    const descricao_raw = String(get(
-      'Descrição',
-      'Descricao',
-      'Descrição da NC',
-      'Descricao da NC',
-      'Desc',
-      'Observação',
-      'Observacao',
-      'Observações',
-      'Observacoes',
-    ) ?? '').trim();
+      const descricao_raw = String(
+        get(
+          'Descrição',
+          'Descricao',
+          'Descrição da NC',
+          'Descricao da NC',
+          'Desc',
+          'Observação',
+          'Observacao',
+          'Observações',
+          'Observacoes' ) ??''
+      ).trim();
 
-    return {
-      periodo: rowPeriodo || fallbackPeriodo || '',
-      data_registro: String(get('Data do Registro') ?? '').trim(),
-      analista: String(get('Analista') ?? '').trim(),
-      squad: String(get('Squad') ?? '').trim(),
-      coordenador: String(get('Coordenador') ?? '').trim(),
-      auditor: String(get('Auditor') ?? '').trim(),
-      tipo_nc: tipo_nc_raw || 'Não Especificado',
-      descricao: descricao_raw || undefined,
-      pontos_deduzidos: parseNum(get('Pontos Deduzidos', 'Pontos Deduzidos por NC', 'pontos_deduzidos')) || null,
-      severidade: String(get('Severidade', 'severidade') ?? '').trim() || null,
-      penalidade: parseNum(get('Penalidade', 'penalidade')) || null,
-      protocolo_referencia: String(get('Protocolo Referência', 'Protocolo Referencia', 'Protocolo') ?? '').trim(),
-      avaliacao_id: String(get('ID da Avaliação', 'ID da Avaliacao', 'ID Avaliação') ?? '').trim(),
-    };
-  }).filter((r) => r.analista); // Only require analista — tipo_nc now has fallback
+      return {
+        periodo: rowPeriodo || fallbackPeriodo || '',
+        data_registro: String(get('Data do Registro') ?? '').trim(),
+        analista: String(get('Analista') ?? '').trim(),
+        squad: String(get('Squad') ?? '').trim(),
+        coordenador: String(get('Coordenador') ?? '').trim(),
+        auditor: String(get('Auditor') ?? '').trim(),
+        tipo_nc: tipo_nc_raw || 'Não Especificado',
+        descricao: descricao_raw || undefined,
+        pontos_deduzidos: parseNum(
+          get('Pontos Deduzidos', 'Pontos Deduzidos por NC', 'pontos_deduzidos')
+        ),
+        protocolo_referencia: String(
+          get('Protocolo Referência', 'Protocolo Referencia', 'Protocolo') ?? ''
+        ).trim(),
+        avaliacao_id: String(
+          get('ID da Avaliação', 'ID da Avaliacao', 'ID Avaliação') ?? ''
+        ).trim(),
+      };
+    })
+    .filter((r) => r.analista); // Only require analista — tipo_nc now has fallback
 }
 
-export function parseElogiosCSV(rows: Record<string, any>[], fallbackPeriodo?: string): ElogioRow[] {
-  return rows.map((row) => {
-    const r = buildRowMap(row);
+export function parseElogiosCSV(
+  rows: Record<string, any>[],
+  fallbackPeriodo?: string
+): ElogioRow[] {
+  return rows
+    .map((row) => {
+      const r = buildRowMap(row);
 
-    const get = (...keys: string[]): any => {
-      for (const k of keys) {
-        const v = r[k] ?? r[k.toLowerCase()] ?? r[normalizeKey(k)];
-        if (v !== undefined && v !== null) return v;
-      }
-      return undefined;
-    };
+      const get = (...keys: string[]): any => {
+        for (const k of keys) {
+          const v = r[k] ?? r[k.toLowerCase()] ?? r[normalizeKey(k)];
+          if (v !== undefined && v !== null) return v;
+        }
+        return undefined;
+      };
 
-    const rowPeriodo = String(get('Período', 'Periodo') ?? '').trim();
+      const rowPeriodo = String(get('Período', 'Periodo') ?? '').trim();
 
-    const colaborador = String(get('Colaborador', 'COLABORADOR', 'Nome', 'NOME') ?? '').trim();
-    const elogio = String(get('Elogio', 'ELOGIO', 'Descrição do Elogio', 'Descricao', 'DESCRICAO', 'Texto') ?? '').trim();
+      const colaborador = String(get('Colaborador', 'COLABORADOR', 'Nome', 'NOME') ?? '').trim();
+      const elogio = String(
+        get('Elogio', 'ELOGIO', 'Descrição do Elogio', 'Descricao', 'DESCRICAO', 'Texto') ?? ''
+      ).trim();
 
-    return {
-      periodo: rowPeriodo || fallbackPeriodo || '',
-      colaborador,
-      squad: String(get('SQUAD', 'Squad') ?? '').trim(),
-      cliente: String(get('CLIENTE', 'Cliente') ?? '').trim(),
-      protocolo: String(get('PROTOCOLO', 'Protocolo') ?? '').trim(),
-      elogio,
-    };
-  }).filter((r) => r.colaborador && r.elogio);
+      return {
+        periodo: rowPeriodo || fallbackPeriodo || '',
+        colaborador,
+        squad: String(get('SQUAD', 'Squad') ?? '').trim(),
+        cliente: String(get('CLIENTE', 'Cliente') ?? '').trim(),
+        protocolo: String(get('PROTOCOLO', 'Protocolo') ?? '').trim(),
+        elogio,
+      };
+    })
+    .filter((r) => r.colaborador && r.elogio);
 }
 
 // ─── Import (Supabase-first, localStorage removed as primary store) ───────────
@@ -420,7 +490,9 @@ export async function importCycleData(
           lsSet(LS_ELOGIOS, existingElogios);
           const existingCycles = lsGet<any>(LS_CYCLES).filter((r) => r.periodo !== periodo);
           lsSet(LS_CYCLES, existingCycles);
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
       dispatchDataChanged({ tipo: 'import', periodo, fileName });
       return result;
@@ -437,7 +509,9 @@ export async function importCycleData(
 /**
  * Delete all data for a specific period from SUPABASE (scores, NCs, elogios, cycle record)
  */
-export async function deletePeriodDataFromDB(periodo: string): Promise<{ success: boolean; error?: string }> {
+export async function deletePeriodDataFromDB(
+  periodo: string
+): Promise<{ success: boolean; error?: string }> {
   try {
     const { createClient } = await import('@/lib/supabase/client');
     const supabase = createClient();
@@ -454,10 +528,22 @@ export async function deletePeriodDataFromDB(periodo: string): Promise<{ success
     return { success: false, error: err.message };
   }
   // Also clear localStorage
-  lsSet(LS_SCORES,  lsGet<any>(LS_SCORES).filter((r) => r.periodo !== periodo));
-  lsSet(LS_NCS,     lsGet<any>(LS_NCS).filter((r) => r.periodo !== periodo));
-  lsSet(LS_ELOGIOS, lsGet<any>(LS_ELOGIOS).filter((r) => r.periodo !== periodo));
-  lsSet(LS_CYCLES,  lsGet<any>(LS_CYCLES).filter((r) => r.periodo !== periodo));
+  lsSet(
+    LS_SCORES,
+    lsGet<any>(LS_SCORES).filter((r) => r.periodo !== periodo)
+  );
+  lsSet(
+    LS_NCS,
+    lsGet<any>(LS_NCS).filter((r) => r.periodo !== periodo)
+  );
+  lsSet(
+    LS_ELOGIOS,
+    lsGet<any>(LS_ELOGIOS).filter((r) => r.periodo !== periodo)
+  );
+  lsSet(
+    LS_CYCLES,
+    lsGet<any>(LS_CYCLES).filter((r) => r.periodo !== periodo)
+  );
   dispatchDataChanged({ tipo: 'delete', periodo });
   return { success: true };
 }
@@ -466,18 +552,35 @@ export async function deletePeriodDataFromDB(periodo: string): Promise<{ success
  * Delete all data for a specific period (scores, NCs, elogios, cycle record, import records)
  */
 export function deletePeriodData(periodo: string): void {
-  lsSet(LS_SCORES,  lsGet<any>(LS_SCORES).filter((r) => r.periodo !== periodo));
-  lsSet(LS_NCS,     lsGet<any>(LS_NCS).filter((r) => r.periodo !== periodo));
-  lsSet(LS_ELOGIOS, lsGet<any>(LS_ELOGIOS).filter((r) => r.periodo !== periodo));
-  lsSet(LS_CYCLES,  lsGet<any>(LS_CYCLES).filter((r) => r.periodo !== periodo));
+  lsSet(
+    LS_SCORES,
+    lsGet<any>(LS_SCORES).filter((r) => r.periodo !== periodo)
+  );
+  lsSet(
+    LS_NCS,
+    lsGet<any>(LS_NCS).filter((r) => r.periodo !== periodo)
+  );
+  lsSet(
+    LS_ELOGIOS,
+    lsGet<any>(LS_ELOGIOS).filter((r) => r.periodo !== periodo)
+  );
+  lsSet(
+    LS_CYCLES,
+    lsGet<any>(LS_CYCLES).filter((r) => r.periodo !== periodo)
+  );
 
   // Also remove from import records
   if (typeof window !== 'undefined') {
     try {
       const IMPORT_KEY = 'zetti_import_records';
       const existing = JSON.parse(localStorage.getItem(IMPORT_KEY) || '[]');
-      localStorage.setItem(IMPORT_KEY, JSON.stringify(existing.filter((r: any) => r.periodo !== periodo)));
-    } catch { /* ignore */ }
+      localStorage.setItem(
+        IMPORT_KEY,
+        JSON.stringify(existing.filter((r: any) => r.periodo !== periodo))
+      );
+    } catch {
+      /* ignore */
+    }
   }
   dispatchDataChanged({ tipo: 'delete', periodo });
 }
@@ -490,8 +593,13 @@ export function deleteImportRecord(importId: string): void {
   try {
     const IMPORT_KEY = 'zetti_import_records';
     const existing = JSON.parse(localStorage.getItem(IMPORT_KEY) || '[]');
-    localStorage.setItem(IMPORT_KEY, JSON.stringify(existing.filter((r: any) => r.id !== importId)));
-  } catch { /* ignore */ }
+    localStorage.setItem(
+      IMPORT_KEY,
+      JSON.stringify(existing.filter((r: any) => r.id !== importId))
+    );
+  } catch {
+    /* ignore */
+  }
 }
 
 /**
@@ -517,12 +625,14 @@ export async function closeCycle(periodo: string): Promise<{ success: boolean; e
     const ncs = lsGet<any>(LS_NCS).filter((r) => r.periodo === periodo);
     const elogios = lsGet<any>(LS_ELOGIOS).filter((r) => r.periodo === periodo);
 
-    const qaMedia = scores.length > 0
-      ? scores.reduce((s: number, r: any) => s + (r.nota_final_qa || 0), 0) / scores.length
-      : 0;
-    const iepcMedia = scores.length > 0
-      ? scores.reduce((s: number, r: any) => s + (r.iepc_total || 0), 0) / scores.length
-      : 0;
+    const qaMedia =
+      scores.length > 0
+        ? scores.reduce((s: number, r: any) => s + (r.nota_final_qa || 0), 0) / scores.length
+        : 0;
+    const iepcMedia =
+      scores.length > 0
+        ? scores.reduce((s: number, r: any) => s + (r.iepc_total || 0), 0) / scores.length
+        : 0;
 
     const closedCycle: ClosedCycle = {
       id: `closed-${Date.now()}`,
@@ -584,7 +694,9 @@ export async function isCycleClosedAsync(periodo: string): Promise<boolean> {
         .maybeSingle();
       if (data) return !!data.is_closed || data.status === 'fechado';
     }
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
   return isCycleClosed(periodo);
 }
 
@@ -592,7 +704,9 @@ export async function isCycleClosedAsync(periodo: string): Promise<boolean> {
  * Sync closed cycle status from Supabase into localStorage cache.
  * Call this on app init or after loading cycle data from Supabase.
  */
-export function syncClosedCyclesFromSupabase(supabaseCycles: { periodo: string; is_closed: boolean; closed_at?: string; status?: string }[]): void {
+export function syncClosedCyclesFromSupabase(
+  supabaseCycles: { periodo: string; is_closed: boolean; closed_at?: string; status?: string }[]
+): void {
   // Update LS_CLOSED_CYCLES (legacy list)
   const existing = lsGet<ClosedCycle>(LS_CLOSED_CYCLES);
   const existingPeriodos = new Set(existing.map((c) => c.periodo));
@@ -607,7 +721,9 @@ export function syncClosedCyclesFromSupabase(supabaseCycles: { periodo: string; 
     }));
 
   // Remove from closed list if Supabase says it's reopened
-  const reopenedPeriodos = new Set(supabaseCycles.filter((c) => !c.is_closed).map((c) => c.periodo));
+  const reopenedPeriodos = new Set(
+    supabaseCycles.filter((c) => !c.is_closed).map((c) => c.periodo)
+  );
   const filtered = existing.filter((c) => !reopenedPeriodos.has(c.periodo));
 
   if (toAdd.length > 0 || reopenedPeriodos.size > 0) {
@@ -626,7 +742,11 @@ export function syncClosedCyclesFromSupabase(supabaseCycles: { periodo: string; 
   // Add any periods from Supabase not yet in cache
   supabaseCycles.forEach((s) => {
     if (!updatedCycles.find((c: any) => c.periodo === s.periodo)) {
-      updatedCycles.push({ periodo: s.periodo, is_closed: s.is_closed, status: s.status || 'aberto' });
+      updatedCycles.push({
+        periodo: s.periodo,
+        is_closed: s.is_closed,
+        status: s.status || 'aberto',
+      });
     }
   });
   lsSet(LS_CYCLES, updatedCycles);
@@ -671,8 +791,6 @@ export function buildAnalystsFromScores(scores: any[]): RealAnalyst[] {
     iepcScore: s.iepc_total || 0,
     ncs: s.total_ncs || 0,
     pontosDeduzidos: Math.abs(Number(s.pontos_deduzidos_nc) || 0),
-    // ncPoints kept for backward compat with legacy dashboards — reflects pontos_deduzidos_nc from cycle_scores
-    // This is NOT the -20 rule. It's the actual value stored in the cycle score record.
     ncPoints: Math.abs(Number(s.pontos_deduzidos_nc) || 0),
     p1: s.p1 || 0,
     p2: s.p2 || 0,
@@ -701,31 +819,94 @@ export function exportCycleToCSV(periodo: string): void {
 
   // Export scores
   if (scores.length > 0) {
-    const headers = ['Período','Analista','Squad','Coordenador','Auditor','Nota Final QA','IEPC Total','Total NCs','Pontos Deduzidos','P1','P2','P3','P4','P5','E1','E2','E3','E4','E5','Tipo de Demanda','Qtd Atendimentos Avaliados'];
+    const headers = [
+      'Período',
+      'Analista',
+      'Squad',
+      'Coordenador',
+      'Auditor',
+      'Nota Final QA',
+      'IEPC Total',
+      'Total NCs',
+      'Pontos Deduzidos',
+      'P1',
+      'P2',
+      'P3',
+      'P4',
+      'P5',
+      'E1',
+      'E2',
+      'E3',
+      'E4',
+      'E5',
+      'Tipo de Demanda',
+      'Qtd Atendimentos Avaliados',
+    ];
     const rows = scores.map((s: any) => [
-      s.periodo, s.analista, s.squad, s.coordenador, s.auditor || '',
-      s.nota_final_qa, s.iepc_total, s.total_ncs, s.pontos_deduzidos_nc,
-      s.p1, s.p2, s.p3, s.p4, s.p5, s.e1, s.e2, s.e3, s.e4, s.e5,
-      s.tipo_demanda || '', s.qtd_atendimentos_avaliados || '',
+      s.periodo,
+      s.analista,
+      s.squad,
+      s.coordenador,
+      s.auditor || '',
+      s.nota_final_qa,
+      s.iepc_total,
+      s.total_ncs,
+      s.pontos_deduzidos_nc,
+      s.p1,
+      s.p2,
+      s.p3,
+      s.p4,
+      s.p5,
+      s.e1,
+      s.e2,
+      s.e3,
+      s.e4,
+      s.e5,
+      s.tipo_demanda || '',
+      s.qtd_atendimentos_avaliados || '',
     ]);
     downloadCSV(`pontuacoes_qa_${periodo.replace('/', '-')}.csv`, headers, rows);
   }
 
   // Export NCs
   if (ncs.length > 0) {
-    const headers = ['Período','Analista','Squad','Coordenador','Auditor','Tipo de NC','Descrição','Pontos Deduzidos','Protocolo Referência','ID da Avaliação'];
+    const headers = [
+      'Período',
+      'Analista',
+      'Squad',
+      'Coordenador',
+      'Auditor',
+      'Tipo de NC',
+      'Descrição',
+      'Pontos Deduzidos',
+      'Protocolo Referência',
+      'ID da Avaliação',
+    ];
     const rows = ncs.map((n: any) => [
-      n.periodo, n.analista, n.squad, n.coordenador, n.auditor || '',
-      n.tipo_nc, n.descricao || '', n.pontos_deduzidos, n.protocolo_referencia || '', n.avaliacao_id || '',
+      n.periodo,
+      n.analista,
+      n.squad,
+      n.coordenador,
+      n.auditor || '',
+      n.tipo_nc,
+      n.descricao || '',
+      n.pontos_deduzidos,
+      n.protocolo_referencia || '',
+      n.avaliacao_id || '',
     ]);
     downloadCSV(`nao_conformidades_${periodo.replace('/', '-')}.csv`, headers, rows);
   }
 
   // Export elogios
   if (elogios.length > 0) {
-    const headers = ['Período','Colaborador','Squad','Cliente','Protocolo','Elogio'];
+    const headers = ['Período', 'Colaborador', 'Squad', 'Cliente', 'Protocolo', 'Elogio'];
     const rows = elogios.map((e: any) => [
-      e.periodo, e.colaborador, e.squad, e.cliente || '', e.protocolo || '', e.elogio,
+      e.periodo,
+      e.colaborador,
+      e.squad,
+      e.cliente || '',
+      e.protocolo || '',
+      e.elogio,
     ]);
     downloadCSV(`elogios_${periodo.replace('/', '-')}.csv`, headers, rows);
   }
@@ -735,9 +916,13 @@ function downloadCSV(filename: string, headers: string[], rows: any[][]): void {
   if (typeof window === 'undefined') return;
   const escape = (v: any) => {
     const s = String(v ?? '');
-    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? `"${s.replace(/"/g, '""')}"`
+      : s;
   };
-  const csv = [headers.map(escape).join(','), ...rows.map((r) => r.map(escape).join(','))].join('\n');
+  const csv = [headers.map(escape).join(','), ...rows.map((r) => r.map(escape).join(','))].join(
+    '\n'
+  );
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -750,7 +935,6 @@ function downloadCSV(filename: string, headers: string[], rows: any[][]): void {
 // ─── Fetch functions (Supabase-first, localStorage fallback) ──────────────────
 
 export async function fetchCycleScores(periodo?: string): Promise<any[]> {
-  // Try Supabase first
   try {
     const { createClient } = await import('@/lib/supabase/client');
     const supabase = createClient();
@@ -759,25 +943,18 @@ export async function fetchCycleScores(periodo?: string): Promise<any[]> {
       if (periodo) query = query.eq('periodo', periodo);
       const { data, error } = await query.order('nota_final_qa', { ascending: false });
       if (error) {
-        console.error('[fetchCycleScores] Supabase error:', error.message, error.code);
-      } else {
-        console.log(`[fetchCycleScores] ${data?.length || 0} registros${periodo ? ` para ${periodo}` : ''}`);
-        // Supabase is authoritative — return its data (even if empty)
-        return (data || []);
+        console.error('[fetchCycleScores] Supabase error:', error.message);
+        return [];
       }
+      return data || [];
     }
   } catch (err: any) {
     console.error('[fetchCycleScores] Supabase unreachable:', err.message);
   }
-
-  // Fallback: localStorage (only when Supabase is unreachable)
-  const data = lsGet<any>(LS_SCORES);
-  if (periodo) return data.filter((r: any) => r.periodo === periodo);
-  return data.sort((a: any, b: any) => b.nota_final_qa - a.nota_final_qa);
+  return [];
 }
 
 export async function fetchNCRecords(periodo?: string): Promise<any[]> {
-  // Supabase is the single source of truth
   try {
     const { createClient } = await import('@/lib/supabase/client');
     const supabase = createClient();
@@ -786,15 +963,13 @@ export async function fetchNCRecords(periodo?: string): Promise<any[]> {
       if (periodo) query = query.eq('periodo', periodo);
       const { data, error } = await query;
       if (!error) {
-        return (data || []);
+        return data || [];
       }
     }
-  } catch { /* fall through to localStorage */ }
-
-  // Fallback: localStorage (only when Supabase is unreachable)
-  const data = lsGet<any>(LS_NCS);
-  if (periodo) return data.filter((r) => r.periodo === periodo);
-  return data;
+  } catch (err: any) {
+    console.error('[fetchNCRecords] Supabase unreachable:', err.message);
+  }
+  return [];
 }
 
 export async function deleteNCRecord(id: string): Promise<{ success: boolean; error?: string }> {
@@ -813,7 +988,6 @@ export async function deleteNCRecord(id: string): Promise<{ success: boolean; er
 }
 
 export async function fetchElogios(periodo?: string): Promise<any[]> {
-  // Supabase is the single source of truth
   try {
     const { createClient } = await import('@/lib/supabase/client');
     const supabase = createClient();
@@ -822,19 +996,16 @@ export async function fetchElogios(periodo?: string): Promise<any[]> {
       if (periodo) query = query.eq('periodo', periodo);
       const { data, error } = await query;
       if (!error) {
-        return (data || []);
+        return data || [];
       }
     }
-  } catch { /* fall through to localStorage */ }
-
-  // Fallback: localStorage (only when Supabase is unreachable)
-  const data = lsGet<any>(LS_ELOGIOS);
-  if (periodo) return data.filter((r) => r.periodo === periodo);
-  return data;
+  } catch (err: any) {
+    console.error('[fetchElogios] Supabase unreachable:', err.message);
+  }
+  return [];
 }
 
 export async function fetchAllPeriodos(): Promise<string[]> {
-  // Supabase is the single source of truth
   try {
     const { createClient } = await import('@/lib/supabase/client');
     const supabase = createClient();
@@ -844,39 +1015,16 @@ export async function fetchAllPeriodos(): Promise<string[]> {
         supabase.from('cycle_scores').select('periodo'),
       ]);
 
-      if (cyclesRes.error) console.error('[fetchAllPeriodos] import_cycles error:', cyclesRes.error.message, cyclesRes.error.code);
-      if (scoresRes.error) console.error('[fetchAllPeriodos] cycle_scores error:', scoresRes.error.message, scoresRes.error.code);
-
-      // Use Supabase data exclusively (even if empty — empty means no data imported yet)
       const all = [
         ...(cyclesRes.data || []).map((r: any) => r.periodo),
         ...(scoresRes.data || []).map((r: any) => r.periodo),
       ].filter(Boolean);
-      const unique = sortPeriodosDesc([...new Set(all)] as string[]);
-      console.log('[fetchAllPeriodos] Períodos do Supabase:', unique.join(', ') || 'nenhum');
-      return unique;
+      return sortPeriodosDesc([...new Set(all)] as string[]);
     }
   } catch (err: any) {
     console.error('[fetchAllPeriodos] Supabase unreachable:', err.message);
   }
-
-  // Fallback: localStorage (only when Supabase is unreachable)
-  const cycles = lsGet<any>(LS_CYCLES);
-  let periodos = [...new Set(cycles.map((c: any) => c.periodo as string))].filter(Boolean);
-
-  if (periodos.length === 0) {
-    const scores = lsGet<any>(LS_SCORES);
-    const ncs = lsGet<any>(LS_NCS);
-    const elogios = lsGet<any>(LS_ELOGIOS);
-    const allPeriodos = [
-      ...scores.map((s: any) => s.periodo),
-      ...ncs.map((n: any) => n.periodo),
-      ...elogios.map((e: any) => e.periodo),
-    ].filter(Boolean);
-    periodos = sortPeriodosDesc([...new Set(allPeriodos)] as string[]);
-  }
-
-  return sortPeriodosDesc(periodos);
+  return [];
 }
 
 export async function toggleElogioDestaque(id: string, destaque: boolean) {
@@ -888,19 +1036,33 @@ export async function toggleElogioDestaque(id: string, destaque: boolean) {
       await supabase.from('elogios').update({ destaque }).eq('id', id);
       return;
     }
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
   // Fallback: localStorage
-  const data = lsGet<any>(LS_ELOGIOS).map((e: any) =>
-    e.id === id ? { ...e, destaque } : e
-  );
+  const data = lsGet<any>(LS_ELOGIOS).map((e: any) => (e.id === id ? { ...e, destaque } : e));
   lsSet(LS_ELOGIOS, data);
 }
 
 // ─── User Profiles (localStorage only) ───────────────────────────────────────
 
 const DEFAULT_USERS = [
-  { id: 'admin-1', email: 'brunaramos1807@gmail.com', full_name: 'Bruna Ramos', role: 'Admin', squad: '', avatar: 'BR' },
-  { id: 'admin-2', email: 'bruna.silva@zetti.tech',   full_name: 'Bruna Silva',  role: 'Admin', squad: '', avatar: 'BS' },
+  {
+    id: 'admin-1',
+    email: 'brunaramos1807@gmail.com',
+    full_name: 'Bruna Ramos',
+    role: 'Admin',
+    squad: '',
+    avatar: 'BR',
+  },
+  {
+    id: 'admin-2',
+    email: 'bruna.silva@zetti.tech',
+    full_name: 'Bruna Silva',
+    role: 'Admin',
+    squad: '',
+    avatar: 'BS',
+  },
 ];
 
 export async function fetchUserProfiles() {
@@ -912,9 +1074,7 @@ export async function fetchUserProfiles() {
 }
 
 export async function updateUserRole(id: string, role: string) {
-  const users = lsGet<any>(LS_USERS).map((u: any) =>
-    u.id === id ? { ...u, role } : u
-  );
+  const users = lsGet<any>(LS_USERS).map((u: any) => (u.id === id ? { ...u, role } : u));
   lsSet(LS_USERS, users);
 }
 
@@ -924,7 +1084,9 @@ export function fetchAnalystProfiles(): AnalystProfile[] {
   return lsGet<AnalystProfile>(LS_ANALYST_PROFILES);
 }
 
-export function saveAnalystProfile(profile: Omit<AnalystProfile, 'id' | 'created_at' | 'updated_at'>): AnalystProfile {
+export function saveAnalystProfile(
+  profile: Omit<AnalystProfile, 'id' | 'created_at' | 'updated_at'>
+): AnalystProfile {
   const existing = lsGet<AnalystProfile>(LS_ANALYST_PROFILES);
   const now = new Date().toISOString();
   const newProfile: AnalystProfile = {
@@ -937,16 +1099,24 @@ export function saveAnalystProfile(profile: Omit<AnalystProfile, 'id' | 'created
   return newProfile;
 }
 
-export function updateAnalystProfile(id: string, updates: Partial<Omit<AnalystProfile, 'id' | 'created_at'>>): void {
+export function updateAnalystProfile(
+  id: string,
+  updates: Partial<Omit<AnalystProfile, 'id' | 'created_at'>>
+): void {
   const existing = lsGet<AnalystProfile>(LS_ANALYST_PROFILES);
   lsSet(
     LS_ANALYST_PROFILES,
-    existing.map((p) => p.id === id ? { ...p, ...updates, updated_at: new Date().toISOString() } : p)
+    existing.map((p) =>
+      p.id === id ? { ...p, ...updates, updated_at: new Date().toISOString() } : p
+    )
   );
 }
 
 export function deleteAnalystProfile(id: string): void {
-  lsSet(LS_ANALYST_PROFILES, lsGet<AnalystProfile>(LS_ANALYST_PROFILES).filter((p) => p.id !== id));
+  lsSet(
+    LS_ANALYST_PROFILES,
+    lsGet<AnalystProfile>(LS_ANALYST_PROFILES).filter((p) => p.id !== id)
+  );
 }
 
 export function getAnalystHistory(nomeAnalista: string): {
@@ -955,17 +1125,17 @@ export function getAnalystHistory(nomeAnalista: string): {
   elogios: any[];
 } {
   const nameLower = nomeAnalista.toLowerCase().trim();
-  const scores = lsGet<any>(LS_SCORES).filter((r) =>
-    (r.analista || '').toLowerCase().trim() === nameLower
-  ).sort((a: any, b: any) => a.periodo.localeCompare(b.periodo));
+  const scores = lsGet<any>(LS_SCORES)
+    .filter((r) => (r.analista || '').toLowerCase().trim() === nameLower)
+    .sort((a: any, b: any) => a.periodo.localeCompare(b.periodo));
 
-  const ncs = lsGet<any>(LS_NCS).filter((r) =>
-    (r.analista || '').toLowerCase().trim() === nameLower
-  ).sort((a: any, b: any) => (a.periodo || '').localeCompare(b.periodo || ''));
+  const ncs = lsGet<any>(LS_NCS)
+    .filter((r) => (r.analista || '').toLowerCase().trim() === nameLower)
+    .sort((a: any, b: any) => (a.periodo || '').localeCompare(b.periodo || ''));
 
-  const elogios = lsGet<any>(LS_ELOGIOS).filter((r) =>
-    (r.colaborador || '').toLowerCase().trim() === nameLower
-  ).sort((a: any, b: any) => (a.periodo || '').localeCompare(b.periodo || ''));
+  const elogios = lsGet<any>(LS_ELOGIOS)
+    .filter((r) => (r.colaborador || '').toLowerCase().trim() === nameLower)
+    .sort((a: any, b: any) => (a.periodo || '').localeCompare(b.periodo || ''));
 
   return { scores, ncs, elogios };
 }
@@ -988,7 +1158,9 @@ export function fetchManualCycles(): ManualCycleEntry[] {
   return lsGet<ManualCycleEntry>(LS_MANUAL_CYCLES);
 }
 
-export function saveManualCycle(entry: Omit<ManualCycleEntry, 'id' | 'created_at' | 'updated_at'>): ManualCycleEntry {
+export function saveManualCycle(
+  entry: Omit<ManualCycleEntry, 'id' | 'created_at' | 'updated_at'>
+): ManualCycleEntry {
   const existing = lsGet<ManualCycleEntry>(LS_MANUAL_CYCLES);
   const now = new Date().toISOString();
   // Upsert by periodo
@@ -1012,7 +1184,10 @@ export function saveManualCycle(entry: Omit<ManualCycleEntry, 'id' | 'created_at
 }
 
 export function deleteManualCycle(id: string): void {
-  lsSet(LS_MANUAL_CYCLES, lsGet<ManualCycleEntry>(LS_MANUAL_CYCLES).filter((e) => e.id !== id));
+  lsSet(
+    LS_MANUAL_CYCLES,
+    lsGet<ManualCycleEntry>(LS_MANUAL_CYCLES).filter((e) => e.id !== id)
+  );
   dispatchDataChanged({ tipo: 'delete_manual_cycle' });
 }
 
@@ -1030,9 +1205,18 @@ export function deleteAnalystFromData(analystName: string, periodo?: string): vo
     if (periodo) return r.periodo === periodo;
     return true;
   };
-  lsSet(LS_SCORES,  lsGet<any>(LS_SCORES).filter((r) => !matchFn(r)));
-  lsSet(LS_NCS,     lsGet<any>(LS_NCS).filter((r) => !matchFn(r)));
-  lsSet(LS_ELOGIOS, lsGet<any>(LS_ELOGIOS).filter((r) => !matchFn(r)));
+  lsSet(
+    LS_SCORES,
+    lsGet<any>(LS_SCORES).filter((r) => !matchFn(r))
+  );
+  lsSet(
+    LS_NCS,
+    lsGet<any>(LS_NCS).filter((r) => !matchFn(r))
+  );
+  lsSet(
+    LS_ELOGIOS,
+    lsGet<any>(LS_ELOGIOS).filter((r) => !matchFn(r))
+  );
   dispatchDataChanged({ tipo: 'delete_analyst', analystName, periodo });
 }
 
@@ -1045,7 +1229,8 @@ export interface PDIRecord {
   analista: string;
   squad: string;
   coordenador: string;
-  status_pdi: 'Em andamento' | 'Atrasado' | 'Concluído' | 'Crítico' | 'Parcial' | 'Aderido' | 'Em reavaliação' | 'Não aderido' | 'aguardando alinhamento' | 'em evolucao' | 'em acompanhamento' | 'em validacao' | 'consolidado' | 'evolucao concluida' | 'reincidente';
+  status_pdi:
+    | 'Em andamento' |'Atrasado' |'Concluído' |'Crítico' |'Parcial' |'Aderido' |'Em reavaliação' |'Não aderido' |'aguardando alinhamento' |'em evolucao' |'em acompanhamento' |'em validacao' |'consolidado' |'evolucao concluida' |'reincidente';
   acoes: any[];
   metas: any[];
   evidencias: any[];
@@ -1108,19 +1293,28 @@ export interface PDITimelineEvent {
   created_at?: string;
 }
 
-export async function fetchPDIRecords(filters?: { periodo?: string; squad?: string; analista?: string }): Promise<PDIRecord[]> {
+export async function fetchPDIRecords(filters?: {
+  periodo?: string;
+  squad?: string;
+  analista?: string;
+}): Promise<PDIRecord[]> {
   try {
     const { createClient } = await import('@/lib/supabase/client');
     const supabase = createClient();
     if (supabase) {
-      let query = supabase.from('pdi_records').select('*').order('created_at', { ascending: false });
+      let query = supabase
+        .from('pdi_records')
+        .select('*')
+        .order('created_at', { ascending: false });
       if (filters?.periodo) query = query.eq('periodo', filters.periodo);
       if (filters?.squad) query = query.eq('squad', filters.squad);
       if (filters?.analista) query = query.eq('analista', filters.analista);
       const { data, error } = await query;
       if (!error && data) return data as PDIRecord[];
     }
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
   // Fallback: localStorage legacy
   if (typeof window !== 'undefined') {
     try {
@@ -1128,29 +1322,45 @@ export async function fetchPDIRecords(filters?: { periodo?: string; squad?: stri
       const pdis = raw ? JSON.parse(raw) : [];
       return pdis.map((p: any) => ({
         ...p,
-        status_pdi: p.status === 'concluido' ? 'Concluído' : p.status === 'em_andamento' ? 'Em andamento' : 'Em andamento',
-        acoes: [], metas: [], evidencias: [], nc_reincidentes: [],
-        qa_score: 0, iepc_score: 0, source: 'manual',
+        status_pdi:
+          p.status === 'concluido'
+            ? 'Concluído'
+            : p.status === 'em_andamento' ?'Em andamento' :'Em andamento',
+        acoes: [],
+        metas: [],
+        evidencias: [],
+        nc_reincidentes: [],
+        qa_score: 0,
+        iepc_score: 0,
+        source: 'manual',
         created_at: p.created_at || new Date().toISOString(),
         updated_at: p.updated_at || new Date().toISOString(),
       }));
-    } catch { return []; }
+    } catch {
+      return [];
+    }
   }
   return [];
 }
 
-export async function savePDIRecord(pdi: Omit<PDIRecord, 'id' | 'created_at' | 'updated_at'>): Promise<{ success: boolean; data?: PDIRecord; error?: string }> {
+export async function savePDIRecord(
+  pdi: Omit<PDIRecord, 'id' | 'created_at' | 'updated_at'>
+): Promise<{ success: boolean; data?: PDIRecord; error?: string }> {
   try {
     const { createClient } = await import('@/lib/supabase/client');
     const supabase = createClient();
     if (supabase) {
-      const { data, error } = await supabase.from('pdi_records').insert({
-        ...pdi,
-        acoes: pdi.acoes || [],
-        metas: pdi.metas || [],
-        evidencias: pdi.evidencias || [],
-        nc_reincidentes: pdi.nc_reincidentes || [],
-      }).select().single();
+      const { data, error } = await supabase
+        .from('pdi_records')
+        .insert({
+          ...pdi,
+          acoes: pdi.acoes || [],
+          metas: pdi.metas || [],
+          evidencias: pdi.evidencias || [],
+          nc_reincidentes: pdi.nc_reincidentes || [],
+        })
+        .select()
+        .single();
       if (error) return { success: false, error: error.message };
       dispatchDataChanged({ tipo: 'pdi_saved', analista: pdi.analista });
       return { success: true, data: data as PDIRecord };
@@ -1161,12 +1371,18 @@ export async function savePDIRecord(pdi: Omit<PDIRecord, 'id' | 'created_at' | '
   return { success: false, error: 'Supabase não disponível' };
 }
 
-export async function updatePDIRecord(id: string, updates: Partial<PDIRecord>): Promise<{ success: boolean; error?: string }> {
+export async function updatePDIRecord(
+  id: string,
+  updates: Partial<PDIRecord>
+): Promise<{ success: boolean; error?: string }> {
   try {
     const { createClient } = await import('@/lib/supabase/client');
     const supabase = createClient();
     if (supabase) {
-      const { error } = await supabase.from('pdi_records').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id);
+      const { error } = await supabase
+        .from('pdi_records')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', id);
       if (error) return { success: false, error: error.message };
       dispatchDataChanged({ tipo: 'pdi_updated' });
       return { success: true };
@@ -1205,11 +1421,15 @@ export async function fetchPDIObjectives(pdiId: string): Promise<PDIObjective[]>
         .order('created_at', { ascending: true });
       if (!error && data) return data as PDIObjective[];
     }
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
   return [];
 }
 
-export async function savePDIObjective(obj: Omit<PDIObjective, 'id' | 'created_at'>): Promise<{ success: boolean; data?: PDIObjective; error?: string }> {
+export async function savePDIObjective(
+  obj: Omit<PDIObjective, 'id' | 'created_at'>
+): Promise<{ success: boolean; data?: PDIObjective; error?: string }> {
   try {
     const { createClient } = await import('@/lib/supabase/client');
     const supabase = createClient();
@@ -1224,12 +1444,18 @@ export async function savePDIObjective(obj: Omit<PDIObjective, 'id' | 'created_a
   return { success: false, error: 'Supabase não disponível' };
 }
 
-export async function updatePDIObjective(id: string, updates: Partial<PDIObjective>): Promise<{ success: boolean; error?: string }> {
+export async function updatePDIObjective(
+  id: string,
+  updates: Partial<PDIObjective>
+): Promise<{ success: boolean; error?: string }> {
   try {
     const { createClient } = await import('@/lib/supabase/client');
     const supabase = createClient();
     if (supabase) {
-      const { error } = await supabase.from('pdi_objectives').update({ ...updates, data_atualizacao: new Date().toISOString() }).eq('id', id);
+      const { error } = await supabase
+        .from('pdi_objectives')
+        .update({ ...updates, data_atualizacao: new Date().toISOString() })
+        .eq('id', id);
       if (error) return { success: false, error: error.message };
       return { success: true };
     }
@@ -1239,7 +1465,9 @@ export async function updatePDIObjective(id: string, updates: Partial<PDIObjecti
   return { success: false, error: 'Supabase não disponível' };
 }
 
-export async function deletePDIObjective(id: string): Promise<{ success: boolean; error?: string }> {
+export async function deletePDIObjective(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
   try {
     const { createClient } = await import('@/lib/supabase/client');
     const supabase = createClient();
@@ -1266,11 +1494,15 @@ export async function fetchPDITimeline(pdiId: string): Promise<PDITimelineEvent[
         .order('data_evento', { ascending: true });
       if (!error && data) return data as PDITimelineEvent[];
     }
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
   return [];
 }
 
-export async function addPDITimelineEvent(event: Omit<PDITimelineEvent, 'id' | 'created_at'>): Promise<{ success: boolean; error?: string }> {
+export async function addPDITimelineEvent(
+  event: Omit<PDITimelineEvent, 'id' | 'created_at'>
+): Promise<{ success: boolean; error?: string }> {
   try {
     const { createClient } = await import('@/lib/supabase/client');
     const supabase = createClient();
@@ -1340,7 +1572,10 @@ export async function autoCreatePDIFromFeedback(params: {
       resultado_esperado: params.resultadoEsperado || '',
       mensagem_evolutiva: params.mensagemEvolutiva || '',
       objetivo: params.objetivoDesenvolvimento || '',
-      enterprise_objectives: params.enterpriseObjectives && params.enterpriseObjectives.length > 0 ? params.enterpriseObjectives : null,
+      enterprise_objectives:
+        params.enterpriseObjectives && params.enterpriseObjectives.length > 0
+          ? params.enterpriseObjectives
+          : null,
       source: 'feedback_auto',
       attachments: [],
     };
@@ -1381,7 +1616,6 @@ export interface AnalistaRecord {
   coordenador?: string;
   cargo_operacional?: string;
   nivel: string;
-  nivel_profissional?: string; // Júnior I, Júnior II, ... Especialista
   status: 'ativo' | 'ferias' | 'afastado' | 'desligado';
   aniversario?: string;
   tempo_empresa?: string;
@@ -1390,12 +1624,14 @@ export interface AnalistaRecord {
   ultima_promocao?: string;
   data_admissao?: string;
   observacoes?: string;
-  foto_url?: string;
   created_at: string;
   updated_at: string;
 }
 
-export async function fetchAnalistas(filters?: { squad?: string; status?: string }): Promise<AnalistaRecord[]> {
+export async function fetchAnalistas(filters?: {
+  squad?: string;
+  status?: string;
+}): Promise<AnalistaRecord[]> {
   try {
     const { createClient } = await import('@/lib/supabase/client');
     const supabase = createClient();
@@ -1406,11 +1642,15 @@ export async function fetchAnalistas(filters?: { squad?: string; status?: string
       const { data, error } = await query;
       if (!error && data) return data as AnalistaRecord[];
     }
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
   return [];
 }
 
-export async function upsertAnalista(analista: Omit<AnalistaRecord, 'id' | 'created_at' | 'updated_at'>): Promise<{ success: boolean; error?: string; data?: AnalistaRecord }> {
+export async function upsertAnalista(
+  analista: Omit<AnalistaRecord, 'id' | 'created_at' | 'updated_at'>
+): Promise<{ success: boolean; error?: string; data?: AnalistaRecord }> {
   try {
     const { createClient } = await import('@/lib/supabase/client');
     const supabase = createClient();
@@ -1467,7 +1707,11 @@ export async function upsertAnalista(analista: Omit<AnalistaRecord, 'id' | 'crea
         if (existing?.id) {
           const { data, error } = await supabase
             .from('analistas')
-            .update({ ...payload, email: null, analista_id: existing.analista_id || payload.analista_id })
+            .update({
+              ...payload,
+              email: null,
+              analista_id: existing.analista_id || payload.analista_id,
+            })
             .eq('id', existing.id)
             .select()
             .single();
@@ -1512,7 +1756,8 @@ export function calcTempoEmpresa(dataAdmissao: string): { texto: string; meses: 
   if (!dataAdmissao) return { texto: '', meses: 0 };
   const admissao = new Date(dataAdmissao);
   const hoje = new Date();
-  const totalMeses = (hoje.getFullYear() - admissao.getFullYear()) * 12 + (hoje.getMonth() - admissao.getMonth());
+  const totalMeses =
+    (hoje.getFullYear() - admissao.getFullYear()) * 12 + (hoje.getMonth() - admissao.getMonth());
   const anos = Math.floor(totalMeses / 12);
   const meses = totalMeses % 12;
   let texto = '';
@@ -1539,18 +1784,30 @@ export interface AdminLog {
   severity: string;
 }
 
-export async function fetchAdminLogs(filters?: { category?: string; severity?: string; limit?: number }): Promise<AdminLog[]> {
+export async function fetchAdminLogs(filters?: {
+  category?: string;
+  severity?: string;
+  limit?: number;
+}): Promise<AdminLog[]> {
   try {
     const { createClient } = await import('@/lib/supabase/client');
     const supabase = createClient();
     if (supabase) {
-      let query = supabase.from('admin_logs').select('*').order('created_at', { ascending: false }).limit(filters?.limit || 200);
-      if (filters?.category && filters.category !== 'all') query = query.eq('category', filters.category);
-      if (filters?.severity && filters.severity !== 'all') query = query.eq('severity', filters.severity);
+      let query = supabase
+        .from('admin_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(filters?.limit || 200);
+      if (filters?.category && filters.category !== 'all')
+        query = query.eq('category', filters.category);
+      if (filters?.severity && filters.severity !== 'all')
+        query = query.eq('severity', filters.severity);
       const { data, error } = await query;
       if (!error && data) return data as AdminLog[];
     }
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
   return [];
 }
 
@@ -1561,15 +1818,24 @@ export async function writeAdminLog(log: Omit<AdminLog, 'id' | 'created_at'>): P
     if (supabase) {
       await supabase.from('admin_logs').insert(log);
     }
-  } catch { /* silently ignore */ }
+  } catch {
+    /* silently ignore */
+  }
 }
 
 // ─── Full Backup / Restore ────────────────────────────────────────────────────
 
 const ALL_LS_KEYS = [
-  LS_SCORES, LS_NCS, LS_ELOGIOS, LS_CYCLES, LS_USERS,
-  LS_CLOSED_CYCLES, LS_ANALYST_PROFILES, LS_MANUAL_CYCLES,
-  'zetti_import_records', 'zetti_audit_data',
+  LS_SCORES,
+  LS_NCS,
+  LS_ELOGIOS,
+  LS_CYCLES,
+  LS_USERS,
+  LS_CLOSED_CYCLES,
+  LS_ANALYST_PROFILES,
+  LS_MANUAL_CYCLES,
+  'zetti_import_records',
+  'zetti_audit_data',
 ];
 
 export interface BackupData {

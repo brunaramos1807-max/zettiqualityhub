@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="180" viewBox="0 0 900 180">
+      
+      <g transform="translate(18 20)">
+    
+    <g>
+      <circle cx="56" cy="56" r="41" fill="none" stroke="#111111" stroke-width="12" stroke-linecap="round"
+              stroke-dasharray="222 70" transform="rotate(-48 56 56)"/>
+      <rect x="29" y="58" width="9" height="23" rx="2" fill="#111111"/>
+      <rect x="43" y="47" width="9" height="34" rx="2" fill="#111111"/>
+      <rect x="57" y="34" width="9" height="47" rx="2" fill="#111111"/>
+      <path d="M66 72 L100 107 L86 108 L59 80 Z" fill="#111111"/>
+    </g>
+    </g>
+      <text x="140" y="96" fill="#111111" font-family="Inter, Arial, sans-serif" font-size="72" font-weight="650">ualiVisão</text>
+      <text x="148" y="136" fill="#555555" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="500" letter-spacing="3">INTELIGÊNCIA E PERFORMANCE</text>
+    </svg>

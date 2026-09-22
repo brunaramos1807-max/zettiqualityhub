@@ -43,10 +43,15 @@ export default function RouteGuard({ children, requireAdmin = false }: RouteGuar
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#071426' }}>
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: '#071426' }}
+      >
         <div className="text-center">
           <Loader2 size={28} className="animate-spin mx-auto mb-3" style={{ color: '#38BDF8' }} />
-          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>Verificando sessão...</p>
+          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
+            Verificando sessão...
+          </p>
         </div>
       </div>
     );
@@ -59,12 +64,22 @@ export default function RouteGuard({ children, requireAdmin = false }: RouteGuar
   // requireAdmin: only block if explicitly not admin
   if (requireAdmin && !isAdmin && !isAdminMaster) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#071426' }}>
-        <div className="text-center p-8 rounded-2xl" style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}>
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: '#071426' }}
+      >
+        <div
+          className="text-center p-8 rounded-2xl"
+          style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+        >
           <AlertTriangle size={32} className="mx-auto mb-3" style={{ color: '#F59E0B' }} />
           <p className="text-lg font-semibold text-white mb-2">Acesso Restrito</p>
-          <p className="text-sm" style={{ color: '#94A3B8' }}>Esta área requer permissões de administrador.</p>
-          <p className="text-xs mt-2" style={{ color: 'rgba(255,255,255,0.3)' }}>Entre em contato com o administrador do sistema.</p>
+          <p className="text-sm" style={{ color: '#94A3B8' }}>
+            Esta área requer permissões de administrador.
+          </p>
+          <p className="text-xs mt-2" style={{ color: 'rgba(255,255,255,0.3)' }}>
+            Entre em contato com o administrador do sistema.
+          </p>
         </div>
       </div>
     );

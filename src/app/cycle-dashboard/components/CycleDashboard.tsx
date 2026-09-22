@@ -47,21 +47,34 @@ export default function CycleDashboard() {
   const [exportingPDF, setExportingPDF] = useState(false);
 
   // Role-based permissions
-  const canImport = session?.permissoes?.permissao_editar || session?.permissoes?.acesso_total || session?.cargo === 'Administrador' || session?.cargo === 'Coordenador' || session?.cargo === 'Coordenador Geral';
-  const canExport = session?.permissoes?.permissao_acessar_relatorios || session?.permissoes?.acesso_total || session?.cargo === 'Administrador';
+  const canImport =
+    session?.permissoes?.permissao_editar ||
+    session?.permissoes?.acesso_total ||
+    session?.cargo === 'Administrador' ||
+    session?.cargo === 'Coordenador' ||
+    session?.cargo === 'Coordenador Geral';
+  const canExport =
+    session?.permissoes?.permissao_acessar_relatorios ||
+    session?.permissoes?.acesso_total ||
+    session?.cargo === 'Administrador';
 
   // Coordinators can see all squads general data but cannot drill into analysts from other squads
   const isCoordinator = userRole === 'Coordenador';
   const coordinatorSquads = isCoordinator
-    ? (userSquads.length > 0 ? userSquads : (userSquad ? [userSquad] : []))
+    ? userSquads.length > 0
+      ? userSquads
+      : userSquad
+        ? [userSquad]
+        : []
     : [];
 
   // allowedSquads: null = all squads visible; array = restricted to those squads
-  const allowedSquads = session?.permissoes?.visualizar_todas_equipes || session?.permissoes?.acesso_total
-    ? null // null = all squads
-    : session?.permissoes?.visualizar_equipes_especificas?.length
-    ? session.permissoes.visualizar_equipes_especificas
-    : null; // coordinators see all squads (general data), restriction is only on analyst drilldown
+  const allowedSquads =
+    session?.permissoes?.visualizar_todas_equipes || session?.permissoes?.acesso_total
+      ? null // null = all squads
+      : session?.permissoes?.visualizar_equipes_especificas?.length
+        ? session.permissoes.visualizar_equipes_especificas
+        : null; // coordinators see all squads (general data), restriction is only on analyst drilldown
 
   // Can a coordinator drill into a specific analyst's details?
   const canViewAnalystDetail = (analystSquad: string) => {
@@ -175,11 +188,16 @@ export default function CycleDashboard() {
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#0A0F1E' }}>
-        <AppHeader activeTab="dashboard" onImportClick={canImport ? () => setImportOpen(true) : undefined} />
+        <AppHeader
+          activeTab="dashboard"
+          onImportClick={canImport ? () => setImportOpen(true) : undefined}
+        />
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>Carregando dados do ciclo...</p>
+            <p className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>
+              Carregando dados do ciclo...
+            </p>
           </div>
         </main>
         <AppFooter />
@@ -221,12 +239,14 @@ export default function CycleDashboard() {
           {/* Section title */}
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
-              <h1 className="font-display text-2xl font-bold text-white" style={{ fontFamily: "'Playfair Display', serif" }}>
+              <h1
+                className="font-display text-2xl font-bold text-white"
+                style={{ fontFamily: "'Playfair Display', serif" }}
+              >
                 Dashboard do Ciclo
               </h1>
               <p className="text-sm mt-1" style={{ color: '#8B949E' }}>
-                BI Operacional —{' '}
-                {activePeriodo || 'Sem dados'} ·{' '}
+                BI Operacional — {activePeriodo || 'Sem dados'} ·{' '}
                 {selectedSquad !== 'all' ? selectedSquad : 'Todas as Squads'} ·{' '}
                 {filteredAnalysts.length} analista{filteredAnalysts.length !== 1 ? 's' : ''}
               </p>
@@ -323,10 +343,16 @@ export default function CycleDashboard() {
                 <>
                   <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
                     <div className="xl:col-span-3">
-                      <SquadRankingChart selectedSquad={selectedSquad} analysts={filteredAnalysts as any} />
+                      <SquadRankingChart
+                        selectedSquad={selectedSquad}
+                        analysts={filteredAnalysts as any}
+                      />
                     </div>
                     <div className="xl:col-span-2">
-                      <PillarMatrix onPillarClick={(pillar) => setSelectedPillar(pillar)} analysts={filteredAnalysts as any} />
+                      <PillarMatrix
+                        onPillarClick={(pillar) => setSelectedPillar(pillar)}
+                        analysts={filteredAnalysts as any}
+                      />
                     </div>
                   </div>
                   {drilldownAnalyst ? (
@@ -348,11 +374,17 @@ export default function CycleDashboard() {
               )}
 
               {viewMode === 'ranking' && (
-                <SquadRankingChart selectedSquad={selectedSquad} analysts={filteredAnalysts as any} />
+                <SquadRankingChart
+                  selectedSquad={selectedSquad}
+                  analysts={filteredAnalysts as any}
+                />
               )}
 
               {viewMode === 'pillars' && (
-                <PillarMatrix onPillarClick={(pillar) => setSelectedPillar(pillar)} analysts={filteredAnalysts as any} />
+                <PillarMatrix
+                  onPillarClick={(pillar) => setSelectedPillar(pillar)}
+                  analysts={filteredAnalysts as any}
+                />
               )}
 
               {viewMode === 'radar' &&
@@ -367,7 +399,10 @@ export default function CycleDashboard() {
                 ) : (
                   <div
                     className="rounded-xl p-10 text-center"
-                    style={{ backgroundColor: '#161B22', border: '1px solid rgba(255,255,255,0.08)' }}
+                    style={{
+                      backgroundColor: '#161B22',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                    }}
                   >
                     <p className="text-sm mb-2 text-white/70">
                       Selecione um analista para ver o Radar individual
@@ -430,7 +465,9 @@ function AnalystsOverviewTable({
         className="rounded-xl p-8 text-center"
         style={{ backgroundColor: '#161B22', border: '1px solid rgba(255,255,255,0.08)' }}
       >
-        <p className="text-sm" style={{ color: '#8B949E' }}>Nenhum analista encontrado com os filtros aplicados.</p>
+        <p className="text-sm" style={{ color: '#8B949E' }}>
+          Nenhum analista encontrado com os filtros aplicados.
+        </p>
       </div>
     );
   }
@@ -440,87 +477,141 @@ function AnalystsOverviewTable({
       className="rounded-xl overflow-hidden"
       style={{ backgroundColor: '#161B22', border: '1px solid rgba(255,255,255,0.08)' }}
     >
-      <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <h3 className="font-display text-base font-semibold text-white" style={{ fontFamily: "'Playfair Display', serif" }}>
+      <div
+        className="flex items-center justify-between px-5 py-4"
+        style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+      >
+        <h3
+          className="font-display text-base font-semibold text-white"
+          style={{ fontFamily: "'Playfair Display', serif" }}
+        >
           Visão Geral — Analistas do Ciclo
         </h3>
-        <span className="text-xs" style={{ color: '#8B949E' }}>{analysts.length} analistas exibidos</span>
+        <span className="text-xs" style={{ color: '#8B949E' }}>
+          {analysts.length} analistas exibidos
+        </span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ backgroundColor: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              {['Analista', 'Squad', 'Coordenador', 'Nota QA', 'IEPC', 'NCs', 'Status', 'Ação'].map((h) => (
-                <th
-                  key={`th-${h}`}
-                  className="text-left py-3 px-3 text-xs font-semibold uppercase tracking-wide"
-                  style={{ color: '#8B949E' }}
-                >
-                  {h}
-                </th>
-              ))}
+            <tr
+              style={{
+                backgroundColor: 'rgba(255,255,255,0.03)',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+              }}
+            >
+              {['Analista', 'Squad', 'Coordenador', 'Nota QA', 'IEPC', 'NCs', 'Status', 'Ação'].map(
+                (h) => (
+                  <th
+                    key={`th-${h}`}
+                    className="text-left py-3 px-3 text-xs font-semibold uppercase tracking-wide"
+                    style={{ color: '#8B949E' }}
+                  >
+                    {h}
+                  </th>
+                )
+              )}
             </tr>
           </thead>
           <tbody>
             {analysts.map((analyst) => {
               const canDetail = !canViewDetail || canViewDetail(analyst.squad);
               return (
-              <tr
-                key={`row-${analyst.id}`}
-                className={canDetail ? "cursor-pointer transition-colors" : "transition-colors"}
-                style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.03)')}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                onClick={() => canDetail && onSelectAnalyst(analyst.id)}
-              >
-                <td className="py-3 px-3 font-medium text-white">{analyst.name}</td>
-                <td className="py-3 px-3" style={{ color: '#8B949E' }}>{analyst.squad}</td>
-                <td className="py-3 px-3" style={{ color: '#8B949E' }}>{analyst.coordenador}</td>
-                <td className="py-3 px-3">
-                  <span className="font-bold metric-value" style={{ color: getScoreColor(analyst.qaScore) }}>
-                    {analyst.qaScore.toFixed(2)}
-                  </span>
-                </td>
-                <td className="py-3 px-3">
-                  <span className="font-bold metric-value" style={{ color: getScoreColor(analyst.iepcScore) }}>
-                    {analyst.iepcScore.toFixed(2)}
-                  </span>
-                </td>
-                <td className="py-3 px-3">
-                  {analyst.ncs > 0 ? (
-                    <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>
-                      {analyst.ncs} NC{analyst.ncs > 1 ? 's' : ''}
+                <tr
+                  key={`row-${analyst.id}`}
+                  className={canDetail ? 'cursor-pointer transition-colors' : 'transition-colors'}
+                  style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.03)')
+                  }
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  onClick={() => canDetail && onSelectAnalyst(analyst.id)}
+                >
+                  <td className="py-3 px-3 font-medium text-white">{analyst.name}</td>
+                  <td className="py-3 px-3" style={{ color: '#8B949E' }}>
+                    {analyst.squad}
+                  </td>
+                  <td className="py-3 px-3" style={{ color: '#8B949E' }}>
+                    {analyst.coordenador}
+                  </td>
+                  <td className="py-3 px-3">
+                    <span
+                      className="font-bold metric-value"
+                      style={{ color: getScoreColor(analyst.qaScore) }}
+                    >
+                      {analyst.qaScore.toFixed(2)}
                     </span>
-                  ) : (
-                    <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: 'rgba(34,197,94,0.15)', color: '#22C55E', border: '1px solid rgba(34,197,94,0.2)' }}>
-                      0 NCs
+                  </td>
+                  <td className="py-3 px-3">
+                    <span
+                      className="font-bold metric-value"
+                      style={{ color: getScoreColor(analyst.iepcScore) }}
+                    >
+                      {analyst.iepcScore.toFixed(2)}
                     </span>
-                  )}
-                </td>
-                <td className="py-3 px-3">
-                  <span
-                    className="text-xs font-medium px-2 py-0.5 rounded-full"
-                    style={{
-                      backgroundColor: analyst.qaScore >= 85 ? 'rgba(34,197,94,0.15)' : analyst.qaScore >= 70 ? 'rgba(234,179,8,0.15)' : 'rgba(239,68,68,0.15)',
-                      color: analyst.qaScore >= 85 ? '#22C55E' : analyst.qaScore >= 70 ? '#EAB308' : '#EF4444',
-                      border: `1px solid ${analyst.qaScore >= 85 ? 'rgba(34,197,94,0.2)' : analyst.qaScore >= 70 ? 'rgba(234,179,8,0.2)' : 'rgba(239,68,68,0.2)'}`,
-                    }}
-                  >
-                    {getScoreLabel(analyst.qaScore)}
-                  </span>
-                </td>
-                <td className="py-3 px-3">
-                  {canDetail ? (
-                    <button className="text-xs font-medium" style={{ color: '#3B82F6' }}>
-                      Ver detalhes →
-                    </button>
-                  ) : (
-                    <span className="text-xs font-medium" style={{ color: '#64748B' }} title="Acesso restrito — outra equipe">
-                      🔒 Restrito
+                  </td>
+                  <td className="py-3 px-3">
+                    {analyst.ncs > 0 ? (
+                      <span
+                        className="text-xs font-medium px-2 py-0.5 rounded-full"
+                        style={{
+                          backgroundColor: 'rgba(239,68,68,0.15)',
+                          color: '#EF4444',
+                          border: '1px solid rgba(239,68,68,0.2)',
+                        }}
+                      >
+                        {analyst.ncs} NC{analyst.ncs > 1 ? 's' : ''}
+                      </span>
+                    ) : (
+                      <span
+                        className="text-xs font-medium px-2 py-0.5 rounded-full"
+                        style={{
+                          backgroundColor: 'rgba(34,197,94,0.15)',
+                          color: '#22C55E',
+                          border: '1px solid rgba(34,197,94,0.2)',
+                        }}
+                      >
+                        0 NCs
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-3 px-3">
+                    <span
+                      className="text-xs font-medium px-2 py-0.5 rounded-full"
+                      style={{
+                        backgroundColor:
+                          analyst.qaScore >= 85
+                            ? 'rgba(34,197,94,0.15)'
+                            : analyst.qaScore >= 70
+                              ? 'rgba(234,179,8,0.15)'
+                              : 'rgba(239,68,68,0.15)',
+                        color:
+                          analyst.qaScore >= 85
+                            ? '#22C55E'
+                            : analyst.qaScore >= 70
+                              ? '#EAB308' :'#EF4444',
+                        border: `1px solid ${analyst.qaScore >= 85 ? 'rgba(34,197,94,0.2)' : analyst.qaScore >= 70 ? 'rgba(234,179,8,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                      }}
+                    >
+                      {getScoreLabel(analyst.qaScore)}
                     </span>
-                  )}
-                </td>
-              </tr>
+                  </td>
+                  <td className="py-3 px-3">
+                    {canDetail ? (
+                      <button className="text-xs font-medium" style={{ color: '#3B82F6' }}>
+                        Ver detalhes →
+                      </button>
+                    ) : (
+                      <span
+                        className="text-xs font-medium"
+                        style={{ color: '#64748B' }}
+                        title="Acesso restrito — outra equipe"
+                      >
+                        🔒 Restrito
+                      </span>
+                    )}
+                  </td>
+                </tr>
               );
             })}
           </tbody>

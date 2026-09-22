@@ -4,7 +4,6 @@ import { Filter, Users, GitCompare, BarChart2, Radar, Table2, LayoutGrid } from 
 import type { RealAnalyst } from '@/lib/services/dataService';
 import Icon from '@/components/ui/AppIcon';
 
-
 export type ViewMode = 'overview' | 'ranking' | 'pillars' | 'radar';
 
 interface CycleFiltersProps {
@@ -48,13 +47,17 @@ export default function CycleFilters({
 }: CycleFiltersProps) {
   // Derive unique squads from real data
   const squads = Array.from(new Set(filteredAnalysts.map((a) => a.squad))).filter(Boolean);
-  const analystOptions = selectedSquad === 'all'
-    ? filteredAnalysts
-    : filteredAnalysts.filter((a) => a.squad === selectedSquad);
+  const analystOptions =
+    selectedSquad === 'all'
+      ? filteredAnalysts
+      : filteredAnalysts.filter((a) => a.squad === selectedSquad);
 
   return (
     <div className="flex flex-wrap items-center gap-3 max-w-screen-2xl mx-auto">
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide flex-shrink-0" style={{ color: '#8B949E' }}>
+      <div
+        className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide flex-shrink-0"
+        style={{ color: '#8B949E' }}
+      >
         <Filter size={13} />
         Filtros
       </div>
@@ -88,10 +91,16 @@ export default function CycleFilters({
       </select>
 
       {/* Divider */}
-      <div className="h-5 w-px flex-shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }} />
+      <div
+        className="h-5 w-px flex-shrink-0"
+        style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
+      />
 
       {/* View mode */}
-      <div className="flex items-center gap-1 p-1 rounded-lg" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
+      <div
+        className="flex items-center gap-1 p-1 rounded-lg"
+        style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}
+      >
         {VIEW_OPTIONS.map((opt) => {
           const Icon = opt.icon;
           const active = viewMode === opt.value;
@@ -114,7 +123,10 @@ export default function CycleFilters({
       </div>
 
       {/* Divider */}
-      <div className="h-5 w-px flex-shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }} />
+      <div
+        className="h-5 w-px flex-shrink-0"
+        style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
+      />
 
       {/* Compare button */}
       <button
@@ -142,7 +154,11 @@ export default function CycleFilters({
         >
           <Users size={11} />
           {selectedSquad}
-          <button onClick={() => onSquadChange('all')} className="ml-1" style={{ color: '#60A5FA' }}>
+          <button
+            onClick={() => onSquadChange('all')}
+            className="ml-1"
+            style={{ color: '#60A5FA' }}
+          >
             ×
           </button>
         </div>

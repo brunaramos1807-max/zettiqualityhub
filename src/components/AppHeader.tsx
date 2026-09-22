@@ -3,7 +3,24 @@ import React, { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
-import { Upload, Bell, ChevronDown, BarChart2, TrendingUp, ClipboardCheck, AlertTriangle, Star, Clock, FileUp, FolderOpen, Home, LogOut, Users, Shield, Activity } from 'lucide-react';
+import {
+  Upload,
+  Bell,
+  ChevronDown,
+  BarChart2,
+  TrendingUp,
+  ClipboardCheck,
+  AlertTriangle,
+  Star,
+  Clock,
+  FileUp,
+  FolderOpen,
+  Home,
+  LogOut,
+  Users,
+  Shield,
+  Activity,
+} from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSystemAuth } from '@/contexts/SystemAuthContext';
 
@@ -26,17 +43,85 @@ interface TabDef {
 
 const TABS: TabDef[] = [
   { id: 'home', label: 'Painel Executivo', href: '/', icon: <Home size={13} />, group: 'VISÃO' },
-  { id: 'ultimo-ciclo', label: 'Último Ciclo', href: '/cycle-dashboard', icon: <BarChart2 size={13} />, group: 'VISÃO' },
-  { id: 'ciclo-atual', label: 'Ciclo Atual', href: '/ciclo-atual', icon: <Activity size={13} />, group: 'VISÃO' },
-  { id: 'evolucao', label: 'Evolução', href: '/evolucao-geral', icon: <TrendingUp size={13} />, group: 'VISÃO' },
-  { id: 'auditoria', label: 'Auditoria', href: '/auditoria', icon: <ClipboardCheck size={13} />, group: 'OPERAÇÃO' },
-  { id: 'ncs', label: 'Não Conformidades', href: '/nao-conformidades', icon: <AlertTriangle size={13} />, group: 'OPERAÇÃO' },
-  { id: 'elogios', label: 'Elogios', href: '/mural-elogios', icon: <Star size={13} />, group: 'OPERAÇÃO' },
-  { id: 'historico', label: 'Histórico', href: '/historico', icon: <Clock size={13} />, group: 'HISTÓRICO' },
-  { id: 'importacoes', label: 'Importações', href: '/importacoes', icon: <FileUp size={13} />, group: 'DADOS' },
-  { id: 'documentos', label: 'Documentos', href: '/documentos', icon: <FolderOpen size={13} />, group: 'DADOS' },
-  { id: 'gestao', label: 'Gestão', href: '/gestao', icon: <Users size={13} />, group: 'ADMIN', adminOnly: true },
-  { id: 'configuracoes', label: 'Configurações', href: '/configuracoes', icon: <Shield size={13} />, group: 'ADMIN', adminOnly: true },
+  {
+    id: 'ultimo-ciclo',
+    label: 'Último Ciclo',
+    href: '/cycle-dashboard',
+    icon: <BarChart2 size={13} />,
+    group: 'VISÃO',
+  },
+  {
+    id: 'ciclo-atual',
+    label: 'Ciclo Atual',
+    href: '/ciclo-atual',
+    icon: <Activity size={13} />,
+    group: 'VISÃO',
+  },
+  {
+    id: 'evolucao',
+    label: 'Evolução',
+    href: '/evolucao-geral',
+    icon: <TrendingUp size={13} />,
+    group: 'VISÃO',
+  },
+  {
+    id: 'auditoria',
+    label: 'Auditoria',
+    href: '/auditoria',
+    icon: <ClipboardCheck size={13} />,
+    group: 'OPERAÇÃO',
+  },
+  {
+    id: 'ncs',
+    label: 'Não Conformidades',
+    href: '/nao-conformidades',
+    icon: <AlertTriangle size={13} />,
+    group: 'OPERAÇÃO',
+  },
+  {
+    id: 'elogios',
+    label: 'Elogios',
+    href: '/mural-elogios',
+    icon: <Star size={13} />,
+    group: 'OPERAÇÃO',
+  },
+  {
+    id: 'historico',
+    label: 'Histórico',
+    href: '/historico',
+    icon: <Clock size={13} />,
+    group: 'HISTÓRICO',
+  },
+  {
+    id: 'importacoes',
+    label: 'Importações',
+    href: '/importacoes',
+    icon: <FileUp size={13} />,
+    group: 'DADOS',
+  },
+  {
+    id: 'documentos',
+    label: 'Documentos',
+    href: '/documentos',
+    icon: <FolderOpen size={13} />,
+    group: 'DADOS',
+  },
+  {
+    id: 'gestao',
+    label: 'Gestão',
+    href: '/gestao',
+    icon: <Users size={13} />,
+    group: 'ADMIN',
+    adminOnly: true,
+  },
+  {
+    id: 'configuracoes',
+    label: 'Configurações',
+    href: '/configuracoes',
+    icon: <Shield size={13} />,
+    group: 'ADMIN',
+    adminOnly: true,
+  },
 ];
 
 const GROUP_ORDER = ['VISÃO', 'OPERAÇÃO', 'HISTÓRICO', 'DADOS', 'ADMIN'];
@@ -82,7 +167,12 @@ export default function AppHeader({
   const { user, userProfile, signOut } = useAuth();
   const { session: systemSession, isAdmin: systemIsAdmin, logout: systemLogout } = useSystemAuth();
 
-  const displayName = systemSession?.nome || userProfile?.full_name || userNameProp || user?.email?.split('@')[0] || 'Usuário';
+  const displayName =
+    systemSession?.nome ||
+    userProfile?.full_name ||
+    userNameProp ||
+    user?.email?.split('@')[0] ||
+    'Usuário';
   const displayRole = systemSession?.cargo || userProfile?.role || userRoleProp || '';
   const displayAvatar = userAvatarProp || getInitials(displayName);
 
@@ -130,10 +220,11 @@ export default function AppHeader({
             />
           </div>
           <div className="hidden md:block min-w-0">
-            <h1 className="text-sm font-bold text-white leading-tight tracking-wide">
-              QUALIVISÃO
-            </h1>
-            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)', letterSpacing: '0.02em' }}>
+            <h1 className="text-sm font-bold text-white leading-tight tracking-wide">QUALIVISÃO</h1>
+            <p
+              className="text-xs"
+              style={{ color: 'rgba(255,255,255,0.35)', letterSpacing: '0.02em' }}
+            >
               qualivisao.tec.br
             </p>
           </div>
@@ -190,10 +281,18 @@ export default function AppHeader({
                 className="absolute right-0 top-full mt-1 w-52 rounded-xl shadow-2xl z-50 py-1"
                 style={{ backgroundColor: '#1E293B', border: '1px solid rgba(255,255,255,0.1)' }}
               >
-                <div className="px-3 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <div
+                  className="px-3 py-2.5"
+                  style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+                >
                   <p className="text-xs font-semibold text-white truncate">{displayName}</p>
                   {user?.email && (
-                    <p className="text-xs truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>{user.email}</p>
+                    <p
+                      className="text-xs truncate mt-0.5"
+                      style={{ color: 'rgba(255,255,255,0.35)' }}
+                    >
+                      {user.email}
+                    </p>
                   )}
                   {displayRole && (
                     <span

@@ -1,9 +1,9 @@
 /**
  * Payload Normalization Layer for Lovable ↔ Rocket Compatibility
- * 
+ *
  * Centralizes compatibility between legacy (Rocket) and new (Lovable) payload formats.
  * Handles the actual structures sent from Lovable as documented in payloads_qualivisao.md
- * 
+ *
  * This module handles:
  * - Score normalization (QA, IEPC, Aderência) from nested/flat structures
  * - Pillar compatibility (qa_pilares, iepc_pilares) with codigo/nome/nota/maximo
@@ -12,7 +12,7 @@
  * - Feedback and coaching blocks
  * - Analytics data preservation
  * - Payload version tracking and raw payload preservation
- * 
+ *
  * IMPORTANT: This layer does NOT modify any existing components, dashboards, or frontend logic.
  * It purely provides data transformation for incremental adoption.
  */
@@ -22,7 +22,8 @@
  */
 export interface NormalizedScore {
   value: number;
-  source: 'scores.qa' | 'scores.iepc' | 'scores.aderencia' | 'qa_score'| 'iepc_score' | 'analytics.percentual_aderencia' | 'qa_atual' | 'iepc_atual' | 'indice_satisfacao' | 'atendimentos.media_nota_iepc' | 'atendimentos.media_iepc_avaliado'; // Legacy export format
+  source:
+    | 'scores.qa' |'scores.iepc' |'scores.aderencia' |'qa_score' |'iepc_score' |'analytics.percentual_aderencia' |'qa_atual' |'iepc_atual' |'indice_satisfacao' |'atendimentos.media_nota_iepc' |'atendimentos.media_iepc_avaliado'; // Legacy export format
 }
 
 /**
@@ -93,7 +94,7 @@ export interface NormalizedEvidence {
   duracao?: string;
   data?: string;
   ordem?: number;
-  
+
   // Scores
   notaQA?: number;
   notaIEPC?: number;
@@ -101,25 +102,27 @@ export interface NormalizedEvidence {
   nota_qa?: number;
   nota_iepc?: number;
   nota_final?: number;
-  
+
   // Criteria
   criterios?: Array<{
     pilar_codigo: string;
     pilar_nome: string;
     criterio_codigo: string;
     criterio_nome: string;
-    status: 'aderido' | 'parcial' | 'nao_aderido' | 'nao_avaliado' | 'pontuou' | 'parcial' | 'nao_pontuou' | 'sem_oportunidade';
+    status:
+      | 'aderido'
+      | 'parcial' |'nao_aderido' |'nao_avaliado' |'pontuou' |'parcial' |'nao_pontuou' |'sem_oportunidade';
   }>;
   criterios_avaliados?: Record<string, any>; // Legacy format
-  
+
   // IEPC evaluation
   iepc_avaliado?: NormalizedIEPCEvaluation;
-  
+
   // Non-conformities
   ncs?: NormalizedNonConformity[];
   nao_conformidades?: NormalizedNonConformity[];
   penalidades?: NormalizedNonConformity[];
-  
+
   // Operational alerts
   alertas_operacionais?: Array<{
     id?: string;
@@ -127,7 +130,7 @@ export interface NormalizedEvidence {
     descricao: string;
     origem?: 'ia' | 'auditor';
   }>;
-  
+
   // Additional fields
   informou_sup?: boolean;
   pontos_fortes?: string[];
@@ -239,12 +242,15 @@ export interface NormalizedPayload {
   };
 
   // Criteria scores mapping (for QualiVisão compatibility)
-  criterios?: Record<string, {
-    pts: number;
-    max: number;
-    class?: 'pontuou' | 'parcial' | 'nao_pontuou' | 'sem_oportunidade';
-    evidencia?: string;
-  }>;
+  criterios?: Record<
+    string,
+    {
+      pts: number;
+      max: number;
+      class?: 'pontuou' | 'parcial' | 'nao_pontuou' | 'sem_oportunidade';
+      evidencia?: string;
+    }
+  >;
 
   // Non-conformities
   nao_conformidades: NormalizedNonConformity[];
@@ -297,9 +303,7 @@ function averageIepcFromAtendimentos(atendimentos: unknown): number | null {
     const iepcAv = a?.iepc_avaliado;
     if (iepcAv != null) {
       const fromEval = parseScoreValue(
-        typeof iepcAv === 'object'
-          ? (iepcAv.notaIEPC ?? iepcAv.nota_iepc ?? iepcAv.nota)
-          : iepcAv
+        typeof iepcAv === 'object' ? (iepcAv.notaIEPC ?? iepcAv.nota_iepc ?? iepcAv.nota) : iepcAv
       );
       if (fromEval != null) values.push(fromEval);
     }
@@ -312,10 +316,7 @@ function averageIepcFromAtendimentos(atendimentos: unknown): number | null {
 /**
  * Normalizes score from either legacy or new format
  */
-function normalizeScore(
-  payload: any,
-  scoreType: 'qa' | 'iepc' | 'aderencia'
-): NormalizedScore {
+function normalizeScore(payload: any, scoreType: 'qa' | 'iepc' | 'aderencia'): NormalizedScore {
   let value = 0;
   let source: NormalizedScore['source'] = 'qa_score';
 
@@ -403,15 +404,13 @@ function normalizeScore(
 /**
  * Normalizes pillars array from both formats
  */
-function normalizePillars(
-  pillarsData: any[] | undefined,
-  type: 'qa' | 'iepc'
-): NormalizedPillar[] {
+function normalizePillars(pillarsData: any[] | undefined, type: 'qa' | 'iepc'): NormalizedPillar[] {
   if (!Array.isArray(pillarsData)) {
     return [];
   }
 
-  const expectedCodes = type === 'qa' ? ['P1', 'P2', 'P3', 'P4', 'P5'] : ['E1', 'E2', 'E3', 'E4', 'E5'];
+  const expectedCodes =
+    type === 'qa' ? ['P1', 'P2', 'P3', 'P4', 'P5'] : ['E1', 'E2', 'E3', 'E4', 'E5'];
 
   return pillarsData
     .map((pillar, index) => {
@@ -439,15 +438,15 @@ function normalizePillars(
  */
 function normalizeSeverity(severity: string | undefined): 'baixa' | 'media' | 'alta' | 'critica' {
   if (!severity) return 'media';
-  
+
   const normalized = severity.toLowerCase().trim();
-  
+
   // Map Lovable severities to standard ones
   if (normalized === 'leve' || normalized === 'baixa') return 'baixa';
   if (normalized === 'moderada' || normalized === 'media') return 'media';
   if (normalized === 'severa' || normalized === 'alta') return 'alta';
   if (normalized === 'critica') return 'critica';
-  
+
   return 'media';
 }
 
@@ -473,7 +472,12 @@ function normalizeNonConformities(payload: any): NormalizedNonConformity[] {
         date: nc.date || nc.data,
         evaluationId: nc.evaluationId || nc.avaliacaoId,
         severity: normalizeSeverity(nc.severity),
-        points: typeof nc.pontos === 'number' ? nc.pontos : (typeof nc.points === 'number' ? nc.points : -20),
+        points:
+          typeof nc.pontos === 'number'
+            ? nc.pontos
+            : typeof nc.points === 'number'
+              ? nc.points
+              : -20,
         impacto_operacional: nc.impacto_operacional || nc.impactOperacional,
         justificativa_tecnica: nc.justificativa_tecnica || nc.justificativaTecnica,
         aplicar_pontos: nc.aplicar_pontos !== false && nc.aplicarPontos !== false,
@@ -498,7 +502,12 @@ function normalizeNonConformities(payload: any): NormalizedNonConformity[] {
         date: penalty.date || penalty.data,
         evaluationId: penalty.evaluationId || penalty.avaliacaoId,
         severity: normalizeSeverity(penalty.severity),
-        points: typeof penalty.pontos === 'number' ? penalty.pontos : (typeof penalty.points === 'number' ? penalty.points : -20),
+        points:
+          typeof penalty.pontos === 'number'
+            ? penalty.pontos
+            : typeof penalty.points === 'number'
+              ? penalty.points
+              : -20,
         impacto_operacional: penalty.impacto_operacional || penalty.impactOperacional,
         justificativa_tecnica: penalty.justificativa_tecnica || penalty.justificativaTecnica,
         aplicar_pontos: penalty.aplicar_pontos !== false && penalty.aplicarPontos !== false,
@@ -550,20 +559,29 @@ function normalizeEvidences(evidencesData: any[] | undefined): NormalizedEvidenc
       iepc_avaliado: evidence.iepc_avaliado,
 
       // Non-conformities (multiple formats)
-      ncs: Array.isArray(evidence.ncs) ? evidence.ncs.map((nc: any) => ({
-        id: nc.id || nc.codigo || '',
-        codigo: nc.codigo,
-        protocolo: evidence.protocolo,
-        description: nc.descricao || nc.description || '',
-        severity: normalizeSeverity(nc.severidade || nc.severity),
-        points: typeof nc.pontos === 'number' ? nc.pontos : (typeof nc.points === 'number' ? nc.points : -20),
-        impacto_operacional: nc.impacto_operacional || nc.impactOperacional,
-        justificativa_tecnica: nc.justificativa_tecnica || nc.justificativaTecnica,
-        aplicar_pontos: nc.aplicar_pontos !== false && nc.aplicarPontos !== false,
-        penaltySource: 'variable',
-      })) : undefined,
+      ncs: Array.isArray(evidence.ncs)
+        ? evidence.ncs.map((nc: any) => ({
+            id: nc.id || nc.codigo || '',
+            codigo: nc.codigo,
+            protocolo: evidence.protocolo,
+            description: nc.descricao || nc.description || '',
+            severity: normalizeSeverity(nc.severidade || nc.severity),
+            points:
+              typeof nc.pontos === 'number'
+                ? nc.pontos
+                : typeof nc.points === 'number'
+                  ? nc.points
+                  : -20,
+            impacto_operacional: nc.impacto_operacional || nc.impactOperacional,
+            justificativa_tecnica: nc.justificativa_tecnica || nc.justificativaTecnica,
+            aplicar_pontos: nc.aplicar_pontos !== false && nc.aplicarPontos !== false,
+            penaltySource: 'variable',
+          }))
+        : undefined,
 
-      nao_conformidades: Array.isArray(evidence.nao_conformidades) ? evidence.nao_conformidades : undefined,
+      nao_conformidades: Array.isArray(evidence.nao_conformidades)
+        ? evidence.nao_conformidades
+        : undefined,
       penalidades: Array.isArray(evidence.penalidades) ? evidence.penalidades : undefined,
 
       // Operational alerts
@@ -620,14 +638,18 @@ function normalizeCoaching(coachingData: any[] | undefined): NormalizedCoaching[
       id: coaching.id || `coaching-${index}`,
       categoria: coaching.categoria,
       topic: coaching.topic || coaching.categoria || '',
-      oQueDisseErrado: coaching.o_que_foi_dito || coaching.oQueDisseErrado || coaching.what_was_said,
-      comoPoderiaSerDito: coaching.como_poderia_ser || coaching.comoPoderiaSerDito || coaching.how_it_could_be,
+      oQueDisseErrado:
+        coaching.o_que_foi_dito || coaching.oQueDisseErrado || coaching.what_was_said,
+      comoPoderiaSerDito:
+        coaching.como_poderia_ser || coaching.comoPoderiaSerDito || coaching.how_it_could_be,
       dicaDeOuro: coaching.dica_de_ouro || coaching.dicaDeOuro || coaching.golden_tip,
       content: coaching.content || '',
       date: coaching.date || coaching.data,
       assignedTo: coaching.assignedTo || coaching.assigned_to,
     }))
-    .filter((coaching) => coaching.oQueDisseErrado || coaching.comoPoderiaSerDito || coaching.topic);
+    .filter(
+      (coaching) => coaching.oQueDisseErrado || coaching.comoPoderiaSerDito || coaching.topic
+    );
 }
 
 /**
@@ -656,7 +678,9 @@ function normalizeAnalytics(analyticsData: any | undefined): NormalizedAnalytics
     data_registro: analyticsData.data_registro,
   };
 
-  return Object.keys(result).some(k => result[k as keyof NormalizedAnalytics] !== undefined) ? result : undefined;
+  return Object.keys(result).some((k) => result[k as keyof NormalizedAnalytics] !== undefined)
+    ? result
+    : undefined;
 }
 
 /**
@@ -696,13 +720,13 @@ function detectPayloadFormat(payload: any): {
 
 /**
  * Main normalization function
- * 
+ *
  * Accepts either legacy or new payload format and returns a standardized object.
  * Handles structures from:
  * - Lovable: /api/feedbacks/import and /api/receber-avaliacao
  * - Rocket legacy: Direct database format
  * - Base44 export: Local JSON download format
- * 
+ *
  * @param payload - The raw payload from any source
  * @returns Normalized payload with unified structure
  */
@@ -721,29 +745,52 @@ export function normalizePayload(payload: any): NormalizedPayload {
 
   // Normalize analyst and cycle metadata
   // FIX: Handle Lovable format where analista is an object {nome, email, equipe, coordenador, auditor}
-  const analistaObj = typeof payload.analista === 'object' && payload.analista !== null ? payload.analista as Record<string, unknown> : null;
+  const analistaObj =
+    typeof payload.analista === 'object' && payload.analista !== null
+      ? (payload.analista as Record<string, unknown>)
+      : null;
   const analistaStr = typeof payload.analista === 'string' ? payload.analista : null;
 
   const analyst: NormalizedAnalystMetadata = {
-    nome: analistaObj?.nome as string || analistaObj?.nome_completo as string || analistaStr || payload.analyst?.nome,
-    nome_completo: analistaObj?.nome_completo as string || analistaStr || payload.analyst?.nome_completo || payload.analista_nome_completo,
-    email: analistaObj?.email as string || payload.analyst?.email || payload.analista_email,
-    equipe: analistaObj?.equipe as string || payload.analyst?.equipe || payload.equipe,
-    squad: analistaObj?.equipe as string || analistaObj?.squad as string || payload.analyst?.squad || payload.squad,
-    coordenador: analistaObj?.coordenador as string || payload.analyst?.coordenador || payload.coordenador,
-    auditor: analistaObj?.auditor as string || payload.analyst?.auditor || payload.auditor,
+    nome:
+      (analistaObj?.nome as string) ||
+      (analistaObj?.nome_completo as string) ||
+      analistaStr ||
+      payload.analyst?.nome,
+    nome_completo:
+      (analistaObj?.nome_completo as string) ||
+      analistaStr ||
+      payload.analyst?.nome_completo ||
+      payload.analista_nome_completo,
+    email: (analistaObj?.email as string) || payload.analyst?.email || payload.analista_email,
+    equipe: (analistaObj?.equipe as string) || payload.analyst?.equipe || payload.equipe,
+    squad:
+      (analistaObj?.equipe as string) ||
+      (analistaObj?.squad as string) ||
+      payload.analyst?.squad ||
+      payload.squad,
+    coordenador:
+      (analistaObj?.coordenador as string) || payload.analyst?.coordenador || payload.coordenador,
+    auditor: (analistaObj?.auditor as string) || payload.analyst?.auditor || payload.auditor,
   };
 
   // FIX: Handle Lovable format where ciclo is an object {nome, data_inicio, data_fim, status}
-  const cicloObj = typeof payload.ciclo === 'object' && payload.ciclo !== null ? payload.ciclo as Record<string, unknown> : null;
+  const cicloObj =
+    typeof payload.ciclo === 'object' && payload.ciclo !== null
+      ? (payload.ciclo as Record<string, unknown>)
+      : null;
   const cicloStr = typeof payload.ciclo === 'string' ? payload.ciclo : null;
 
   const cycle: NormalizedCycleMetadata = {
-    nome: cicloObj?.nome as string || cicloStr || payload.periodo || payload.cycle?.nome,
-    periodo: cicloObj?.nome as string || cicloStr || payload.periodo || payload.cycle?.nome,
-    data_inicio: cicloObj?.data_inicio as string || payload.ciclo?.data_inicio || payload.cycle?.data_inicio,
-    data_fim: cicloObj?.data_fim as string || payload.ciclo?.data_fim || payload.cycle?.data_fim,
-    status: cicloObj?.status as 'em_andamento' | 'concluido' || payload.ciclo?.status || payload.cycle?.status,
+    nome: (cicloObj?.nome as string) || cicloStr || payload.periodo || payload.cycle?.nome,
+    periodo: (cicloObj?.nome as string) || cicloStr || payload.periodo || payload.cycle?.nome,
+    data_inicio:
+      (cicloObj?.data_inicio as string) || payload.ciclo?.data_inicio || payload.cycle?.data_inicio,
+    data_fim: (cicloObj?.data_fim as string) || payload.ciclo?.data_fim || payload.cycle?.data_fim,
+    status:
+      (cicloObj?.status as 'em_andamento' | 'concluido') ||
+      payload.ciclo?.status ||
+      payload.cycle?.status,
   };
 
   // Normalize scores
@@ -754,10 +801,22 @@ export function normalizePayload(payload: any): NormalizedPayload {
   };
 
   // Validate scores were properly extracted
-  if (scores.qa.value === 0 && !payload.scores?.qa && !payload.qa_score && !payload.qa_atual && !payload.qa) {
+  if (
+    scores.qa.value === 0 &&
+    !payload.scores?.qa &&
+    !payload.qa_score &&
+    !payload.qa_atual &&
+    !payload.qa
+  ) {
     warnings.push('No QA score found in payload');
   }
-  if (scores.iepc.value === 0 && !payload.scores?.iepc && !payload.iepc_score && !payload.iepc_atual && !payload.iepc) {
+  if (
+    scores.iepc.value === 0 &&
+    !payload.scores?.iepc &&
+    !payload.iepc_score &&
+    !payload.iepc_atual &&
+    !payload.iepc
+  ) {
     warnings.push('No IEPC score found in payload');
   }
 
@@ -775,8 +834,8 @@ export function normalizePayload(payload: any): NormalizedPayload {
   }
 
   // Normalize non-conformities (from both root and evidences)
-  let nao_conformidades = normalizeNonConformities(payload);
-  
+  const nao_conformidades = normalizeNonConformities(payload);
+
   // Also extract NCs from evidences
   const evidencias = normalizeEvidences(payload.evidencias || payload.atendimentos);
   evidencias.forEach((evidence) => {
@@ -792,9 +851,13 @@ export function normalizePayload(payload: any): NormalizedPayload {
 
   // Calculate totals
   const total_ncs = payload.total_ncs !== undefined ? payload.total_ncs : nao_conformidades.length;
-  const pontos_deduzidos_nc = payload.pontos_deduzidos_nc !== undefined 
-    ? payload.pontos_deduzidos_nc 
-    : nao_conformidades.reduce((sum, nc) => sum + (nc.aplicar_pontos !== false ? nc.points : 0), 0);
+  const pontos_deduzidos_nc =
+    payload.pontos_deduzidos_nc !== undefined
+      ? payload.pontos_deduzidos_nc
+      : nao_conformidades.reduce(
+          (sum, nc) => sum + (nc.aplicar_pontos !== false ? nc.points : 0),
+          0
+        );
 
   // Normalize feedback, coaching, and analytics
   const feedback_blocks = normalizeFeedbackBlocks(payload.feedback_blocks || payload.feedback);

@@ -18,7 +18,8 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: 'QualiVisão — Plataforma de Gestão da Qualidade Operacional',
-  description: 'QualiVisão — Plataforma enterprise de gestão da qualidade operacional. Indicadores estratégicos, dashboards executivos e inteligência gerencial para tomada de decisão.',
+  description:
+    'QualiVisão — Plataforma enterprise de gestão da qualidade operacional. Indicadores estratégicos, dashboards executivos e inteligência gerencial para tomada de decisão.',
   keywords: 'qualidade, gestão, indicadores, QA, IEPC, dashboard executivo, qualivisao',
   authors: [{ name: 'QualiVisão' }],
   icons: {
@@ -26,16 +27,15 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: 'QualiVisão — Gestão da Qualidade Operacional',
-    description: 'Plataforma enterprise de gestão da qualidade com indicadores estratégicos e dashboards executivos.',
+    description:
+      'Plataforma enterprise de gestão da qualidade com indicadores estratégicos e dashboards executivos.',
     siteName: 'QualiVisão',
     locale: 'pt_BR',
     type: 'website',
   },
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="pt-BR" style={fontVariables}>
       <body className="font-sans">
@@ -58,8 +58,8 @@ export default function RootLayout({
           }}
         />
 
-        <script type="module" async src="https://static.rocket.new/rocket-web.js?_cfg=https%3A%2F%2Fzettiquali9387back.builtwithrocket.new&_be=https%3A%2F%2Fappanalytics.rocket.new&_v=0.1.19" />
-        <script type="module" defer src="https://static.rocket.new/rocket-shot.js?v=0.0.2" /></body>
+        <script type="module" async src="https://static.rocket.new/rocket-web.js?_cfg=https%3A%2F%2Fzettiquali9053back.builtwithrocket.new&_be=https%3A%2F%2Fappanalytics.rocket.new&_v=0.1.20" />
+        <script type="module" defer src="https://static.rocket.new/rocket-shot.js?v=0.0.3" /></body>
     </html>
   );
 }

@@ -3,7 +3,8 @@
 import { useState, useCallback } from 'react';
 import { getChatCompletion, getStreamingChatCompletion } from '@/lib/ai/chatCompletion';
 
-export type GeminiErrorType = 'quota' | 'network' | 'timeout' | 'invalid_response' | 'api_key' | 'unknown';
+export type GeminiErrorType =
+  'quota' | 'network' | 'timeout' | 'invalid_response' | 'api_key' | 'unknown';
 
 export interface GeminiError {
   type: GeminiErrorType;
@@ -24,7 +25,12 @@ function classifyError(err: unknown): GeminiError {
       retryable: true,
     };
   }
-  if (lower.includes('api key') || lower.includes('401') || lower.includes('unauthorized') || lower.includes('not configured')) {
+  if (
+    lower.includes('api key') ||
+    lower.includes('401') ||
+    lower.includes('unauthorized') ||
+    lower.includes('not configured')
+  ) {
     return {
       type: 'api_key',
       message: msg,
@@ -40,7 +46,12 @@ function classifyError(err: unknown): GeminiError {
       retryable: true,
     };
   }
-  if (lower.includes('network') || lower.includes('fetch') || lower.includes('connection') || lower.includes('econnrefused')) {
+  if (
+    lower.includes('network') ||
+    lower.includes('fetch') ||
+    lower.includes('connection') ||
+    lower.includes('econnrefused')
+  ) {
     return {
       type: 'network',
       message: msg,
@@ -48,7 +59,12 @@ function classifyError(err: unknown): GeminiError {
       retryable: true,
     };
   }
-  if (lower.includes('invalid') || lower.includes('parse') || lower.includes('json') || lower.includes('500')) {
+  if (
+    lower.includes('invalid') ||
+    lower.includes('parse') ||
+    lower.includes('json') ||
+    lower.includes('500')
+  ) {
     return {
       type: 'invalid_response',
       message: msg,

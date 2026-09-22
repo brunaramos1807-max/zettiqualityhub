@@ -18,12 +18,21 @@ const nextConfig = {
     minimumCacheTTL: 60,
   },
 
-  webpack(config) {
-config.module.rules.push({
-      test: /\.(jsx|tsx)$/,
-      exclude: [/node_modules/],
-      use: [{ loader: '@dhiwise/component-tagger/nextLoader' }],
-    });
+  webpack(
+    config,
+    {
+      dev: dev
+    }
+  ) {
+    if (dev) {
+      config.module.rules.push({
+        test: /\.(jsx|tsx)$/,
+        exclude: [/node_modules/],
+        use: [{
+          loader: '@dhiwise/component-tagger/nextLoader',
+        }],
+      });
+    }
 
     return config;
   }

@@ -9,29 +9,8 @@ import {
 } from '@/lib/normalizers/endpointAdapter';
 import type { NormalizedPayload } from '@/lib/normalizers/normalizePayload';
 
-// ─── Local integration typing ────────────────────────────────────────────────
-// Minimal local contracts only for this route. They avoid Supabase `never`
-// inference while preserving the existing runtime payload and persistence logic.
-type IntegrationServiceClient = any;
-
-interface IntegrationTokenRow {
-  id: string;
-  is_active?: boolean;
-  expires_at?: string | null;
-  label?: string | null;
-}
-
-interface IntegrationRequestLogRow { id: string }
-interface AnalistaRow { id: string }
-interface CycleRow { id: string }
-interface FeedbackRow { id: string }
-interface CycleScoreRow { id?: string; nota_final_qa?: number; iepc_total?: number; total_ncs?: number }
-interface FeedbackPdiRow { id?: string; feedback_id?: string; analista_id?: string | null }
-interface NcRecordRow { id?: string; periodo?: string; analista?: string; tipo_nc?: string }
-interface PdiRecordRow { id?: string }
-
 // ─── Service-role Supabase client (bypasses RLS) ─────────────────────────────
-function getServiceClient(): IntegrationServiceClient {
+function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceKey) {
@@ -39,7 +18,7 @@ function getServiceClient(): IntegrationServiceClient {
   }
   return createSupabaseClient(url, serviceKey, {
     auth: { persistSession: false },
-  }) as IntegrationServiceClient;
+  });
 }
 
 // ─── Types — NEW payload contract from Lovable ────────────────────────────────
@@ -138,17 +117,12 @@ interface NewPayloadFeedbackBlocks {
 interface NewPayloadPDI {
   objetivo?: string;
   acao?: string;
-  resultadoEsperado?: string;
-  resultado_esperado?: string;
-  objetivo_desenvolvimento?: string;
-  acao_desenvolvimento?: string;
-  acao_esperada?: string;
   prazo?: string;
-  responsavel?: string;
   status?: string;
   // old format
   acoes?: string[];
   metas?: string[];
+  responsavel?: string;
 }
 
 interface NewPayloadHistorico {
@@ -193,7 +167,7 @@ interface AvaliacaoPayload {
   protocolo?: string;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────[...]
+// ─── Helpers ──────────────────────────────────────────────────────────
 
 function parseNum(val: unknown): number {
   if (val === null || val === undefined || val === '') return 0;
@@ -213,7 +187,6 @@ interface ParsedPdiItem {
   acao?: string;
   acao_desenvolvimento?: string;
   resultado_esperado?: string;
-  resultadoEsperado?: string;
   prazo?: string;
   status?: string;
   acoes?: string[];
@@ -341,10 +314,10 @@ function parseCriteriosArray(criterios: NewPayloadCriterio[]): Record<string, { 
   return result;
 }
 
-// ─── Token validation ───────────────────────────────────────────────────────[...]
+// ─── Token validation ───────────────────────────────────────────────────────
 
 async function validateToken(
-  supabase: IntegrationServiceClient,
+  supabase: ReturnType<typeof createSupabaseClient>,
   authHeader: string | null
 ): Promise<{ valid: boolean; error?: string }> {
   console.log('[receber-avaliacao] Raw Authorization header:', authHeader);
@@ -383,16 +356,14 @@ async function validateToken(
     return { valid: false, error: 'Invalid or inactive token' };
   }
 
-  const tokenData = tokenRow as IntegrationTokenRow;
-
-  if (tokenData.expires_at && new Date(tokenData.expires_at) < new Date()) {
+  if (tokenRow.expires_at && new Date(tokenRow.expires_at) < new Date()) {
     return { valid: false, error: 'Token expired' };
   }
 
   await supabase
     .from('integration_tokens')
     .update({ last_used_at: new Date().toISOString() })
-    .eq('id', tokenData.id);
+    .eq('id', tokenRow.id);
 
   return { valid: true };
 }
@@ -447,7 +418,7 @@ function validatePayload(body: unknown): { valid: boolean; errors: string[] } {
 // ─── Duplicate detection ──────────────────────────────────────────────────────
 
 async function checkDuplicate(
-  supabase: IntegrationServiceClient,
+  supabase: ReturnType<typeof createSupabaseClient>,
   analista: string,
   ciclo: string,
   payloadHash: string
@@ -462,96 +433,13 @@ async function checkDuplicate(
     .eq('status', 'success')
     .gte('received_at', fiveMinutesAgo)
     .maybeSingle();
-  return !!(data as IntegrationRequestLogRow | null);
-}
-
-async function findExistingCycleScore(
-  supabase: IntegrationServiceClient,
-  periodo: string,
-  analista: string,
-  squad: string,
-  idempotencyKey: string | null,
-  allowConsolidatedFallback: boolean
-): Promise<CycleScoreRow | null> {
-  let query = supabase
-    .from('cycle_scores')
-    .select('id')
-    .eq('periodo', periodo)
-    .eq('analista', analista)
-    .eq('squad', squad);
-
-  if (idempotencyKey) {
-    query = query.eq('protocolo', idempotencyKey);
-  } else if (allowConsolidatedFallback) {
-    query = query.is('protocolo', null);
-  } else {
-    return null;
-  }
-
-  const { data } = await query.order('created_at', { ascending: false }).limit(1).maybeSingle();
-  return (data as CycleScoreRow | null) || null;
-}
-
-function extractEvaluationIdempotencyKey(rawPayload: AvaliacaoPayload): string | null {
-  const candidateValues = [
-    (rawPayload as any).external_id,
-    (rawPayload as any).source_id,
-    (rawPayload as any).avaliacao_id,
-    (rawPayload as any).evaluation_id,
-    (rawPayload as any).id_avaliacao,
-    (rawPayload as any).atendimento_id,
-    (rawPayload as any).ticket_id,
-    rawPayload.protocolo,
-    (rawPayload as any).sup,
-  ];
-
-  for (const value of candidateValues) {
-    if (value != null && String(value).trim()) return String(value).trim();
-  }
-
-  if (Array.isArray(rawPayload.atendimentos) && rawPayload.atendimentos.length === 1) {
-    const atendimento = rawPayload.atendimentos[0] as NewPayloadAtendimento;
-    const atendimentoKey = atendimento.protocolo || atendimento.sup;
-    if (atendimentoKey && String(atendimentoKey).trim()) return String(atendimentoKey).trim();
-  }
-
-  return null;
-}
-
-function isConsolidatedEvaluationPayload(rawPayload: AvaliacaoPayload, idempotencyKey: string | null): boolean {
-  if (idempotencyKey) return false;
-  if (typeof rawPayload.atendimentos === 'number') return true;
-  if (Array.isArray(rawPayload.atendimentos)) return rawPayload.atendimentos.length !== 1;
-  return true;
-}
-
-async function savePdiRecord(
-  supabase: IntegrationServiceClient,
-  analista: string,
-  periodo: string,
-  pdiRow: Record<string, unknown>
-): Promise<void> {
-  const { data: existingPdi } = await supabase
-    .from('pdi_records')
-    .select('id')
-    .eq('analista', analista)
-    .eq('periodo', periodo)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const existingId = (existingPdi as PdiRecordRow | null)?.id;
-  if (existingId) {
-    await supabase.from('pdi_records').update(pdiRow).eq('id', existingId);
-  } else {
-    await supabase.from('pdi_records').insert(pdiRow);
-  }
+  return !!data;
 }
 
 // ─── Find or create analista record ──────────────────────────────────────────
 
 async function findOrCreateAnalista(
-  supabase: IntegrationServiceClient,
+  supabase: ReturnType<typeof createSupabaseClient>,
   nome: string,
   email: string | null,
   equipe: string,
@@ -564,7 +452,7 @@ async function findOrCreateAnalista(
         .select('id')
         .eq('email', email.toLowerCase())
         .maybeSingle();
-      if (byEmail) return (byEmail as AnalistaRow).id;
+      if (byEmail) return byEmail.id;
     }
 
     const { data: byName } = await supabase
@@ -572,7 +460,7 @@ async function findOrCreateAnalista(
       .select('id')
       .ilike('nome', nome.trim())
       .maybeSingle();
-    if (byName) return (byName as AnalistaRow).id;
+    if (byName) return byName.id;
 
     const parts = nome.trim().split(' ');
     if (parts.length >= 2) {
@@ -581,7 +469,7 @@ async function findOrCreateAnalista(
         .select('id')
         .ilike('nome', `%${parts[0]}%${parts[parts.length - 1]}%`)
         .maybeSingle();
-      if (byPartial) return (byPartial as AnalistaRow).id;
+      if (byPartial) return byPartial.id;
     }
 
     const { data: created } = await supabase
@@ -597,19 +485,19 @@ async function findOrCreateAnalista(
       .select('id')
       .single();
 
-    return (created as AnalistaRow | null)?.id || null;
+    return created?.id || null;
   } catch (err) {
     console.error('[receber-avaliacao] findOrCreateAnalista error:', err);
     return null;
   }
 }
 
-// ─── Main handler ────────────────────────────────────────────────────────[...]
+// ─── Main handler ────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   let logId: string | null = null;
-  let supabase: IntegrationServiceClient;
+  let supabase: ReturnType<typeof createSupabaseClient>;
 
   try {
     supabase = getServiceClient();
@@ -736,58 +624,27 @@ export async function POST(request: NextRequest) {
   // ── 6. Duplicate detection ───────────────────────────────────────────────
   const isDuplicate = await checkDuplicate(supabase, norm.analistaNome, norm.cicloNome, payloadHash);
   if (isDuplicate) {
-    console.log('[receber-avaliacao] Duplicate payload hash detected; reprocessing idempotently instead of creating duplicates.');
-    if (logId) {
-      await supabase
-        .from('integration_request_logs')
-        .update({ status: 'duplicate_reprocessing', duration_ms: Date.now() - startTime })
-        .eq('id', logId);
-    }
+    if (logId) await supabase.from('integration_request_logs').update({ status: 'duplicate', duration_ms: Date.now() - startTime }).eq('id', logId);
+    return NextResponse.json({ success: false, error: 'Duplicate request detected.' }, { status: 409 });
   }
 
-  // ── 7. Upsert import_cycles without overwriting manual close/reopen status ──
-  const { data: existingCycleStatus } = await supabase
+  // ── 7. Upsert import_cycles ──────────────────────────────────────────────
+  const { data: cycleData, error: cycleError } = await supabase
     .from('import_cycles')
-    .select('id, is_closed, status')
-    .eq('periodo', norm.cicloNome)
-    .maybeSingle();
-
-  let cycleData: CycleRow | null = (existingCycleStatus as CycleRow | null) || null;
-  let cycleError: { message: string } | null = null;
-
-  if ((existingCycleStatus as CycleRow | null)?.id) {
-    const updateResult = await supabase
-      .from('import_cycles')
-      .update({
-        file_name: `integration_lovable_${norm.cicloNome}`,
-        record_count: 1,
-        import_status: 'completed',
-        data_type: 'integration',
-        metadata: { source: 'lovable', last_updated: new Date().toISOString() },
-      })
-      .eq('id', (existingCycleStatus as CycleRow).id)
-      .select('id')
-      .single();
-    cycleData = updateResult.data as CycleRow | null;
-    cycleError = updateResult.error;
-  } else {
-    const insertResult = await supabase
-      .from('import_cycles')
-      .insert({
+    .upsert(
+      {
         periodo: norm.cicloNome,
         file_name: `integration_lovable_${norm.cicloNome}`,
         record_count: 1,
         import_status: 'completed',
-        status: 'em_andamento',
-        is_closed: false,
+        status: 'completed',
         data_type: 'integration',
         metadata: { source: 'lovable', last_updated: new Date().toISOString() },
-      })
-      .select('id')
-      .single();
-    cycleData = insertResult.data as CycleRow | null;
-    cycleError = insertResult.error;
-  }
+      },
+      { onConflict: 'periodo' }
+    )
+    .select('id')
+    .single();
 
   if (cycleError) {
     await updateLog(supabase, logId, 'error', `cycle upsert: ${cycleError.message}`, startTime);
@@ -798,15 +655,12 @@ export async function POST(request: NextRequest) {
   // ── 8. Find or create analista ───────────────────────────────────────────
   const analistaId = await findOrCreateAnalista(supabase, norm.analistaNome, norm.analistaEmail, norm.squad, norm.coordenador);
 
-  // ── 9. Build cycle_scores row — SEÇÃO 4: Adicionar campos opcionais ──────
+  // ── 9. Build cycle_scores row ────────────────────────────────────────────
   let criteriosMap: Record<string, unknown> = {};
   if (rawPayload.criterios && Array.isArray(rawPayload.criterios)) {
     criteriosMap = parseCriteriosArray(rawPayload.criterios as NewPayloadCriterio[]);
   }
 
-  // ── 9B. SEÇÃO 3: Usar buildCycleScoresRow e pontosDeduzidosNC real ────────
-  const evaluationIdempotencyKey = extractEvaluationIdempotencyKey(rawPayload);
-  const allowConsolidatedFallback = isConsolidatedEvaluationPayload(rawPayload, evaluationIdempotencyKey);
   const scoreRow = {
     cycle_id: cycleId,
     periodo: norm.cicloNome,
@@ -818,7 +672,6 @@ export async function POST(request: NextRequest) {
     nota_final_qa: norm.qaScore,
     iepc_total: norm.iepcScore,
     total_ncs: endpointPayload.totalNCs,
-    // SEÇÃO 3: Usar pentosDeduzidosNC real em vez de sum manual
     pontos_deduzidos_nc: endpointPayload.pontosDeduzidosNC,
     p1: parseNum(norm.pilaresQA[0]?.nota),
     p2: parseNum(norm.pilaresQA[1]?.nota),
@@ -832,41 +685,21 @@ export async function POST(request: NextRequest) {
     e5: parseNum(norm.pilaresIEPC[4]?.nota),
     tipo_demanda: rawPayload.tipo_demanda ?? null,
     qtd_atendimentos_avaliados: Array.isArray(rawPayload.atendimentos) ? rawPayload.atendimentos.length : (typeof rawPayload.atendimentos === 'number' ? rawPayload.atendimentos : 0),
-    protocolo: evaluationIdempotencyKey,
+    protocolo: rawPayload.protocolo ?? null,
     sintese_ia: null,
     tendencias: rawPayload.tendencias ?? null,
     reincidencia: rawPayload.reincidencia ?? null,
     criterios: Object.keys(criteriosMap).length > 0 ? criteriosMap : null,
     evidencias: rawPayload.evidencias ? JSON.parse(JSON.stringify(rawPayload.evidencias)) : null,
     analytics: endpointPayload.analytics ? JSON.parse(JSON.stringify(endpointPayload.analytics)) : null,
-    // SEÇÃO 4: Novos campos opcionais para auditoria
     payload_version: endpointPayload.payloadVersion,
     payload_normalized: endpointPayload.normalized,
     source: 'integration',
     is_manual: false,
   };
 
-  const existingScore = await findExistingCycleScore(
-    supabase,
-    norm.cicloNome,
-    norm.analistaNome,
-    norm.squad,
-    evaluationIdempotencyKey,
-    allowConsolidatedFallback
-  );
-  if (!existingScore && !evaluationIdempotencyKey && !allowConsolidatedFallback && logId) {
-    await supabase
-      .from('integration_request_logs')
-      .update({ status: 'possible_duplicate_requires_review' })
-      .eq('id', logId);
-  }
-  if (existingScore?.id) {
-    const { error: scoreUpdateError } = await supabase.from('cycle_scores').update(scoreRow).eq('id', existingScore.id);
-    if (scoreUpdateError) {
-      await updateLog(supabase, logId, 'error', `scores update: ${scoreUpdateError.message}`, startTime);
-      return NextResponse.json({ success: false, error: `Failed to update evaluation score: ${scoreUpdateError.message}` }, { status: 500 });
-    }
-  } else {
+  const { error: scoreError } = await supabase.from('cycle_scores').upsert(scoreRow, { onConflict: 'periodo,analista,squad' });
+  if (scoreError) {
     const { error: insertError } = await supabase.from('cycle_scores').insert(scoreRow);
     if (insertError) {
       await updateLog(supabase, logId, 'error', `scores insert: ${insertError.message}`, startTime);
@@ -880,7 +713,6 @@ export async function POST(request: NextRequest) {
   const fechamentoCiclo = feedbackBlockText(norm.feedbackBlocks?.fechamento_ciclo);
   const atencaoEvolutiva = feedbackBlockText(norm.feedbackBlocks?.atencao_evolutiva);
 
-  // SEÇÃO 7: Adicionar payload_version e payload_normalized em feedbackRow
   const feedbackRow = {
     analista_id: analistaId,
     ciclo: norm.cicloNome,
@@ -1025,7 +857,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // ── 15. Save NC records — mesma lista flattenada usada em cycle_scores ─────
+  // ── 15. Save NC records ─────────────────────────────────────────────────
   if (endpointPayload.totalNCs > 0) {
     await supabase.from('nc_records').delete().eq('periodo', norm.cicloNome).eq('analista', norm.analistaNome).eq('source', 'integration');
 
@@ -1071,7 +903,7 @@ export async function POST(request: NextRequest) {
       source: 'integration',
       updated_at: new Date().toISOString(),
     };
-    await savePdiRecord(supabase, norm.analistaNome, norm.cicloNome, pdiRow);
+    await supabase.from('pdi_records').upsert(pdiRow, { onConflict: 'analista,periodo' });
   } else {
     // Legacy format: single object with acoes/metas
     const oldPdi = rawPayload.pdi as NewPayloadPDI | undefined;
@@ -1092,7 +924,7 @@ export async function POST(request: NextRequest) {
         source: 'integration',
         updated_at: new Date().toISOString(),
       };
-      await savePdiRecord(supabase, norm.analistaNome, norm.cicloNome, pdiRow);
+      await supabase.from('pdi_records').upsert(pdiRow, { onConflict: 'analista,periodo' });
     }
   }
 
@@ -1104,14 +936,13 @@ export async function POST(request: NextRequest) {
       .eq('periodo', norm.cicloNome);
 
     if (allScores && allScores.length > 0) {
-      const scoreRows = allScores as CycleScoreRow[];
-      const qaMedia = scoreRows.reduce((s: number, r: CycleScoreRow) => s + parseNum(r.nota_final_qa), 0) / scoreRows.length;
-      const iepcMedia = scoreRows.reduce((s: number, r: CycleScoreRow) => s + parseNum(r.iepc_total), 0) / scoreRows.length;
-      const totalNCs = scoreRows.reduce((s: number, r: CycleScoreRow) => s + (r.total_ncs ?? 0), 0);
+      const qaMedia = allScores.reduce((s, r) => s + parseNum(r.nota_final_qa), 0) / allScores.length;
+      const iepcMedia = allScores.reduce((s, r) => s + parseNum(r.iepc_total), 0) / allScores.length;
+      const totalNCs = allScores.reduce((s, r) => s + (r.total_ncs ?? 0), 0);
       await supabase.from('cycle_summaries').upsert(
         {
           periodo: norm.cicloNome,
-          total_analistas: scoreRows.length,
+          total_analistas: allScores.length,
           qa_media: Math.round(qaMedia * 100) / 100,
           iepc_media: Math.round(iepcMedia * 100) / 100,
           total_ncs: totalNCs,
@@ -1157,7 +988,7 @@ export async function POST(request: NextRequest) {
 
 // ─── Helper: update log entry ─────────────────────────────────────────────────
 async function updateLog(
-  supabase: IntegrationServiceClient,
+  supabase: ReturnType<typeof createSupabaseClient>,
   logId: string | null,
   status: string,
   errorMessage: string | null,

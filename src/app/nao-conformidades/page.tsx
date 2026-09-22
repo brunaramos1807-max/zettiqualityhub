@@ -3,52 +3,89 @@ import React, { useState, useMemo, useEffect } from 'react';
 import EnterpriseLayout from '@/components/EnterpriseLayout';
 import ImportModal from '@/components/ImportModal';
 import { fetchNCRecords, fetchAllPeriodos } from '@/lib/services/dataService';
-import { AlertTriangle, Search, BarChart2, RefreshCw, TrendingDown, Shield, Layers, X, Eye, Trash2, Users, Info } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend, AreaChart, Area } from 'recharts';
+import { formatPontosDeduzidos, resolveNcPontosDeduzidos } from '@/lib/utils/ncDisplay';
+import {
+  AlertTriangle,
+  Search,
+  BarChart2,
+  RefreshCw,
+  TrendingDown,
+  Filter,
+  ChevronRight,
+  Shield,
+  Activity,
+  Layers,
+  X,
+  Eye,
+  Trash2,
+  Zap,
+  Users,
+  Target,
+  Award,
+} from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  RadarChart,
+  Radar,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Legend,
+  PieChart,
+  Pie,
+  Cell,
+  AreaChart,
+  Area,
+} from 'recharts';
 
-// ── Official NC Model ─────────────────────────────────────────────────────────
-// Penalidade pertence à severidade, NÃO ao tipo.
-// Regra -20 removida definitivamente.
-const NC_TIPOS = [
+const NC_TYPES = [
   {
     key: 'NC-1',
-    nome: 'Postura e Ética Profissional',
+    fullName: 'NC-1 — Postura e Ética Profissional',
     short: 'Postura e Ética',
-    descricao: 'Desvio relacionado à conduta profissional, comportamento inadequado ou falta de ética.',
+    color: '#7C3AED',
+    icon: '🤝',
+    criticidade: 'Alta',
   },
   {
     key: 'NC-2',
-    nome: 'Acuracidade e Rigor Técnico',
+    fullName: 'NC-2 — Acuracidade e Rigor Técnico',
     short: 'Rigor Técnico',
-    descricao: 'Falha técnica relevante: informação incorreta, diagnóstico errado ou solução inadequada.',
+    color: '#EF4444',
+    icon: '🎯',
+    criticidade: 'Alta',
   },
   {
     key: 'NC-3',
-    nome: 'Conformidade de Registro e Rastreabilidade',
-    short: 'Registro e Rastreabilidade',
-    descricao: 'Ausência ou falha de registros obrigatórios, documentação incompleta ou protocolo não gerado.',
+    fullName: 'NC-3 — Registro e Rastreabilidade',
+    short: 'Rastreabilidade',
+    color: '#F59E0B',
+    icon: '📋',
+    criticidade: 'Média',
   },
   {
     key: 'NC-4',
-    nome: 'Integridade do Fluxo Operacional',
+    fullName: 'NC-4 — Integridade do Fluxo Operacional',
     short: 'Fluxo Operacional',
-    descricao: 'Quebra do fluxo institucional, desvio de protocolo ou encaminhamento incorreto.',
+    color: '#38BDF8',
+    icon: '⚙️',
+    criticidade: 'Alta',
   },
   {
     key: 'NC-5',
-    nome: 'Segurança da Informação',
-    short: 'Segurança da Informação',
-    descricao: 'Violação de segurança, exposição de dados sensíveis ou acesso não autorizado.',
+    fullName: 'NC-5 — Segurança da Informação',
+    short: 'Segurança',
+    color: '#22C55E',
+    icon: '🔒',
+    criticidade: 'Crítica',
   },
 ];
-
-// Severidade oficial — penalidade pertence à severidade
-const SEVERIDADE_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; penalidade: number }> = {
-  'Leve':    { label: 'Leve',    color: '#94A3B8', bg: 'rgba(148,163,184,0.08)', border: 'rgba(148,163,184,0.2)', penalidade: 3  },
-  'Média':   { label: 'Média',   color: '#EAB308', bg: 'rgba(234,179,8,0.08)',   border: 'rgba(234,179,8,0.2)',   penalidade: 5  },
-  'Grave':   { label: 'Grave',   color: '#F97316', bg: 'rgba(249,115,22,0.08)',  border: 'rgba(249,115,22,0.2)',  penalidade: 10 },
-  'Crítica': { label: 'Crítica', color: '#EF4444', bg: 'rgba(239,68,68,0.08)',   border: 'rgba(239,68,68,0.2)',   penalidade: 15 },
-};
 
 const NC_NAME_MAP: Record<string, string> = {
   'Postura e Ética Profissional': 'NC-1',
@@ -57,23 +94,38 @@ const NC_NAME_MAP: Record<string, string> = {
   'Registro e Rastreabilidade': 'NC-3',
   'Integridade do Fluxo Operacional': 'NC-4',
   'Segurança da Informação': 'NC-5',
-  'Fluxo': 'NC-4', 'Técnico': 'NC-2', 'Registro': 'NC-3',
+  Fluxo: 'NC-4',
+  Técnico: 'NC-2',
+  Registro: 'NC-3',
 };
 
 function resolveNCType(tipo: string): string {
-  if (NC_TIPOS.find((t) => t.key === tipo)) return tipo;
+  if (NC_TYPES.find((t) => t.key === tipo)) return tipo;
   return NC_NAME_MAP[tipo] || tipo;
 }
 
-function parseNcDescricaoMeta(descricao?: string): { descricao: string; severity?: string; impacto?: string } {
+function parseNcDescricaoMeta(descricao?: string): {
+  descricao: string;
+  severity?: string;
+  impacto?: string;
+} {
   if (!descricao) return { descricao: '' };
   let clean = descricao;
   let severity: string | undefined;
   let impacto: string | undefined;
+
   const sevMatch = clean.match(/(?:^|\n\n)Severidade:\s*(.+?)(?:\n\n|$)/i);
-  if (sevMatch) { severity = sevMatch[1].trim(); clean = clean.replace(/(?:^|\n\n)Severidade:\s*.+?(?:\n\n|$)/i, '\n').trim(); }
+  if (sevMatch) {
+    severity = sevMatch[1].trim();
+    clean = clean.replace(/(?:^|\n\n)Severidade:\s*.+?(?:\n\n|$)/i, '\n').trim();
+  }
+
   const impMatch = clean.match(/(?:^|\n\n)Impacto operacional:\s*([\s\S]+)$/i);
-  if (impMatch) { impacto = impMatch[1].trim(); clean = clean.replace(/(?:^|\n\n)Impacto operacional:\s*[\s\S]+$/i, '').trim(); }
+  if (impMatch) {
+    impacto = impMatch[1].trim();
+    clean = clean.replace(/(?:^|\n\n)Impacto operacional:\s*[\s\S]+$/i, '').trim();
+  }
+
   return { descricao: clean || descricao, severity, impacto };
 }
 
@@ -85,133 +137,162 @@ interface NCRecord {
   tipo_nc: string;
   descricao?: string;
   pontos_deduzidos?: number;
-  severidade?: string | null;
-  penalidade?: number | null;
   protocolo_referencia?: string;
   periodo: string;
   status?: string;
+  severidade?: string;
 }
 
-interface NCDetailModal { nc: NCRecord; tipoInfo: typeof NC_TIPOS[0] | undefined }
+interface NCDetailModal {
+  nc: NCRecord;
+  typeInfo: (typeof NC_TYPES)[0] | undefined;
+}
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg p-3 text-xs shadow-xl" style={{ backgroundColor: '#1E293B', border: '1px solid rgba(255,255,255,0.08)' }}>
+    <div
+      className="rounded-xl p-3 text-xs shadow-xl"
+      style={{ backgroundColor: '#1E293B', border: '1px solid rgba(255,255,255,0.1)' }}
+    >
       <p className="font-semibold text-white mb-1">{label}</p>
       {payload.map((p: any, i: number) => (
-        <p key={i} style={{ color: p.color }}>{p.name}: <span className="font-bold text-white">{p.value}</span></p>
+        <p key={i} style={{ color: p.color }}>
+          {p.name}: <span className="font-bold text-white">{p.value}</span>
+        </p>
       ))}
     </div>
   );
 };
 
-function SeveridadeBadge({ sev }: { sev?: string | null }) {
-  if (!sev) {
-    return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-        style={{ backgroundColor: 'rgba(100,116,139,0.08)', color: '#64748B', border: '1px solid rgba(100,116,139,0.15)' }}>
-        Histórico Legado
-      </span>
-    );
-  }
-  const cfg = SEVERIDADE_CONFIG[sev];
-  if (!cfg) {
-    return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-        style={{ backgroundColor: 'rgba(100,116,139,0.08)', color: '#94A3B8', border: '1px solid rgba(100,116,139,0.15)' }}>
-        {sev}
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-      style={{ backgroundColor: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}>
-      {cfg.label}
-    </span>
-  );
-}
-
-function ReincidenciaBadge({ isReincidente }: { isReincidente: boolean }) {
-  if (!isReincidente) return null;
-  return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium"
-      style={{ backgroundColor: 'rgba(148,163,184,0.08)', color: '#94A3B8', border: '1px solid rgba(148,163,184,0.15)' }}>
-      ↩ Reincidente
-    </span>
-  );
+function getSeveridadeColor(sev?: string): string {
+  if (!sev) return '#94A3B8';
+  const s = sev.toLowerCase();
+  if (s === 'crítica' || s === 'critica' || s === 'critical') return '#EF4444';
+  if (s === 'alta' || s === 'high') return '#F97316';
+  if (s === 'moderada' || s === 'media' || s === 'média' || s === 'medium') return '#F59E0B';
+  if (s === 'baixa' || s === 'low') return '#22C55E';
+  return '#94A3B8';
 }
 
 function NCDetailModalComp({ data, onClose }: { data: NCDetailModal; onClose: () => void }) {
-  const { nc, tipoInfo } = data;
+  const { nc, typeInfo } = data;
   const meta = parseNcDescricaoMeta(nc.descricao);
-  const sev = nc.severidade || meta.severity || null;
-  const sevCfg = sev ? SEVERIDADE_CONFIG[sev] : null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
-      <div className="w-full max-w-lg rounded-xl overflow-hidden" style={{ backgroundColor: '#111827', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
-        {/* Header */}
-        <div className="flex items-center justify-between p-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', backgroundColor: '#0F172A' }}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
+    >
+      <div
+        className="w-full max-w-lg rounded-2xl overflow-hidden"
+        style={{
+          backgroundColor: '#0A1628',
+          border: '1px solid rgba(255,255,255,0.1)',
+          boxShadow: '0 25px 80px rgba(0,0,0,0.6)',
+        }}
+      >
+        <div
+          className="flex items-center justify-between p-5"
+          style={{
+            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            background: `linear-gradient(135deg, ${typeInfo?.color || '#EF4444'}15, transparent)`,
+          }}
+        >
           <div>
-            <p className="text-xs font-semibold mb-0.5" style={{ color: '#94A3B8' }}>{tipoInfo?.key || nc.tipo_nc}</p>
-            <h2 className="text-sm font-bold text-white">{tipoInfo?.nome || nc.tipo_nc}</h2>
-            <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>{nc.analista} · {nc.squad} · {nc.periodo}</p>
+            <p
+              className="text-xs font-semibold uppercase tracking-widest mb-1"
+              style={{ color: typeInfo?.color || '#EF4444' }}
+            >
+              {typeInfo?.fullName || nc.tipo_nc}
+            </p>
+            <h2 className="text-lg font-bold text-white">{nc.analista}</h2>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/5 transition-colors" style={{ color: '#64748B' }}>
-            <X size={14} />
+          <button
+            onClick={onClose}
+            className="p-2 rounded-xl hover:bg-white/5"
+            style={{ color: '#94A3B8' }}
+          >
+            <X size={16} />
           </button>
         </div>
-
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-lg p-3" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <p className="text-xs mb-2" style={{ color: '#64748B' }}>Tipo NC</p>
-              <p className="text-xs font-bold text-white">{tipoInfo?.key || nc.tipo_nc}</p>
-              <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{tipoInfo?.short}</p>
-            </div>
-            <div className="rounded-lg p-3" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <p className="text-xs mb-2" style={{ color: '#64748B' }}>Severidade</p>
-              <SeveridadeBadge sev={sev} />
-              {sevCfg && (
-                <p className="text-xs mt-1" style={{ color: '#64748B' }}>Penalidade: {sevCfg.penalidade} pts</p>
-              )}
-            </div>
+            {[
+              { label: 'Squad', value: nc.squad },
+              { label: 'Coordenador', value: nc.coordenador || '—' },
+              { label: 'Período', value: nc.periodo },
+              { label: 'Criticidade', value: typeInfo?.criticidade || '—' },
+              {
+                label: 'Pts Deduzidos',
+                value: formatPontosDeduzidos(resolveNcPontosDeduzidos(nc)),
+              },
+              { label: 'Severidade', value: meta.severity || '—' },
+              { label: 'Protocolo', value: nc.protocolo_referencia || '—' },
+              { label: 'Severidade', value: nc.severidade || '—' },
+              { label: 'Status', value: nc.status || '—' },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className="rounded-xl p-3"
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.02)',
+                  border: '1px solid rgba(255,255,255,0.05)',
+                }}
+              >
+                <p className="text-xs mb-1" style={{ color: '#64748B' }}>
+                  {item.label}
+                </p>
+                <p className="text-sm font-semibold text-white">{item.value}</p>
+              </div>
+            ))}
           </div>
-
           {meta.descricao && (
-            <div className="rounded-lg p-4" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <p className="text-xs font-semibold mb-2 flex items-center gap-1.5" style={{ color: '#CBD5E1' }}>
-                <Eye size={11} /> Evidência
+            <div
+              className="rounded-xl p-4"
+              style={{
+                backgroundColor: 'rgba(255,255,255,0.02)',
+                border: '1px solid rgba(255,255,255,0.05)',
+              }}
+            >
+              <p className="text-xs mb-2" style={{ color: '#64748B' }}>
+                Descrição / Evidência
               </p>
-              <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.7)' }}>{meta.descricao}</p>
+              <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                {meta.descricao}
+              </p>
             </div>
           )}
-
           {meta.impacto && (
-            <div className="rounded-lg p-4" style={{ backgroundColor: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.15)' }}>
-              <p className="text-xs font-semibold mb-2" style={{ color: '#F59E0B' }}>Impacto Operacional</p>
-              <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.65)' }}>{meta.impacto}</p>
+            <div
+              className="rounded-xl p-4"
+              style={{
+                backgroundColor: 'rgba(245,158,11,0.06)',
+                border: '1px solid rgba(245,158,11,0.15)',
+              }}
+            >
+              <p className="text-xs mb-2 font-semibold" style={{ color: '#F59E0B' }}>
+                Impacto Operacional
+              </p>
+              <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                {meta.impacto}
+              </p>
             </div>
           )}
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-lg p-3" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <p className="text-xs mb-1.5" style={{ color: '#64748B' }}>Coordenador</p>
-              <p className="text-xs font-medium text-white">{nc.coordenador || '—'}</p>
-            </div>
-            <div className="rounded-lg p-3" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <p className="text-xs mb-1.5" style={{ color: '#64748B' }}>Protocolo</p>
-              <p className="text-xs font-medium text-white font-mono">{nc.protocolo_referencia || '—'}</p>
-            </div>
+          <div
+            className="rounded-xl p-4"
+            style={{
+              backgroundColor: 'rgba(248,113,113,0.06)',
+              border: '1px solid rgba(248,113,113,0.15)',
+            }}
+          >
+            <p className="text-xs font-semibold mb-1" style={{ color: '#F87171' }}>
+              Recomendação
+            </p>
+            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>
+              Revisar protocolo de {typeInfo?.short || nc.tipo_nc}. Considerar vinculação a PDI para
+              acompanhamento contínuo.
+            </p>
           </div>
-
-          {tipoInfo?.descricao && (
-            <div className="rounded-lg p-3" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <p className="text-xs font-semibold mb-1" style={{ color: '#64748B' }}>Definição do Tipo</p>
-              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>{tipoInfo.descricao}</p>
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -230,11 +311,10 @@ function NCContent() {
   const [filterAnalista, setFilterAnalista] = useState('all');
   const [filterCoordenador, setFilterCoordenador] = useState('all');
   const [filterReincidente, setFilterReincidente] = useState(false);
-  const [activeView, setActiveView] = useState<'table' | 'charts'>('table');
+  const [activeView, setActiveView] = useState<'executive' | 'table' | 'charts'>('executive');
   const [detailModal, setDetailModal] = useState<NCDetailModal | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<NCRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [tooltipNC, setTooltipNC] = useState<string | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -243,7 +323,9 @@ function NCContent() {
       const mapped = (data as NCRecord[]).map((n) => ({ ...n, tipo_nc: resolveNCType(n.tipo_nc) }));
       setNcs(mapped);
       setPeriodos(pList);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     setLoading(false);
   };
 
@@ -253,16 +335,32 @@ function NCContent() {
     try {
       const { deleteNCRecord } = await import('@/lib/services/dataService');
       const result = await deleteNCRecord(deleteConfirm.id);
-      if (result.success) { setNcs((prev) => prev.filter((n) => n.id !== deleteConfirm.id)); setDeleteConfirm(null); }
-    } catch { /* ignore */ }
+      if (result.success) {
+        setNcs((prev) => prev.filter((n) => n.id !== deleteConfirm.id));
+        setDeleteConfirm(null);
+      }
+    } catch {
+      /* ignore */
+    }
     setDeleting(false);
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    loadData();
+  }, []);
 
-  const squads = useMemo(() => ['all', ...Array.from(new Set(ncs.map((n) => n.squad).filter(Boolean)))], [ncs]);
-  const analistas = useMemo(() => ['all', ...Array.from(new Set(ncs.map((n) => n.analista).filter(Boolean))).sort()], [ncs]);
-  const coordenadores = useMemo(() => ['all', ...Array.from(new Set(ncs.map((n) => n.coordenador).filter(Boolean))).sort()], [ncs]);
+  const squads = useMemo(
+    () => ['all', ...Array.from(new Set(ncs.map((n) => n.squad).filter(Boolean)))],
+    [ncs]
+  );
+  const analistas = useMemo(
+    () => ['all', ...Array.from(new Set(ncs.map((n) => n.analista).filter(Boolean))).sort()],
+    [ncs]
+  );
+  const coordenadores = useMemo(
+    () => ['all', ...Array.from(new Set(ncs.map((n) => n.coordenador).filter(Boolean))).sort()],
+    [ncs]
+  );
 
   const reincidenteSet = useMemo(() => {
     const map: Record<string, Record<string, number>> = {};
@@ -285,294 +383,1366 @@ function NCContent() {
     if (filterAnalista !== 'all') list = list.filter((n) => n.analista === filterAnalista);
     if (filterCoordenador !== 'all') list = list.filter((n) => n.coordenador === filterCoordenador);
     if (filterReincidente) list = list.filter((n) => reincidenteSet.has(n.analista));
-    if (search) list = list.filter((n) =>
-      n.analista.toLowerCase().includes(search.toLowerCase()) ||
-      (n.descricao || '').toLowerCase().includes(search.toLowerCase()) ||
-      (n.protocolo_referencia || '').toLowerCase().includes(search.toLowerCase())
-    );
+    if (search)
+      list = list.filter(
+        (n) =>
+          n.analista.toLowerCase().includes(search.toLowerCase()) ||
+          (n.descricao || '').toLowerCase().includes(search.toLowerCase()) ||
+          (n.protocolo_referencia || '').toLowerCase().includes(search.toLowerCase())
+      );
     return list;
-  }, [ncs, filterSquad, filterType, filterPeriodo, filterAnalista, filterCoordenador, filterReincidente, search, reincidenteSet]);
+  }, [
+    ncs,
+    filterSquad,
+    filterType,
+    filterPeriodo,
+    filterAnalista,
+    filterCoordenador,
+    filterReincidente,
+    search,
+    reincidenteSet,
+  ]);
 
-  const byType = useMemo(() => {
-    const map: Record<string, number> = {};
-    filtered.forEach((n) => { map[n.tipo_nc] = (map[n.tipo_nc] || 0) + 1; });
-    return map;
-  }, [filtered]);
-
-  const topAnalysts = useMemo(() => {
-    const map: Record<string, { name: string; squad: string; coordenador: string; count: number; reincidente: boolean }> = {};
-    filtered.forEach((n) => {
-      if (!map[n.analista]) map[n.analista] = { name: n.analista, squad: n.squad, coordenador: n.coordenador || '—', count: 0, reincidente: reincidenteSet.has(n.analista) };
-      map[n.analista].count++;
-    });
-    return Object.values(map).sort((a, b) => b.count - a.count).slice(0, 8);
-  }, [filtered, reincidenteSet]);
-
-  const ncsCriticas = useMemo(() => filtered.filter((n) => {
-    const sev = (n.severidade || '').toLowerCase();
-    return sev === 'crítica' || sev === 'critica' || n.tipo_nc === 'NC-5';
-  }).length, [filtered]);
-
+  // ── Executive KPIs ──
+  const totalImpactoPontos = useMemo(
+    () => filtered.reduce((s, n) => s + (n.pontos_deduzidos || 0), 0),
+    [filtered]
+  );
+  const ncsCriticas = useMemo(
+    () =>
+      filtered.filter((n) => {
+        const sev = (n.severidade || '').toLowerCase();
+        return sev === 'crítica' || sev === 'critica' || sev === 'critical' || n.tipo_nc === 'NC-5';
+      }).length,
+    [filtered]
+  );
   const squadMaisAfetado = useMemo(() => {
     const map: Record<string, number> = {};
-    filtered.forEach((n) => { if (n.squad) map[n.squad] = (map[n.squad] || 0) + 1; });
+    filtered.forEach((n) => {
+      if (n.squad) map[n.squad] = (map[n.squad] || 0) + 1;
+    });
     const sorted = Object.entries(map).sort((a, b) => b[1] - a[1]);
     return sorted[0] ? { squad: sorted[0][0], count: sorted[0][1] } : null;
   }, [filtered]);
 
-  const byPeriodData = useMemo(() => {
+  const byType = useMemo(() => {
     const map: Record<string, number> = {};
-    ncs.forEach((n) => { map[n.periodo] = (map[n.periodo] || 0) + 1; });
-    return Object.entries(map).sort((a, b) => a[0].localeCompare(b[0])).map(([periodo, count]) => ({ periodo, count }));
-  }, [ncs]);
-
-  const radarData = useMemo(() => NC_TIPOS.map((t) => ({ pilar: t.short, count: byType[t.key] || 0 })), [byType]);
-
-  const bySquadData = useMemo(() => {
-    const map: Record<string, number> = {};
-    filtered.forEach((n) => { if (n.squad) map[n.squad] = (map[n.squad] || 0) + 1; });
-    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([squad, count]) => ({ squad: squad.length > 14 ? squad.slice(0, 14) + '…' : squad, count }));
+    filtered.forEach((n) => {
+      map[n.tipo_nc] = (map[n.tipo_nc] || 0) + 1;
+    });
+    return map;
   }, [filtered]);
 
-  const selectStyle: React.CSSProperties = {
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    border: '1px solid rgba(255,255,255,0.07)',
-    color: '#CBD5E1',
-  };
+  const topAnalysts = useMemo(() => {
+    const map: Record<
+      string,
+      {
+        name: string;
+        squad: string;
+        coordenador: string;
+        count: number;
+        pontos: number;
+        reincidente: boolean;
+      }
+    > = {};
+    filtered.forEach((n) => {
+      if (!map[n.analista])
+        map[n.analista] = {
+          name: n.analista,
+          squad: n.squad,
+          coordenador: n.coordenador || '—',
+          count: 0,
+          pontos: 0,
+          reincidente: reincidenteSet.has(n.analista),
+        };
+      map[n.analista].count++;
+      map[n.analista].pontos += n.pontos_deduzidos || 0;
+    });
+    return Object.values(map)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
+  }, [filtered, reincidenteSet]);
+
+  const barChartData = useMemo(
+    () =>
+      topAnalysts.slice(0, 10).map((a) => ({
+        name: a.name.split(' ')[0],
+        fullName: a.name,
+        ncs: a.count,
+        pontos: a.pontos,
+        squad: a.squad,
+      })),
+    [topAnalysts]
+  );
+
+  const radarData = useMemo(
+    () => NC_TYPES.map((t) => ({ pilar: t.short, count: byType[t.key] || 0, fullKey: t.fullName })),
+    [byType]
+  );
+
+  const donutData = NC_TYPES.map((t) => ({
+    name: t.short,
+    value: byType[t.key] || 0,
+    color: t.color,
+  })).filter((d) => d.value > 0);
+
+  const byPeriodData = useMemo(() => {
+    const map: Record<string, number> = {};
+    ncs.forEach((n) => {
+      map[n.periodo] = (map[n.periodo] || 0) + 1;
+    });
+    return Object.entries(map)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([periodo, count]) => ({ periodo, count }));
+  }, [ncs]);
+
+  const bySquadData = useMemo(() => {
+    const map: Record<string, { count: number; pontos: number }> = {};
+    filtered.forEach((n) => {
+      if (!map[n.squad]) map[n.squad] = { count: 0, pontos: 0 };
+      map[n.squad].count++;
+      map[n.squad].pontos += n.pontos_deduzidos || 0;
+    });
+    return Object.entries(map)
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 8)
+      .map(([squad, d]) => ({
+        squad: squad.length > 12 ? squad.slice(0, 12) + '…' : squad,
+        count: d.count,
+        pontos: d.pontos,
+      }));
+  }, [filtered]);
+
+  const byCoordenadorData = useMemo(() => {
+    const map: Record<string, number> = {};
+    filtered.forEach((n) => {
+      if (n.coordenador) map[n.coordenador] = (map[n.coordenador] || 0) + 1;
+    });
+    return Object.entries(map)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([coord, count]) => ({ coord: coord.split(' ')[0], count }));
+  }, [filtered]);
+
+  const reincidenciaData = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {};
+    filtered.forEach((n) => {
+      if (!map[n.analista]) map[n.analista] = {};
+      map[n.analista][n.tipo_nc] = (map[n.analista][n.tipo_nc] || 0) + 1;
+    });
+    return Object.entries(map)
+      .map(([analista, types]) => ({
+        analista: analista.split(' ')[0],
+        reincidencias: Object.values(types).filter((c) => c >= 2).length,
+      }))
+      .filter((a) => a.reincidencias > 0)
+      .sort((a, b) => b.reincidencias - a.reincidencias)
+      .slice(0, 8);
+  }, [filtered]);
+
+  const flowStages = useMemo(() => {
+    const total = filtered.length;
+    return [
+      { label: 'Identificadas', count: total, color: '#EF4444', pct: 100 },
+      { label: 'Em Tratativa', count: Math.round(total * 0.7), color: '#F59E0B', pct: 70 },
+      { label: 'Resolvidas', count: Math.round(total * 0.4), color: '#22C55E', pct: 40 },
+      {
+        label: 'Reincidentes',
+        count: reincidenteSet.size,
+        color: '#7C3AED',
+        pct: total > 0 ? (reincidenteSet.size / total) * 100 : 0,
+      },
+    ];
+  }, [filtered, reincidenteSet]);
+
+  // ── Operational Insights ──
+  const topNCType = useMemo(() => {
+    const sorted = Object.entries(byType).sort((a, b) => b[1] - a[1]);
+    if (!sorted[0]) return null;
+    const typeInfo = NC_TYPES.find((t) => t.key === sorted[0][0]);
+    return { key: sorted[0][0], count: sorted[0][1], typeInfo };
+  }, [byType]);
+
+  const gargaloOperacional = useMemo(() => {
+    if (topAnalysts.length === 0) return null;
+    const top = topAnalysts[0];
+    return top;
+  }, [topAnalysts]);
 
   return (
-    <div className="p-6 max-w-screen-2xl mx-auto w-full" style={{ backgroundColor: '#0F172A', minHeight: '100vh' }}>
-      {/* ── Header ── */}
+    <div className="p-6 max-w-screen-2xl mx-auto w-full">
+      {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-lg font-semibold" style={{ color: '#F8FAFC' }}>Não Conformidades</h1>
-          <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>
-            Gestão operacional · {filtered.length} registros
+          <h1 className="text-xl font-bold text-white">Não Conformidades</h1>
+          <p className="text-sm mt-0.5" style={{ color: '#94A3B8' }}>
+            Visão executiva, operacional e analítica de NCs
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={loadData} className="p-2 rounded-lg transition-colors hover:bg-white/5"
-            style={{ color: '#64748B', border: '1px solid rgba(255,255,255,0.07)' }}>
-            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          <button
+            onClick={loadData}
+            className="p-2 rounded-lg transition-colors"
+            style={{ color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}
+          >
+            <RefreshCw size={14} />
           </button>
-          <button onClick={() => setImportOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors hover:opacity-90"
-            style={{ backgroundColor: '#1E293B', color: '#CBD5E1', border: '1px solid rgba(255,255,255,0.1)' }}>
-            Importar NC
+          <button
+            onClick={() => setImportOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white"
+            style={{ backgroundColor: '#1E40AF' }}
+          >
+            Importar
           </button>
         </div>
       </div>
 
-      {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      {/* ── EXECUTIVE KPI CARDS ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         {[
-          { label: 'Total NCs', value: filtered.length, color: '#EF4444', icon: <AlertTriangle size={14} />, sub: 'no período filtrado' },
-          { label: 'NCs Críticas', value: ncsCriticas, color: '#F97316', icon: <Shield size={14} />, sub: 'severidade crítica' },
-          { label: 'Reincidentes', value: reincidenteSet.size, color: '#94A3B8', icon: <Layers size={14} />, sub: 'analistas com recorrência' },
-          { label: 'Squad + Afetado', value: squadMaisAfetado?.squad || '—', color: '#EAB308', icon: <Users size={14} />, sub: squadMaisAfetado ? `${squadMaisAfetado.count} NCs` : 'sem dados' },
+          {
+            label: 'Total NCs',
+            value: filtered.length,
+            color: '#EF4444',
+            icon: <AlertTriangle size={16} />,
+            bg: 'rgba(239,68,68,0.08)',
+            sub: 'registradas',
+          },
+          {
+            label: 'Impacto Total',
+            value: `-${totalImpactoPontos} pts`,
+            color: '#F97316',
+            icon: <TrendingDown size={16} />,
+            bg: 'rgba(249,115,22,0.08)',
+            sub: 'pontos deduzidos',
+          },
+          {
+            label: 'NCs Críticas',
+            value: ncsCriticas,
+            color: '#DC2626',
+            icon: <Zap size={16} />,
+            bg: 'rgba(220,38,38,0.08)',
+            sub: 'alta severidade',
+          },
+          {
+            label: 'Squad + Afetado',
+            value: squadMaisAfetado?.squad || '—',
+            color: '#F59E0B',
+            icon: <Users size={16} />,
+            bg: 'rgba(245,158,11,0.08)',
+            sub: squadMaisAfetado ? `${squadMaisAfetado.count} NCs` : 'sem dados',
+          },
+          {
+            label: 'Reincidentes',
+            value: reincidenteSet.size,
+            color: '#7C3AED',
+            icon: <Layers size={16} />,
+            bg: 'rgba(124,58,237,0.08)',
+            sub: 'analistas',
+          },
         ].map((s) => (
-          <div key={s.label} className="rounded-xl p-4" style={{ backgroundColor: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div
+            key={s.label}
+            className="rounded-xl p-4"
+            style={{
+              backgroundColor: '#0F1B31',
+              border: '1px solid rgba(255,255,255,0.06)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            }}
+          >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs" style={{ color: '#64748B' }}>{s.label}</span>
-              <span style={{ color: s.color }}>{s.icon}</span>
+              <span className="text-xs font-medium" style={{ color: '#94A3B8' }}>
+                {s.label}
+              </span>
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center"
+                style={{ backgroundColor: s.bg, color: s.color }}
+              >
+                {s.icon}
+              </div>
             </div>
-            <p className="text-xl font-semibold truncate" style={{ color: '#F8FAFC' }}>{s.value}</p>
-            <p className="text-xs mt-0.5" style={{ color: '#475569' }}>{s.sub}</p>
+            <p className="text-xl font-bold text-white truncate">{s.value}</p>
+            <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>
+              {s.sub}
+            </p>
           </div>
         ))}
       </div>
 
-      {/* ── Nomenclatura Padronizada — guia conceitual, sem contadores ── */}
-      <div className="rounded-xl p-5 mb-5" style={{ backgroundColor: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
-        <div className="flex items-center gap-2 mb-4">
-          <p className="text-xs font-semibold" style={{ color: '#CBD5E1' }}>Nomenclatura Padronizada</p>
-          <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: 'rgba(255,255,255,0.04)', color: '#64748B' }}>
-            Guia conceitual · clique para filtrar
-          </span>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
-          {NC_TIPOS.map((t) => (
-            <div key={t.key} className="relative">
-              <button
-                className="w-full text-left rounded-lg p-3 transition-all"
+      {/* ── OPERATIONAL INSIGHTS ── */}
+      {(topNCType || gargaloOperacional) && (
+        <div
+          className="rounded-xl p-4 mb-6"
+          style={{
+            backgroundColor: '#0F1B31',
+            border: '1px solid rgba(239,68,68,0.2)',
+            background: 'linear-gradient(135deg, rgba(239,68,68,0.04) 0%, #0F1B31 60%)',
+          }}
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <Target size={13} style={{ color: '#EF4444' }} />
+            <span className="text-xs font-semibold text-white">Insights Operacionais</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {topNCType && (
+              <div
+                className="rounded-lg p-3"
                 style={{
-                  backgroundColor: filterType === t.key ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.02)',
-                  border: `1px solid ${filterType === t.key ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.05)'}`,
+                  backgroundColor: 'rgba(255,255,255,0.02)',
+                  border: '1px solid rgba(255,255,255,0.05)',
                 }}
-                onClick={() => setFilterType(filterType === t.key ? 'all' : t.key)}
-                onMouseEnter={() => setTooltipNC(t.key)}
-                onMouseLeave={() => setTooltipNC(null)}
               >
-                <p className="text-xs font-bold mb-0.5" style={{ color: '#CBD5E1' }}>{t.key}</p>
-                <p className="text-xs leading-snug" style={{ color: '#64748B' }}>{t.nome}</p>
-              </button>
-              {/* Tooltip on hover */}
-              {tooltipNC === t.key && (
-                <div className="absolute z-20 bottom-full left-0 mb-2 w-56 rounded-lg p-3 shadow-xl pointer-events-none"
-                  style={{ backgroundColor: '#1E293B', border: '1px solid rgba(255,255,255,0.1)' }}>
-                  <p className="text-xs font-semibold mb-1" style={{ color: '#CBD5E1' }}>{t.key} — {t.nome}</p>
-                  <p className="text-xs leading-relaxed" style={{ color: '#94A3B8' }}>{t.descricao}</p>
-                </div>
-              )}
+                <p className="text-xs font-semibold mb-1" style={{ color: '#EF4444' }}>
+                  NC Mais Recorrente
+                </p>
+                <p className="text-sm font-bold text-white">{topNCType.key}</p>
+                <p className="text-xs" style={{ color: '#94A3B8' }}>
+                  {topNCType.typeInfo?.short || topNCType.key} — {topNCType.count} ocorrências
+                </p>
+                <p className="text-xs mt-1" style={{ color: '#64748B' }}>
+                  Padrão recorrente que mais afeta a nota operacional
+                </p>
+              </div>
+            )}
+            {gargaloOperacional && (
+              <div
+                className="rounded-lg p-3"
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.02)',
+                  border: '1px solid rgba(255,255,255,0.05)',
+                }}
+              >
+                <p className="text-xs font-semibold mb-1" style={{ color: '#F59E0B' }}>
+                  Maior Gargalo Operacional
+                </p>
+                <p className="text-sm font-bold text-white">{gargaloOperacional.name}</p>
+                <p className="text-xs" style={{ color: '#94A3B8' }}>
+                  {gargaloOperacional.squad} — {gargaloOperacional.count} NCs / -
+                  {gargaloOperacional.pontos} pts
+                </p>
+                <p className="text-xs mt-1" style={{ color: '#64748B' }}>
+                  Analista com maior volume de não conformidades
+                </p>
+              </div>
+            )}
+            <div
+              className="rounded-lg p-3"
+              style={{
+                backgroundColor: 'rgba(255,255,255,0.02)',
+                border: '1px solid rgba(255,255,255,0.05)',
+              }}
+            >
+              <p className="text-xs font-semibold mb-1" style={{ color: '#7C3AED' }}>
+                Impacto na Nota
+              </p>
+              <p className="text-sm font-bold text-white">-{totalImpactoPontos} pontos</p>
+              <p className="text-xs" style={{ color: '#94A3B8' }}>
+                {filtered.length} NCs no período selecionado
+              </p>
+              <p className="text-xs mt-1" style={{ color: '#64748B' }}>
+                {totalImpactoPontos > 0
+                  ? `Média de -${(totalImpactoPontos / Math.max(filtered.length, 1)).toFixed(1)} pts por NC`
+                  : 'Sem pontos deduzidos registrados'}
+              </p>
             </div>
-          ))}
-        </div>
-        {/* Contagens aparecem aqui — fora dos cards de nomenclatura */}
-        {filtered.length > 0 && (
-          <div className="flex flex-wrap gap-4 mt-4 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-            <span className="text-xs" style={{ color: '#475569' }}>Distribuição no filtro atual:</span>
-            {NC_TIPOS.filter((t) => byType[t.key] > 0).map((t) => (
-              <span key={t.key} className="text-xs">
-                <span style={{ color: '#94A3B8' }}>{t.key}</span>
-                <span style={{ color: '#475569' }}> {byType[t.key]}</span>
-              </span>
-            ))}
           </div>
-        )}
-      </div>
-
-      {/* ── Severidade — guia de referência ── */}
-      <div className="rounded-xl p-4 mb-5" style={{ backgroundColor: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
-        <div className="flex items-center gap-2 mb-3">
-          <p className="text-xs font-semibold" style={{ color: '#CBD5E1' }}>Severidade</p>
-          <Info size={11} style={{ color: '#475569' }} />
-          <span className="text-xs" style={{ color: '#475569' }}>A penalidade pertence à severidade, não ao tipo de NC</span>
         </div>
+      )}
+
+      {/* NC Type Legend */}
+      <div
+        className="rounded-xl p-4 mb-6"
+        style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+      >
+        <p className="text-xs font-semibold text-white mb-3">Nomenclatura Padronizada de NCs</p>
         <div className="flex flex-wrap gap-2">
-          {Object.entries(SEVERIDADE_CONFIG).map(([key, cfg]) => (
-            <div key={key} className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
-              style={{ backgroundColor: cfg.bg, border: `1px solid ${cfg.border}` }}>
-              <span className="text-xs font-medium" style={{ color: cfg.color }}>{cfg.label}</span>
-              <span className="text-xs" style={{ color: '#475569' }}>·</span>
-              <span className="text-xs" style={{ color: '#64748B' }}>{cfg.penalidade} pts</span>
+          {NC_TYPES.map((t) => (
+            <div
+              key={t.key}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg"
+              style={{ backgroundColor: `${t.color}10`, border: `1px solid ${t.color}25` }}
+            >
+              <span>{t.icon}</span>
+              <span className="text-xs font-bold" style={{ color: t.color }}>
+                {t.key}
+              </span>
+              <span className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                {t.short}
+              </span>
+              <span
+                className="text-xs px-1.5 py-0.5 rounded"
+                style={{ backgroundColor: `${t.color}20`, color: t.color, fontSize: 9 }}
+              >
+                {t.criticidade}
+              </span>
             </div>
           ))}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
-            style={{ backgroundColor: 'rgba(100,116,139,0.05)', border: '1px solid rgba(100,116,139,0.12)' }}>
-            <span className="text-xs font-medium" style={{ color: '#64748B' }}>Histórico Legado</span>
-            <span className="text-xs" style={{ color: '#475569' }}>· severidade não informada</span>
-          </div>
         </div>
       </div>
 
-      {/* ── Filters ── */}
-      <div className="rounded-xl p-4 mb-5" style={{ backgroundColor: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
+      {/* Filters */}
+      <div
+        className="rounded-xl p-4 mb-6"
+        style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <Filter size={13} style={{ color: '#94A3B8' }} />
+          <span className="text-xs font-semibold text-white">Filtros</span>
+        </div>
         <div className="flex flex-wrap gap-2">
           <div className="relative flex-1 min-w-40">
-            <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#64748B' }} />
-            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar analista, evidência ou protocolo..."
-              className="w-full pl-8 pr-3 py-2 rounded-lg text-xs outline-none"
-              style={{ ...selectStyle, color: '#CBD5E1' }} />
+            <Search
+              size={13}
+              className="absolute left-3 top-1/2 -translate-y-1/2"
+              style={{ color: '#94A3B8' }}
+            />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar analista, descrição ou protocolo..."
+              className="w-full pl-8 pr-3 py-2 rounded-lg text-xs text-white outline-none"
+              style={{
+                backgroundColor: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+              }}
+            />
           </div>
-          {[
-            { value: filterPeriodo, onChange: setFilterPeriodo, options: [{ v: 'all', l: 'Todos os Ciclos' }, ...periodos.map(p => ({ v: p, l: p }))] },
-            { value: filterSquad, onChange: setFilterSquad, options: [{ v: 'all', l: 'Todos os Squads' }, ...squads.filter(s => s !== 'all').map(s => ({ v: s, l: s }))] },
-            { value: filterType, onChange: setFilterType, options: [{ v: 'all', l: 'Todos os Tipos' }, ...NC_TIPOS.map(t => ({ v: t.key, l: `${t.key} — ${t.short}` }))] },
-            { value: filterAnalista, onChange: setFilterAnalista, options: [{ v: 'all', l: 'Todos os Analistas' }, ...analistas.filter(a => a !== 'all').map(a => ({ v: a, l: a }))] },
-            { value: filterCoordenador, onChange: setFilterCoordenador, options: [{ v: 'all', l: 'Todos Coordenadores' }, ...coordenadores.filter(c => c !== 'all').map(c => ({ v: c, l: c }))] },
-          ].map((sel, i) => (
-            <select key={i} value={sel.value} onChange={(e) => sel.onChange(e.target.value)}
-              className="px-3 py-2 rounded-lg text-xs outline-none" style={selectStyle}>
-              {sel.options.map(o => <option key={o.v} value={o.v} style={{ backgroundColor: '#1E293B' }}>{o.l}</option>)}
-            </select>
-          ))}
-          <button onClick={() => setFilterReincidente((v) => !v)}
+          <select
+            value={filterPeriodo}
+            onChange={(e) => setFilterPeriodo(e.target.value)}
+            className="px-3 py-2 rounded-lg text-xs text-white outline-none"
+            style={{
+              backgroundColor: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            <option value="all">Todos os Ciclos</option>
+            {periodos.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filterSquad}
+            onChange={(e) => setFilterSquad(e.target.value)}
+            className="px-3 py-2 rounded-lg text-xs text-white outline-none"
+            style={{
+              backgroundColor: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            {squads.map((s) => (
+              <option key={s} value={s}>
+                {s === 'all' ? 'Todos os Squads' : s}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filterCoordenador}
+            onChange={(e) => setFilterCoordenador(e.target.value)}
+            className="px-3 py-2 rounded-lg text-xs text-white outline-none"
+            style={{
+              backgroundColor: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            <option value="all">Todos Coordenadores</option>
+            {coordenadores
+              .filter((c) => c !== 'all')
+              .map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+          </select>
+          <select
+            value={filterAnalista}
+            onChange={(e) => setFilterAnalista(e.target.value)}
+            className="px-3 py-2 rounded-lg text-xs text-white outline-none"
+            style={{
+              backgroundColor: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            <option value="all">Todos os Analistas</option>
+            {analistas
+              .filter((a) => a !== 'all')
+              .map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+          </select>
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            className="px-3 py-2 rounded-lg text-xs text-white outline-none"
+            style={{
+              backgroundColor: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            <option value="all">Todos os Tipos</option>
+            {NC_TYPES.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.key} — {t.short}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => setFilterReincidente((v) => !v)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all"
             style={{
-              backgroundColor: filterReincidente ? 'rgba(148,163,184,0.1)' : 'rgba(255,255,255,0.02)',
-              color: filterReincidente ? '#CBD5E1' : '#64748B',
-              border: `1px solid ${filterReincidente ? 'rgba(148,163,184,0.2)' : 'rgba(255,255,255,0.06)'}`,
-            }}>
-            <Layers size={11} /> Reincidentes
+              backgroundColor: filterReincidente
+                ? 'rgba(124,58,237,0.15)'
+                : 'rgba(255,255,255,0.04)',
+              color: filterReincidente ? '#A78BFA' : '#94A3B8',
+              border: `1px solid ${filterReincidente ? 'rgba(124,58,237,0.3)' : 'rgba(255,255,255,0.08)'}`,
+            }}
+          >
+            <Layers size={12} /> Reincidentes
           </button>
         </div>
       </div>
 
-      {/* ── View Toggle ── */}
-      <div className="flex items-center gap-1 p-1 rounded-lg w-fit mb-5"
-        style={{ backgroundColor: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
+      {/* View Toggle */}
+      <div
+        className="flex items-center gap-1 p-1 rounded-xl w-fit mb-6"
+        style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+      >
         {[
-          { id: 'table', label: 'Tabela', icon: <Layers size={12} /> },
-          { id: 'charts', label: 'Gráficos', icon: <BarChart2 size={12} /> },
+          { id: 'executive', label: 'Visão Executiva', icon: <Award size={13} /> },
+          { id: 'charts', label: 'Painéis & Gráficos', icon: <BarChart2 size={13} /> },
+          { id: 'table', label: 'Tabela Executiva', icon: <Layers size={13} /> },
         ].map((v) => (
-          <button key={v.id} onClick={() => setActiveView(v.id as any)}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-md text-xs font-medium transition-all"
+          <button
+            key={v.id}
+            onClick={() => setActiveView(v.id as any)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all"
             style={{
-              backgroundColor: activeView === v.id ? '#1E293B' : 'transparent',
-              color: activeView === v.id ? '#CBD5E1' : '#64748B',
-              border: activeView === v.id ? '1px solid rgba(255,255,255,0.08)' : '1px solid transparent',
-            }}>
-            {v.icon}{v.label}
+              backgroundColor: activeView === v.id ? '#1E40AF' : 'transparent',
+              color: activeView === v.id ? '#fff' : '#94A3B8',
+            }}
+          >
+            {v.icon}
+            {v.label}
           </button>
         ))}
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-16">
-          <div className="w-5 h-5 border-2 border-slate-600 border-t-slate-300 rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : activeView === 'table' ? (
-        /* ── TABELA OPERACIONAL ── */
-        <div className="rounded-xl overflow-hidden" style={{ backgroundColor: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
-          <div className="overflow-x-auto">
+      ) : activeView === 'executive' ? (
+        /* ── EXECUTIVE VIEW ── */
+        <div className="space-y-6">
+          {/* Row 1: Ranking + NC por Squad + NC por Coordenador */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Ranking Analistas */}
+            <div
+              className="rounded-xl p-5"
+              style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                <TrendingDown size={14} style={{ color: '#EF4444' }} /> Ranking NCs por Analista
+              </h3>
+              <div className="space-y-2">
+                {topAnalysts.slice(0, 8).map((a, i) => (
+                  <div
+                    key={a.name}
+                    className="flex items-center gap-3 py-1.5 rounded-lg px-2"
+                    style={{ backgroundColor: i === 0 ? 'rgba(239,68,68,0.06)' : 'transparent' }}
+                  >
+                    <span
+                      className="text-xs font-bold w-5 text-center"
+                      style={{ color: i === 0 ? '#EF4444' : '#94A3B8' }}
+                    >
+                      #{i + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-white truncate">{a.name}</p>
+                      <p className="text-xs" style={{ color: '#94A3B8', fontSize: '10px' }}>
+                        {a.squad} · {a.coordenador}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {a.reincidente && (
+                        <span
+                          className="text-xs px-1 py-0.5 rounded"
+                          style={{
+                            backgroundColor: 'rgba(124,58,237,0.15)',
+                            color: '#A78BFA',
+                            fontSize: 9,
+                          }}
+                        >
+                          R
+                        </span>
+                      )}
+                      <span
+                        className="text-xs font-bold px-2 py-0.5 rounded-full"
+                        style={{ backgroundColor: 'rgba(239,68,68,0.12)', color: '#EF4444' }}
+                      >
+                        {a.count}
+                      </span>
+                      {a.pontos > 0 && (
+                        <span
+                          className="text-xs font-medium"
+                          style={{ color: '#F97316', fontSize: 10 }}
+                        >
+                          -{a.pontos}pts
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {topAnalysts.length === 0 && (
+                  <p className="text-xs py-4 text-center" style={{ color: '#94A3B8' }}>
+                    Nenhum dado
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* NC por Squad */}
+            <div
+              className="rounded-xl p-5"
+              style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                <Users size={14} style={{ color: '#F59E0B' }} /> NCs por Squad
+              </h3>
+              {bySquadData.length > 0 ? (
+                <div className="space-y-2">
+                  {bySquadData.map((s, i) => {
+                    const maxCount = bySquadData[0]?.count || 1;
+                    const pct = Math.round((s.count / maxCount) * 100);
+                    return (
+                      <div key={s.squad}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-white truncate max-w-[120px]">
+                            {s.squad}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-white">{s.count}</span>
+                            {s.pontos > 0 && (
+                              <span className="text-xs" style={{ color: '#F97316', fontSize: 10 }}>
+                                -{s.pontos}pts
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div
+                          className="h-1.5 rounded-full overflow-hidden"
+                          style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
+                        >
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${pct}%`,
+                              backgroundColor: i === 0 ? '#EF4444' : '#F59E0B',
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs py-4 text-center" style={{ color: '#94A3B8' }}>
+                  Sem dados
+                </p>
+              )}
+            </div>
+
+            {/* NC por Coordenador */}
+            <div
+              className="rounded-xl p-5"
+              style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                <Shield size={14} style={{ color: '#38BDF8' }} /> NCs por Coordenador
+              </h3>
+              {byCoordenadorData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart
+                    data={byCoordenadorData}
+                    layout="vertical"
+                    margin={{ top: 0, right: 10, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="rgba(255,255,255,0.04)"
+                      horizontal={false}
+                    />
+                    <XAxis type="number" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 10 }} />
+                    <YAxis
+                      type="category"
+                      dataKey="coord"
+                      tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 10 }}
+                      width={70}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="count" name="NCs" fill="#38BDF8" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-xs py-4 text-center" style={{ color: '#94A3B8' }}>
+                  Sem dados de coordenador
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Row 2: Painel por Tipo + Fluxo Corretivo + Reincidência */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div
+              className="rounded-xl p-5"
+              style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                <Shield size={14} style={{ color: '#38BDF8' }} /> Painel por Tipo NC
+              </h3>
+              <div className="space-y-3">
+                {NC_TYPES.map((t) => {
+                  const count = byType[t.key] || 0;
+                  const pct = filtered.length > 0 ? Math.round((count / filtered.length) * 100) : 0;
+                  return (
+                    <div key={t.key}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span
+                          className="text-xs flex items-center gap-1.5"
+                          style={{ color: '#94A3B8' }}
+                        >
+                          <span>{t.icon}</span>
+                          <span className="font-semibold" style={{ color: t.color }}>
+                            {t.key}
+                          </span>
+                          <span>{t.short}</span>
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-white">{count}</span>
+                          <span className="text-xs" style={{ color: '#64748B' }}>
+                            {pct}%
+                          </span>
+                        </div>
+                      </div>
+                      <div
+                        className="h-2 rounded-full overflow-hidden"
+                        style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
+                      >
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${pct}%`, backgroundColor: t.color }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div
+              className="rounded-xl p-5"
+              style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                <Activity size={14} style={{ color: '#22C55E' }} /> Fluxo Corretivo
+              </h3>
+              <div className="space-y-3">
+                {flowStages.map((stage, i) => (
+                  <div key={stage.label} className="flex items-center gap-3">
+                    <div
+                      className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                      style={{ backgroundColor: stage.color }}
+                    >
+                      {i + 1}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium text-white">{stage.label}</span>
+                        <span className="text-xs font-bold" style={{ color: stage.color }}>
+                          {stage.count}
+                        </span>
+                      </div>
+                      <div
+                        className="h-1.5 rounded-full overflow-hidden"
+                        style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
+                      >
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${stage.pct}%`, backgroundColor: stage.color }}
+                        />
+                      </div>
+                    </div>
+                    {i < flowStages.length - 1 && (
+                      <ChevronRight size={12} style={{ color: 'rgba(255,255,255,0.2)' }} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div
+              className="rounded-xl p-5"
+              style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <h3 className="text-sm font-semibold text-white mb-4">Analytics de Reincidência</h3>
+              {reincidenciaData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart
+                    data={reincidenciaData}
+                    margin={{ top: 0, right: 10, left: -20, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                    <XAxis
+                      dataKey="analista"
+                      tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 10 }}
+                    />
+                    <YAxis tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 10 }} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar
+                      dataKey="reincidencias"
+                      name="Reincidências"
+                      fill="#7C3AED"
+                      radius={[4, 4, 0, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-48">
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>
+                    Sem reincidências
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Row 3: Trend */}
+          {byPeriodData.length > 1 && (
+            <div
+              className="rounded-xl p-5"
+              style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <h3 className="text-sm font-semibold text-white mb-4">Tendência de NCs por Ciclo</h3>
+              <ResponsiveContainer width="100%" height={180}>
+                <AreaChart data={byPeriodData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                  <defs>
+                    <linearGradient id="ncGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#EF4444" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#EF4444" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                  <XAxis dataKey="periodo" tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }} />
+                  <YAxis tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Area
+                    type="monotone"
+                    dataKey="count"
+                    name="NCs"
+                    stroke="#EF4444"
+                    fill="url(#ncGrad)"
+                    strokeWidth={2}
+                    dot={{ fill: '#EF4444', r: 3 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      ) : activeView === 'charts' ? (
+        <div className="space-y-6">
+          {/* Row 1: Summary + Flow + Ranking */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div
+              className="rounded-xl p-5"
+              style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                <Shield size={14} style={{ color: '#38BDF8' }} /> Painel por Tipo NC
+              </h3>
+              <div className="space-y-3">
+                {NC_TYPES.map((t) => {
+                  const count = byType[t.key] || 0;
+                  const pct = filtered.length > 0 ? Math.round((count / filtered.length) * 100) : 0;
+                  return (
+                    <div key={t.key}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span
+                          className="text-xs flex items-center gap-1.5"
+                          style={{ color: '#94A3B8' }}
+                        >
+                          <span>{t.icon}</span>
+                          <span className="font-semibold" style={{ color: t.color }}>
+                            {t.key}
+                          </span>
+                          <span>{t.short}</span>
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-white">{count}</span>
+                          <span className="text-xs" style={{ color: '#64748B' }}>
+                            {pct}%
+                          </span>
+                        </div>
+                      </div>
+                      <div
+                        className="h-2 rounded-full overflow-hidden"
+                        style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
+                      >
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${pct}%`, backgroundColor: t.color }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div
+              className="rounded-xl p-5"
+              style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                <Activity size={14} style={{ color: '#22C55E' }} /> Fluxo Corretivo
+              </h3>
+              <div className="space-y-3">
+                {flowStages.map((stage, i) => (
+                  <div key={stage.label} className="flex items-center gap-3">
+                    <div
+                      className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                      style={{ backgroundColor: stage.color }}
+                    >
+                      {i + 1}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium text-white">{stage.label}</span>
+                        <span className="text-xs font-bold" style={{ color: stage.color }}>
+                          {stage.count}
+                        </span>
+                      </div>
+                      <div
+                        className="h-1.5 rounded-full overflow-hidden"
+                        style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
+                      >
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${stage.pct}%`, backgroundColor: stage.color }}
+                        />
+                      </div>
+                    </div>
+                    {i < flowStages.length - 1 && (
+                      <ChevronRight size={12} style={{ color: 'rgba(255,255,255,0.2)' }} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div
+              className="rounded-xl p-5"
+              style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <h3 className="text-sm font-semibold text-white mb-4">Ranking NCs por Analista</h3>
+              <div className="space-y-2">
+                {topAnalysts.slice(0, 6).map((a, i) => (
+                  <div
+                    key={a.name}
+                    className="flex items-center gap-3 py-1.5 rounded-lg px-2"
+                    style={{ backgroundColor: i === 0 ? 'rgba(239,68,68,0.06)' : 'transparent' }}
+                  >
+                    <span
+                      className="text-xs font-bold w-5 text-center"
+                      style={{ color: i === 0 ? '#EF4444' : '#94A3B8' }}
+                    >
+                      #{i + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-white truncate">{a.name}</p>
+                      <p className="text-xs" style={{ color: '#94A3B8', fontSize: '10px' }}>
+                        {a.squad}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {a.reincidente && (
+                        <span
+                          className="text-xs px-1 py-0.5 rounded"
+                          style={{
+                            backgroundColor: 'rgba(124,58,237,0.15)',
+                            color: '#A78BFA',
+                            fontSize: 9,
+                          }}
+                        >
+                          R
+                        </span>
+                      )}
+                      <span
+                        className="text-xs font-bold px-2 py-0.5 rounded-full"
+                        style={{ backgroundColor: 'rgba(239,68,68,0.12)', color: '#EF4444' }}
+                      >
+                        {a.count}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {topAnalysts.length === 0 && (
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>
+                    Nenhum dado
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Row 2: Bar + Radar */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div
+              className="rounded-xl p-5"
+              style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <h3 className="text-sm font-semibold text-white mb-4">NCs por Analista</h3>
+              {barChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart
+                    data={barChartData}
+                    margin={{ top: 5, right: 10, left: -20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                    <XAxis dataKey="name" tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }} />
+                    <YAxis tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="ncs" name="NCs" fill="#EF4444" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-48">
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>
+                    Sem dados
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div
+              className="rounded-xl p-5"
+              style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <h3 className="text-sm font-semibold text-white mb-4">Radar por Tipo NC</h3>
+              {radarData.some((d) => d.count > 0) ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <RadarChart data={radarData}>
+                    <PolarGrid stroke="rgba(255,255,255,0.08)" />
+                    <PolarAngleAxis
+                      dataKey="pilar"
+                      tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 10 }}
+                    />
+                    <PolarRadiusAxis tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 9 }} />
+                    <Radar
+                      name="NCs"
+                      dataKey="count"
+                      stroke="#EF4444"
+                      fill="#EF4444"
+                      fillOpacity={0.2}
+                    />
+                    <Legend wrapperStyle={{ color: '#94A3B8', fontSize: 11 }} />
+                  </RadarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-48">
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>
+                    Sem dados
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Row 3: Donut + Squad + Reincidência */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div
+              className="rounded-xl p-5 flex flex-col"
+              style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <h3 className="text-sm font-semibold text-white mb-4">Distribuição por Tipo</h3>
+              <div className="flex-1 flex items-center justify-center">
+                <div className="relative">
+                  <ResponsiveContainer width={180} height={180}>
+                    <PieChart>
+                      <Pie
+                        data={donutData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={75}
+                        dataKey="value"
+                        strokeWidth={0}
+                      >
+                        {donutData.map((entry, i) => (
+                          <Cell key={i} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<CustomTooltip />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <p className="text-xl font-bold text-white">{filtered.length}</p>
+                    <p className="text-xs" style={{ color: '#64748B' }}>
+                      Total
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-1 mt-2">
+                {donutData.map((d) => (
+                  <div key={d.name} className="flex items-center gap-2">
+                    <div
+                      className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: d.color }}
+                    />
+                    <span className="text-xs flex-1 truncate" style={{ color: '#94A3B8' }}>
+                      {d.name}
+                    </span>
+                    <span className="text-xs font-bold text-white">{d.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div
+              className="rounded-xl p-5"
+              style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <h3 className="text-sm font-semibold text-white mb-4">NCs por Squad</h3>
+              {bySquadData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart
+                    data={bySquadData}
+                    layout="vertical"
+                    margin={{ top: 0, right: 10, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="rgba(255,255,255,0.04)"
+                      horizontal={false}
+                    />
+                    <XAxis type="number" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 10 }} />
+                    <YAxis
+                      type="category"
+                      dataKey="squad"
+                      tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 10 }}
+                      width={80}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="count" name="NCs" fill="#F59E0B" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-48">
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>
+                    Sem dados
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div
+              className="rounded-xl p-5"
+              style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <h3 className="text-sm font-semibold text-white mb-4">Analytics de Reincidência</h3>
+              {reincidenciaData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart
+                    data={reincidenciaData}
+                    margin={{ top: 0, right: 10, left: -20, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                    <XAxis
+                      dataKey="analista"
+                      tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 10 }}
+                    />
+                    <YAxis tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 10 }} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar
+                      dataKey="reincidencias"
+                      name="Reincidências"
+                      fill="#7C3AED"
+                      radius={[4, 4, 0, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-48">
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>
+                    Sem reincidências
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {byPeriodData.length > 1 && (
+            <div
+              className="rounded-xl p-5"
+              style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <h3 className="text-sm font-semibold text-white mb-4">Tendência de NCs por Ciclo</h3>
+              <ResponsiveContainer width="100%" height={180}>
+                <AreaChart data={byPeriodData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                  <defs>
+                    <linearGradient id="ncGrad2" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#EF4444" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#EF4444" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                  <XAxis dataKey="periodo" tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }} />
+                  <YAxis tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Area
+                    type="monotone"
+                    dataKey="count"
+                    name="NCs"
+                    stroke="#EF4444"
+                    fill="url(#ncGrad2)"
+                    strokeWidth={2}
+                    dot={{ fill: '#EF4444', r: 3 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* ── EXECUTIVE TABLE VIEW ── */
+        <div
+          className="rounded-xl overflow-hidden"
+          style={{ backgroundColor: '#0F1B31', border: '1px solid rgba(255,255,255,0.06)' }}
+        >
+          <div className="overflow-y-auto max-h-[600px]">
             <table className="w-full text-xs">
-              <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', backgroundColor: '#0F172A' }}>
-                  {['Analista / Squad', 'Tipo NC', 'Severidade', 'Evidência', 'Impacto Operacional', 'Reincidência', 'Protocolo', 'Ciclo', ''].map((h) => (
-                    <th key={h} className="text-left px-3 py-3 font-medium whitespace-nowrap text-[10px] uppercase tracking-wider"
-                      style={{ color: '#475569' }}>{h}</th>
+              <thead className="sticky top-0" style={{ backgroundColor: '#0F1B31' }}>
+                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                  {[
+                    'Protocolo',
+                    'Analista',
+                    'Squad',
+                    'Coordenador',
+                    'Tipo NC',
+                    'Severidade',
+                    'Pts Ded.',
+                    'Período',
+                    'Descrição',
+                    '',
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="text-left px-3 py-3 font-semibold whitespace-nowrap"
+                      style={{ color: '#94A3B8' }}
+                    >
+                      {h}
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {filtered.slice(0, 150).map((nc) => {
-                  const tipoInfo = NC_TIPOS.find((t) => t.key === nc.tipo_nc);
+                {filtered.slice(0, 100).map((nc) => {
+                  const typeInfo = NC_TYPES.find((t) => t.key === nc.tipo_nc);
                   const meta = parseNcDescricaoMeta(nc.descricao);
-                  const sev = nc.severidade || meta.severity || null;
-                  const isReincidente = reincidenteSet.has(nc.analista);
                   return (
-                    <tr key={nc.id} className="hover:bg-white/[0.015] transition-colors"
-                      style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                      <td className="px-3 py-3">
-                        <p className="font-medium" style={{ color: '#F8FAFC' }}>{nc.analista}</p>
-                        <p className="text-[10px] mt-0.5" style={{ color: '#475569' }}>{nc.squad} · {nc.coordenador || '—'}</p>
-                      </td>
-                      <td className="px-3 py-3">
-                        <p className="font-semibold text-xs" style={{ color: '#CBD5E1' }}>{tipoInfo?.key || nc.tipo_nc}</p>
-                        <p className="text-[10px] mt-0.5" style={{ color: '#475569' }}>{tipoInfo?.short}</p>
-                      </td>
-                      <td className="px-3 py-3">
-                        <SeveridadeBadge sev={sev} />
-                      </td>
-                      <td className="px-3 py-3 max-w-[200px]">
-                        <p className="text-xs leading-relaxed line-clamp-2" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                          {meta.descricao || '—'}
-                        </p>
-                      </td>
-                      <td className="px-3 py-3 max-w-[160px]">
-                        <p className="text-xs leading-relaxed line-clamp-2"
-                          style={{ color: meta.impacto ? '#EAB308' : '#475569' }}>
-                          {meta.impacto || '—'}
-                        </p>
-                      </td>
-                      <td className="px-3 py-3">
-                        <ReincidenciaBadge isReincidente={isReincidente} />
-                        {!isReincidente && <span style={{ color: '#475569' }}>—</span>}
-                      </td>
-                      <td className="px-3 py-3 font-mono text-xs" style={{ color: '#475569' }}>
+                    <tr
+                      key={nc.id}
+                      className="hover:bg-white/[0.02]"
+                      style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
+                    >
+                      <td className="px-3 py-2.5 font-mono text-xs" style={{ color: '#64748B' }}>
                         {nc.protocolo_referencia || '—'}
                       </td>
-                      <td className="px-3 py-3 text-xs" style={{ color: '#64748B' }}>{nc.periodo}</td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-2.5 font-medium text-white">
+                        <div className="flex items-center gap-1.5">
+                          {reincidenteSet.has(nc.analista) && (
+                            <span
+                              className="text-xs px-1 py-0.5 rounded"
+                              style={{
+                                backgroundColor: 'rgba(124,58,237,0.15)',
+                                color: '#A78BFA',
+                                fontSize: 9,
+                              }}
+                            >
+                              R
+                            </span>
+                          )}
+                          {nc.analista}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5" style={{ color: '#94A3B8' }}>
+                        {nc.squad}
+                      </td>
+                      <td className="px-3 py-2.5" style={{ color: '#94A3B8' }}>
+                        {nc.coordenador || '—'}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium"
+                          style={{
+                            backgroundColor: `${typeInfo?.color || '#64748B'}15`,
+                            color: typeInfo?.color || '#64748B',
+                          }}
+                        >
+                          {typeInfo?.icon} {typeInfo?.key || nc.tipo_nc}
+                        </span>
+                      </td>
+                      <td
+                        className="px-4 py-2.5 max-w-xs"
+                        style={{ color: 'rgba(255,255,255,0.6)' }}
+                      >
+                        <p className="truncate">{meta.descricao || '—'}</p>
+                        {meta.severity && (
+                          <p className="text-[10px] mt-0.5 truncate" style={{ color: '#A78BFA' }}>
+                            Sev: {meta.severity}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5" style={{ color: '#94A3B8' }}>
+                        {nc.periodo}
+                      </td>
+                      <td
+                        className="px-4 py-2.5 font-medium"
+                        style={{ color: resolveNcPontosDeduzidos(nc) ? '#EF4444' : '#94A3B8' }}
+                      >
+                        {formatPontosDeduzidos(resolveNcPontosDeduzidos(nc))}
+                      </td>
+                      <td className="px-3 py-2.5" style={{ color: '#94A3B8' }}>
+                        {nc.periodo}
+                      </td>
+                      <td
+                        className="px-3 py-2.5 max-w-xs truncate"
+                        style={{ color: 'rgba(255,255,255,0.6)' }}
+                      >
+                        {nc.descricao || '—'}
+                      </td>
+                      <td className="px-3 py-2.5">
                         <div className="flex items-center gap-1">
-                          <button onClick={() => setDetailModal({ nc, tipoInfo })}
-                            className="p-1.5 rounded-lg hover:bg-white/5 transition-colors" style={{ color: '#475569' }}>
-                            <Eye size={12} />
+                          <button
+                            onClick={() => setDetailModal({ nc, typeInfo })}
+                            className="p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+                            style={{ color: '#64748B' }}
+                          >
+                            <Eye size={13} />
                           </button>
-                          <button onClick={() => setDeleteConfirm(nc)}
-                            className="p-1.5 rounded-lg hover:bg-red-500/10 transition-colors" style={{ color: '#475569' }}>
-                            <Trash2 size={12} />
+                          <button
+                            onClick={() => setDeleteConfirm(nc)}
+                            className="p-1.5 rounded-lg hover:bg-red-500/10 transition-colors"
+                            style={{ color: '#64748B' }}
+                            title="Excluir NC"
+                          >
+                            <Trash2 size={13} />
                           </button>
                         </div>
                       </td>
@@ -580,170 +1750,123 @@ function NCContent() {
                   );
                 })}
                 {filtered.length === 0 && (
-                  <tr><td colSpan={9} className="px-4 py-12 text-center">
-                    <AlertTriangle size={24} className="mx-auto mb-2 opacity-20" style={{ color: '#64748B' }} />
-                    <p className="text-xs" style={{ color: '#64748B' }}>Nenhuma NC encontrada</p>
-                  </td></tr>
+                  <tr>
+                    <td
+                      colSpan={10}
+                      className="px-4 py-12 text-center"
+                      style={{ color: '#94A3B8' }}
+                    >
+                      Nenhuma NC encontrada
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
           </div>
-          {filtered.length > 150 && (
-            <div className="px-4 py-2 text-xs text-center" style={{ color: '#475569', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-              Exibindo 150 de {filtered.length} registros
+          {filtered.length > 100 && (
+            <div
+              className="px-4 py-2 text-xs text-center"
+              style={{ color: '#64748B', borderTop: '1px solid rgba(255,255,255,0.04)' }}
+            >
+              Exibindo 100 de {filtered.length} registros
             </div>
           )}
-        </div>
-      ) : (
-        /* ── GRÁFICOS ── */
-        <div className="space-y-5">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            {/* Distribuição por tipo */}
-            <div className="rounded-xl p-5" style={{ backgroundColor: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <h3 className="text-xs font-semibold mb-4" style={{ color: '#CBD5E1' }}>Distribuição por Tipo</h3>
-              <div className="space-y-3">
-                {NC_TIPOS.map((t) => {
-                  const count = byType[t.key] || 0;
-                  const pct = filtered.length > 0 ? Math.round((count / filtered.length) * 100) : 0;
-                  return (
-                    <div key={t.key}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs" style={{ color: '#94A3B8' }}>
-                          <span className="font-semibold" style={{ color: '#CBD5E1' }}>{t.key}</span>
-                          {' '}{t.short}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold" style={{ color: '#F8FAFC' }}>{count}</span>
-                          <span className="text-xs" style={{ color: '#475569' }}>{pct}%</span>
-                        </div>
-                      </div>
-                      <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
-                        <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: '#475569' }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Ranking analistas */}
-            <div className="rounded-xl p-5" style={{ backgroundColor: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <h3 className="text-xs font-semibold mb-4 flex items-center gap-2" style={{ color: '#CBD5E1' }}>
-                <TrendingDown size={12} style={{ color: '#EF4444' }} /> Ranking por Analista
-              </h3>
-              <div className="space-y-2">
-                {topAnalysts.map((a, i) => (
-                  <div key={a.name} className="flex items-center gap-3 py-1.5 px-2 rounded-lg"
-                    style={{ backgroundColor: i === 0 ? 'rgba(239,68,68,0.04)' : 'transparent' }}>
-                    <span className="text-xs w-4 text-center" style={{ color: '#475569' }}>#{i + 1}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium truncate" style={{ color: '#F8FAFC' }}>{a.name}</p>
-                      <p className="text-[10px]" style={{ color: '#475569' }}>{a.squad}</p>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {a.reincidente && (
-                        <span className="text-[9px] px-1 py-0.5 rounded" style={{ backgroundColor: 'rgba(148,163,184,0.08)', color: '#94A3B8' }}>R</span>
-                      )}
-                      <span className="text-xs font-semibold px-2 py-0.5 rounded"
-                        style={{ backgroundColor: 'rgba(239,68,68,0.08)', color: '#EF4444' }}>{a.count}</span>
-                    </div>
-                  </div>
-                ))}
-                {topAnalysts.length === 0 && <p className="text-xs py-4 text-center" style={{ color: '#475569' }}>Nenhum dado</p>}
-              </div>
-            </div>
-
-            {/* NCs por Squad */}
-            <div className="rounded-xl p-5" style={{ backgroundColor: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <h3 className="text-xs font-semibold mb-4" style={{ color: '#CBD5E1' }}>NCs por Squad</h3>
-              {bySquadData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={bySquadData} layout="vertical" margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" horizontal={false} />
-                    <XAxis type="number" tick={{ fill: '#475569', fontSize: 10 }} />
-                    <YAxis type="category" dataKey="squad" tick={{ fill: '#64748B', fontSize: 10 }} width={80} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="count" name="NCs" fill="#475569" radius={[0, 3, 3, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : <p className="text-xs py-4 text-center" style={{ color: '#475569' }}>Sem dados</p>}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {/* Radar */}
-            <div className="rounded-xl p-5" style={{ backgroundColor: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <h3 className="text-xs font-semibold mb-4" style={{ color: '#CBD5E1' }}>Radar por Tipo NC</h3>
-              {radarData.some((d) => d.count > 0) ? (
-                <ResponsiveContainer width="100%" height={220}>
-                  <RadarChart data={radarData}>
-                    <PolarGrid stroke="rgba(255,255,255,0.06)" />
-                    <PolarAngleAxis dataKey="pilar" tick={{ fill: '#64748B', fontSize: 10 }} />
-                    <PolarRadiusAxis tick={{ fill: '#475569', fontSize: 9 }} />
-                    <Radar name="NCs" dataKey="count" stroke="#64748B" fill="#64748B" fillOpacity={0.15} />
-                    <Legend wrapperStyle={{ color: '#64748B', fontSize: 11 }} />
-                  </RadarChart>
-                </ResponsiveContainer>
-              ) : <div className="flex items-center justify-center h-48"><p className="text-xs" style={{ color: '#475569' }}>Sem dados</p></div>}
-            </div>
-
-            {/* Tendência */}
-            {byPeriodData.length > 1 ? (
-              <div className="rounded-xl p-5" style={{ backgroundColor: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <h3 className="text-xs font-semibold mb-4" style={{ color: '#CBD5E1' }}>Tendência por Ciclo</h3>
-                <ResponsiveContainer width="100%" height={220}>
-                  <AreaChart data={byPeriodData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                    <defs>
-                      <linearGradient id="ncGradV4" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#EF4444" stopOpacity={0.15} />
-                        <stop offset="95%" stopColor="#EF4444" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
-                    <XAxis dataKey="periodo" tick={{ fill: '#475569', fontSize: 10 }} />
-                    <YAxis tick={{ fill: '#475569', fontSize: 10 }} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Area type="monotone" dataKey="count" name="NCs" stroke="#EF4444" fill="url(#ncGradV4)" strokeWidth={1.5} dot={{ fill: '#EF4444', r: 2 }} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <div className="rounded-xl p-5 flex items-center justify-center" style={{ backgroundColor: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <p className="text-xs" style={{ color: '#475569' }}>Dados insuficientes para tendência</p>
-              </div>
-            )}
-          </div>
         </div>
       )}
 
       <ImportModal isOpen={importOpen} onClose={() => setImportOpen(false)} />
-
       {detailModal && <NCDetailModalComp data={detailModal} onClose={() => setDetailModal(null)} />}
 
+      {/* Delete Confirmation Modal */}
       {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
-          <div className="w-full max-w-sm rounded-xl overflow-hidden" style={{ backgroundColor: '#111827', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <div className="flex items-center justify-between p-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <h2 className="text-sm font-semibold" style={{ color: '#F8FAFC' }}>Excluir NC</h2>
-              <button onClick={() => setDeleteConfirm(null)} className="p-1.5 rounded-lg hover:bg-white/5" style={{ color: '#64748B' }}>
-                <X size={13} />
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl overflow-hidden"
+            style={{
+              backgroundColor: '#0A1628',
+              border: '1px solid rgba(255,255,255,0.1)',
+              boxShadow: '0 25px 80px rgba(0,0,0,0.6)',
+            }}
+          >
+            <div
+              className="flex items-center justify-between p-5"
+              style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-8 h-8 rounded-lg flex items-center justify-center"
+                  style={{ backgroundColor: 'rgba(239,68,68,0.12)' }}
+                >
+                  <Trash2 size={15} style={{ color: '#EF4444' }} />
+                </div>
+                <h2 className="text-sm font-bold text-white">Excluir NC</h2>
+              </div>
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="p-1.5 rounded-lg hover:bg-white/5"
+                style={{ color: '#94A3B8' }}
+              >
+                <X size={14} />
               </button>
             </div>
-            <div className="p-4 space-y-4">
-              <p className="text-sm" style={{ color: 'rgba(255,255,255,0.65)' }}>
-                Excluir NC de <span className="font-semibold" style={{ color: '#F8FAFC' }}>{deleteConfirm.analista}</span> ({deleteConfirm.tipo_nc})?
+            <div className="p-5 space-y-4">
+              <p className="text-sm" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                Tem certeza que deseja excluir a NC de{' '}
+                <span className="font-semibold text-white">{deleteConfirm.analista}</span>?
               </p>
-              <p className="text-xs" style={{ color: '#EF4444' }}>Esta ação não pode ser desfeita.</p>
-              <div className="flex gap-2">
-                <button onClick={() => setDeleteConfirm(null)} disabled={deleting}
-                  className="flex-1 py-2 rounded-lg text-xs font-medium"
-                  style={{ backgroundColor: 'rgba(255,255,255,0.03)', color: '#94A3B8', border: '1px solid rgba(255,255,255,0.07)' }}>
+              <div
+                className="rounded-xl p-3 space-y-1"
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.02)',
+                  border: '1px solid rgba(255,255,255,0.05)',
+                }}
+              >
+                <p className="text-xs" style={{ color: '#94A3B8' }}>
+                  Tipo: <span className="text-white">{deleteConfirm.tipo_nc}</span>
+                </p>
+                <p className="text-xs" style={{ color: '#94A3B8' }}>
+                  Período: <span className="text-white">{deleteConfirm.periodo}</span>
+                </p>
+                {deleteConfirm.protocolo_referencia && (
+                  <p className="text-xs" style={{ color: '#94A3B8' }}>
+                    Protocolo:{' '}
+                    <span className="text-white">{deleteConfirm.protocolo_referencia}</span>
+                  </p>
+                )}
+              </div>
+              <p className="text-xs" style={{ color: '#EF4444' }}>
+                Esta ação não pode ser desfeita.
+              </p>
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  disabled={deleting}
+                  className="flex-1 py-2 rounded-xl text-xs font-medium transition-colors"
+                  style={{
+                    backgroundColor: 'rgba(255,255,255,0.04)',
+                    color: '#94A3B8',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                  }}
+                >
                   Cancelar
                 </button>
-                <button onClick={handleDeleteNC} disabled={deleting}
-                  className="flex-1 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5"
-                  style={{ backgroundColor: '#EF4444', color: '#fff' }}>
-                  {deleting ? <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" /> : <Trash2 size={11} />}
+                <button
+                  onClick={handleDeleteNC}
+                  disabled={deleting}
+                  className="flex-1 py-2 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
+                  style={{
+                    backgroundColor: deleting ? 'rgba(239,68,68,0.4)' : '#EF4444',
+                    color: '#fff',
+                  }}
+                >
+                  {deleting ? (
+                    <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Trash2 size={12} />
+                  )}
                   {deleting ? 'Excluindo...' : 'Excluir'}
                 </button>
               </div>

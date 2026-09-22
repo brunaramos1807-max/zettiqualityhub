@@ -45,20 +45,12 @@ function AuditoriaContent() {
       const periodo = activeCycle || '';
       if (periodo) setCurrentPeriodo(periodo);
 
-      // Fetch all data in parallel — including analistas table to filter by status
-      const [scores, ncs, elogios, analistasRes] = await Promise.all([
+      // Fetch all data in parallel
+      const [scores, ncs, elogios] = await Promise.all([
         fetchCycleScores(periodo || undefined),
         fetchNCRecords(periodo || undefined),
         fetchElogios(periodo || undefined),
-        supabase.from('analistas').select('nome, nome_completo, status').neq('status', 'desligado').neq('status', 'afastado'),
       ]);
-
-      // Build set of active analyst names for filtering
-      const activeAnalistas = new Set<string>();
-      (analistasRes.data || []).forEach((a: any) => {
-        if (a.nome) activeAnalistas.add((a.nome || '').toLowerCase().trim());
-        if (a.nome_completo) activeAnalistas.add((a.nome_completo || '').toLowerCase().trim());
-      });
 
       // Also fetch feedbacks for last update time
       let feedbackMap: Record<string, string> = {};
@@ -79,19 +71,11 @@ function AuditoriaContent() {
         }
       } catch { /* ignore */ }
 
-      // Build analyst map from cycle scores — only include active analysts
+      // Build analyst map from cycle scores
       const analystMap: Record<string, AnalystAuditData> = {};
 
       scores.forEach((s: any) => {
         const key = s.analista;
-        // Skip if analyst is inactive/on-leave (only filter if we have analistas data)
-        if (activeAnalistas.size > 0) {
-          const keyNorm = (key || '').toLowerCase().trim();
-          const isActive = activeAnalistas.has(keyNorm) ||
-            Array.from(activeAnalistas).some(name => name.startsWith(keyNorm.split(' ')[0]) || keyNorm.startsWith(name.split(' ')[0]));
-          if (!isActive) return;
-        }
-
         if (!analystMap[key]) {
           analystMap[key] = {
             analista: s.analista,
@@ -120,13 +104,17 @@ function AuditoriaContent() {
       // Count NCs per analyst
       ncs.forEach((nc: any) => {
         const key = nc.colaborador || nc.analista;
-        if (key && analystMap[key]) { analystMap[key].ncs++; }
+        if (key && analystMap[key]) {
+          analystMap[key].ncs++;
+        }
       });
 
       // Count elogios per analyst
       elogios.forEach((e: any) => {
         const key = e.colaborador || e.analista;
-        if (key && analystMap[key]) { analystMap[key].elogios++; }
+        if (key && analystMap[key]) {
+          analystMap[key].elogios++;
+        }
       });
 
       // Set status based on avaliacoes
@@ -158,12 +146,6 @@ function AuditoriaContent() {
 
   const filtered = useMemo(() => {
     let list = analystData;
-    // Filter out inactive (desligado) and on-leave (afastado) analysts
-    list = list.filter((a) => {
-      // We don't have status in AnalystAuditData, so we filter by checking if they have evaluations
-      // The main filter is: only show analysts who appear in cycle_scores for the active cycle
-      return true; // already filtered at data load time from cycle_scores
-    });
     if (filterSquad !== 'all') list = list.filter((a) => a.squad === filterSquad);
     if (filterStatus !== 'all') list = list.filter((a) => a.status === filterStatus);
     return [...list].sort((a, b) => {

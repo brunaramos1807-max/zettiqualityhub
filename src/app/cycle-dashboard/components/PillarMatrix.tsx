@@ -35,17 +35,25 @@ export default function PillarMatrix({ onPillarClick, analysts = [] }: Props) {
     >
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h3 className="font-display text-base font-semibold text-white" style={{ fontFamily: "'Playfair Display', serif" }}>
+          <h3
+            className="font-display text-base font-semibold text-white"
+            style={{ fontFamily: "'Playfair Display', serif" }}
+          >
             Matriz de Pilares
           </h3>
-          <p className="text-xs mt-0.5" style={{ color: '#8B949E' }}>Clique em um pilar para ver o drill-down</p>
+          <p className="text-xs mt-0.5" style={{ color: '#8B949E' }}>
+            Clique em um pilar para ver o drill-down
+          </p>
         </div>
         <Info size={15} style={{ color: '#8B949E' }} />
       </div>
 
       {/* QA Pillars */}
       <div className="mb-4">
-        <p className="text-xs font-medium uppercase tracking-wide mb-3" style={{ color: '#8B949E' }}>
+        <p
+          className="text-xs font-medium uppercase tracking-wide mb-3"
+          style={{ color: '#8B949E' }}
+        >
           Pilares QA
         </p>
         <div className="grid grid-cols-5 gap-2">
@@ -83,7 +91,10 @@ export default function PillarMatrix({ onPillarClick, analysts = [] }: Props) {
                 <span className="text-xs font-bold metric-value" style={{ color }}>
                   {pct.toFixed(0)}%
                 </span>
-                <span className="text-center leading-tight" style={{ color: '#8B949E', fontSize: 10 }}>
+                <span
+                  className="text-center leading-tight"
+                  style={{ color: '#8B949E', fontSize: 10 }}
+                >
                   {info?.maxPoints}pts
                 </span>
               </button>
@@ -94,7 +105,10 @@ export default function PillarMatrix({ onPillarClick, analysts = [] }: Props) {
 
       {/* IEPC Pillars */}
       <div>
-        <p className="text-xs font-medium uppercase tracking-wide mb-3" style={{ color: '#8B949E' }}>
+        <p
+          className="text-xs font-medium uppercase tracking-wide mb-3"
+          style={{ color: '#8B949E' }}
+        >
           Pilares IEPC
         </p>
         <div className="grid grid-cols-5 gap-2">
@@ -132,7 +146,10 @@ export default function PillarMatrix({ onPillarClick, analysts = [] }: Props) {
                 <span className="text-xs font-bold metric-value" style={{ color }}>
                   {pct.toFixed(0)}%
                 </span>
-                <span className="text-center leading-tight" style={{ color: '#8B949E', fontSize: 10 }}>
+                <span
+                  className="text-center leading-tight"
+                  style={{ color: '#8B949E', fontSize: 10 }}
+                >
                   {info?.maxPoints}pts
                 </span>
               </button>

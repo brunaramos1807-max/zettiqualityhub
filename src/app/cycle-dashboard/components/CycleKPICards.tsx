@@ -19,10 +19,7 @@ export default function CycleKPICards({ analysts }: Props) {
   useEffect(() => {
     if (analysts.length === 0) return;
     const periodo = analysts[0]?.periodo;
-    Promise.all([
-      fetchNCRecords(periodo),
-      fetchElogios(periodo),
-    ]).then(([ncs, elogios]) => {
+    Promise.all([fetchNCRecords(periodo), fetchElogios(periodo)]).then(([ncs, elogios]) => {
       setTotalNCs(ncs.length);
       setTotalElogios(elogios.length);
     });
@@ -30,8 +27,13 @@ export default function CycleKPICards({ analysts }: Props) {
 
   if (analysts.length === 0) {
     return (
-      <div className="rounded-xl p-8 text-center" style={{ backgroundColor: '#161B22', border: '1px solid rgba(255,255,255,0.08)' }}>
-        <p className="text-sm" style={{ color: '#8B949E' }}>Nenhum analista encontrado com os filtros aplicados.</p>
+      <div
+        className="rounded-xl p-8 text-center"
+        style={{ backgroundColor: '#161B22', border: '1px solid rgba(255,255,255,0.08)' }}
+      >
+        <p className="text-sm" style={{ color: '#8B949E' }}>
+          Nenhum analista encontrado com os filtros aplicados.
+        </p>
       </div>
     );
   }
@@ -53,8 +55,18 @@ export default function CycleKPICards({ analysts }: Props) {
       value: qaAvg.toFixed(2),
       suffix: '/100',
       color: qaColor,
-      bg: qaAvg >= 85 ? 'rgba(34,197,94,0.08)' : qaAvg >= 70 ? 'rgba(234,179,8,0.08)' : 'rgba(239,68,68,0.08)',
-      border: qaAvg >= 85 ? 'rgba(34,197,94,0.2)' : qaAvg >= 70 ? 'rgba(234,179,8,0.2)' : 'rgba(239,68,68,0.2)',
+      bg:
+        qaAvg >= 85
+          ? 'rgba(34,197,94,0.08)'
+          : qaAvg >= 70
+            ? 'rgba(234,179,8,0.08)'
+            : 'rgba(239,68,68,0.08)',
+      border:
+        qaAvg >= 85
+          ? 'rgba(34,197,94,0.2)'
+          : qaAvg >= 70
+            ? 'rgba(234,179,8,0.2)'
+            : 'rgba(239,68,68,0.2)',
     },
     {
       id: 'cycle-kpi-iepc',
@@ -64,8 +76,18 @@ export default function CycleKPICards({ analysts }: Props) {
       value: iepcAvg.toFixed(2),
       suffix: '/100',
       color: iepcColor,
-      bg: iepcAvg >= 85 ? 'rgba(34,197,94,0.08)' : iepcAvg >= 70 ? 'rgba(234,179,8,0.08)' : 'rgba(239,68,68,0.08)',
-      border: iepcAvg >= 85 ? 'rgba(34,197,94,0.2)' : iepcAvg >= 70 ? 'rgba(234,179,8,0.2)' : 'rgba(239,68,68,0.2)',
+      bg:
+        iepcAvg >= 85
+          ? 'rgba(34,197,94,0.08)'
+          : iepcAvg >= 70
+            ? 'rgba(234,179,8,0.08)'
+            : 'rgba(239,68,68,0.08)',
+      border:
+        iepcAvg >= 85
+          ? 'rgba(34,197,94,0.2)'
+          : iepcAvg >= 70
+            ? 'rgba(234,179,8,0.2)'
+            : 'rgba(239,68,68,0.2)',
     },
     {
       id: 'cycle-kpi-ncs',
@@ -106,10 +128,14 @@ export default function CycleKPICards({ analysts }: Props) {
           </div>
           <div className="mb-1">
             <span className="text-3xl font-bold text-white metric-value">{card.value}</span>
-            <span className="text-sm ml-1" style={{ color: '#8B949E' }}>{card.suffix}</span>
+            <span className="text-sm ml-1" style={{ color: '#8B949E' }}>
+              {card.suffix}
+            </span>
           </div>
           <p className="text-xs font-medium text-white mb-0.5">{card.label}</p>
-          <p className="text-xs" style={{ color: '#8B949E' }}>{card.sublabel}</p>
+          <p className="text-xs" style={{ color: '#8B949E' }}>
+            {card.sublabel}
+          </p>
         </div>
       ))}
     </div>

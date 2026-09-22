@@ -6,8 +6,15 @@ export async function GET() {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (!supabaseUrl || !serviceRoleKey || serviceRoleKey === 'your-supabase-service-role-key-here') {
-      return NextResponse.json({ users: [], error: 'Service role key not configured' }, { status: 200 });
+    if (
+      !supabaseUrl ||
+      !serviceRoleKey ||
+      serviceRoleKey === 'your-supabase-service-role-key-here'
+    ) {
+      return NextResponse.json(
+        { users: [], error: 'Service role key not configured' },
+        { status: 200 }
+      );
     }
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
@@ -15,7 +22,9 @@ export async function GET() {
     });
 
     // List all auth users
-    const { data: authData, error: authError } = await adminClient.auth.admin.listUsers({ perPage: 1000 });
+    const { data: authData, error: authError } = await adminClient.auth.admin.listUsers({
+      perPage: 1000,
+    });
     if (authError) {
       return NextResponse.json({ users: [], error: authError.message }, { status: 200 });
     }
@@ -26,7 +35,8 @@ export async function GET() {
     const upserts = authUsers.map((u) => ({
       id: u.id,
       email: u.email || '',
-      full_name: u.user_metadata?.full_name || u.user_metadata?.name || u.email?.split('@')[0] || '',
+      full_name:
+        u.user_metadata?.full_name || u.user_metadata?.name || u.email?.split('@')[0] || '',
       role: 'Visualizador',
       is_active: true,
       status_usuario: 'ativo',
@@ -48,7 +58,8 @@ export async function GET() {
       users: authUsers.map((u) => ({
         id: u.id,
         email: u.email || '',
-        full_name: u.user_metadata?.full_name || u.user_metadata?.name || u.email?.split('@')[0] || '',
+        full_name:
+          u.user_metadata?.full_name || u.user_metadata?.name || u.email?.split('@')[0] || '',
         created_at: u.created_at,
         last_sign_in_at: u.last_sign_in_at,
         provider: u.app_metadata?.provider || 'email',
