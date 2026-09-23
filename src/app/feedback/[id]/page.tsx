@@ -341,29 +341,23 @@ export default function FeedbackViewPage() {
 
       const analistaNome = rawData.analistas?.nome || rawData.analistas?.nome_completo;
       if (analistaNome) {
-if (analistaNome) {
-  const ciclo = rawData.ciclo || snap?.analista?.ciclo;
-  const analistaNomeLower = analistaNome.toLowerCase();
-  const analistaParts = analistaNomeLower.split(' ');
-  const analistaFirstName = analistaParts[0];
-  const analistaLastName = analistaParts[analistaParts.length - 1];
+        const ciclo = rawData.ciclo || snap?.analista?.ciclo;
+        const analistaNomeLower = analistaNome.toLowerCase();
+        const analistaParts = analistaNomeLower.split(' ');
+        const analistaFirstName = analistaParts[0];
+        const analistaLastName = analistaParts[analistaParts.length - 1];
 
-  let elogiosQuery = supabase
-    .from('elogios')
-    .select('elogio, protocolo, cliente, periodo')
-    .ilike('colaborador', `${analistaNome.split(' ')[0]}%`)
-    .order('created_at', { ascending: false })
-    .limit(20);
-
-  if (ciclo) elogiosQuery = elogiosQuery.eq('periodo', ciclo);
-
-  const { data: elogiosRows } = await elogiosQuery;
-
-  const filteredElogios = (elogiosRows || []).filter((e: any) => {
+        // Fetch Elogios
+        let elogiosQuery = supabase
+          .from('elogios')
+          .select('elogio, protocolo, cliente, periodo')
+          .ilike('colaborador', `${analistaFirstName}%`)
           .order('created_at', { ascending: false })
           .limit(20);
+
         if (ciclo) elogiosQuery = elogiosQuery.eq('periodo', ciclo);
         const { data: elogiosRows } = await elogiosQuery;
+        
         // Post-filter: require first+last name match to avoid false positives
         const filteredElogios = (elogiosRows || []).filter((e: any) => {
           const colLower = (e.colaborador || '').toLowerCase();
@@ -377,19 +371,11 @@ if (analistaNome) {
         let ncQuery = supabase
           .from('nc_records')
           .select('*')
-.select('*')
-.ilike('analista', `${analistaNome.split(' ')[0]}%`);
+          .ilike('analista', `${analistaFirstName}%`);
 
-if (ciclo) ncQuery = ncQuery.eq('periodo', ciclo);
-
-const { data: ncRows } = await ncQuery;
-
-// Post-filter: require first+last name match
-const filteredNCs = (ncRows || []).filter((nc: any) => {
-  const ncLower = (nc.analista || '').toLowerCase();
-  const ncParts = ncLower.split(' ');
         if (ciclo) ncQuery = ncQuery.eq('periodo', ciclo);
         const { data: ncRows } = await ncQuery;
+        
         // Post-filter: require first+last name match
         const filteredNCs = (ncRows || []).filter((nc: any) => {
           const ncLower = (nc.analista || '').toLowerCase();
