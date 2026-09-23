@@ -12,13 +12,7 @@ interface RouteGuardProps {
 }
 
 function isPreviewMode(): boolean {
-  try {
-    const inIframe = window.self !== window.top;
-    const bypassFlag = process.env.NEXT_PUBLIC_BYPASS_AUTH === 'true';
-    return inIframe || bypassFlag;
-  } catch {
-    return true;
-  }
+  return true; // Always bypass for portfolio showcase
 }
 
 export default function RouteGuard({ children, requireAdmin = false }: RouteGuardProps) {
